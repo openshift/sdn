@@ -1,4 +1,4 @@
-package api
+package network
 
 // Accessor methods to annotate NetNamespace for multitenant support
 import (
