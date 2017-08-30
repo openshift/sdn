@@ -8,8 +8,8 @@ import (
 
 	"github.com/golang/glog"
 
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 	"github.com/openshift/origin/pkg/util/ipcmd"
 	"github.com/openshift/origin/pkg/util/netutils"
 
@@ -24,7 +24,7 @@ import (
 )
 
 func (plugin *OsdnNode) getLocalSubnet() (string, error) {
-	var subnet *osapi.HostSubnet
+	var subnet *networkapi.HostSubnet
 	// If the HostSubnet doesn't already exist, it will be created by the SDN master in
 	// response to the kubelet registering itself with the master (which should be
 	// happening in another goroutine in parallel with this). Sometimes this takes
@@ -201,14 +201,14 @@ func (plugin *OsdnNode) updateEgressNetworkPolicyRules(vnid uint32) {
 	}
 }
 
-func (plugin *OsdnNode) AddHostSubnetRules(subnet *osapi.HostSubnet) {
+func (plugin *OsdnNode) AddHostSubnetRules(subnet *networkapi.HostSubnet) {
 	glog.Infof("AddHostSubnetRules for %s", common.HostSubnetToString(subnet))
 	if err := plugin.oc.AddHostSubnetRules(subnet); err != nil {
 		glog.Errorf("Error adding OVS flows for subnet %q: %v", subnet.Subnet, err)
 	}
 }
 
-func (plugin *OsdnNode) DeleteHostSubnetRules(subnet *osapi.HostSubnet) {
+func (plugin *OsdnNode) DeleteHostSubnetRules(subnet *networkapi.HostSubnet) {
 	glog.Infof("DeleteHostSubnetRules for %s", common.HostSubnetToString(subnet))
 	if err := plugin.oc.DeleteHostSubnetRules(subnet); err != nil {
 		glog.Errorf("Error deleting OVS flows for subnet %q: %v", subnet.Subnet, err)

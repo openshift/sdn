@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang/glog"
 
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
 
 	ktypes "k8s.io/apimachinery/pkg/types"
 	kexec "k8s.io/kubernetes/pkg/util/exec"
@@ -42,7 +42,7 @@ func NewEgressDNS() *EgressDNS {
 	}
 }
 
-func (e *EgressDNS) Add(policy osapi.EgressNetworkPolicy) {
+func (e *EgressDNS) Add(policy networkapi.EgressNetworkPolicy) {
 	dnsInfo := NewDNS(kexec.New())
 	for _, rule := range policy.Spec.Egress {
 		if len(rule.To.DNSName) > 0 {
@@ -62,7 +62,7 @@ func (e *EgressDNS) Add(policy osapi.EgressNetworkPolicy) {
 	}
 }
 
-func (e *EgressDNS) Delete(policy osapi.EgressNetworkPolicy) {
+func (e *EgressDNS) Delete(policy networkapi.EgressNetworkPolicy) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -138,7 +138,7 @@ func (e *EgressDNS) GetMinQueryTime() (time.Time, ktypes.UID, string, bool) {
 	return minTime, uid, e.namespaces[uid], timeSet
 }
 
-func (e *EgressDNS) GetIPs(policy osapi.EgressNetworkPolicy, dnsName string) []net.IP {
+func (e *EgressDNS) GetIPs(policy networkapi.EgressNetworkPolicy, dnsName string) []net.IP {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -149,7 +149,7 @@ func (e *EgressDNS) GetIPs(policy osapi.EgressNetworkPolicy, dnsName string) []n
 	return dnsInfo.Get(dnsName).ips
 }
 
-func (e *EgressDNS) GetNetCIDRs(policy osapi.EgressNetworkPolicy, dnsName string) []net.IPNet {
+func (e *EgressDNS) GetNetCIDRs(policy networkapi.EgressNetworkPolicy, dnsName string) []net.IPNet {
 	cidrs := []net.IPNet{}
 	for _, ip := range e.GetIPs(policy, dnsName) {
 		// IPv4 CIDR

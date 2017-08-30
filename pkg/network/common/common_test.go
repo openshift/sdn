@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
 
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	kapi "k8s.io/kubernetes/pkg/api"
@@ -86,8 +86,8 @@ func Test_checkHostNetworks(t *testing.T) {
 	}
 }
 
-func dummySubnet(hostip string, subnet string) osapi.HostSubnet {
-	return osapi.HostSubnet{HostIP: hostip, Subnet: subnet}
+func dummySubnet(hostip string, subnet string) networkapi.HostSubnet {
+	return networkapi.HostSubnet{HostIP: hostip, Subnet: subnet}
 }
 
 func dummyService(ip string) kapi.Service {
@@ -99,7 +99,7 @@ func dummyPod(ip string) kapi.Pod {
 }
 
 func Test_checkClusterObjects(t *testing.T) {
-	subnets := []osapi.HostSubnet{
+	subnets := []networkapi.HostSubnet{
 		dummySubnet("192.168.1.2", "10.128.0.0/23"),
 		dummySubnet("192.168.1.3", "10.129.0.0/23"),
 		dummySubnet("192.168.1.4", "10.130.0.0/23"),

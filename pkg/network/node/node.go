@@ -13,12 +13,12 @@ import (
 
 	log "github.com/golang/glog"
 
-	"github.com/openshift/origin/pkg/sdn/node/cniserver"
+	"github.com/openshift/origin/pkg/network/node/cniserver"
 
 	osclient "github.com/openshift/origin/pkg/client"
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 	"github.com/openshift/origin/pkg/util/ipcmd"
 	"github.com/openshift/origin/pkg/util/netutils"
 	"github.com/openshift/origin/pkg/util/ovs"
@@ -44,16 +44,16 @@ import (
 
 const (
 	cniDirPath       = "/etc/cni/net.d"
-	openshiftCNIFile = "80-openshift-sdn.conf"
+	openshiftCNIFile = "80-openshift-network.conf"
 )
 
 type osdnPolicy interface {
 	Name() string
 	Start(node *OsdnNode) error
 
-	AddNetNamespace(netns *osapi.NetNamespace)
-	UpdateNetNamespace(netns *osapi.NetNamespace, oldNetID uint32)
-	DeleteNetNamespace(netns *osapi.NetNamespace)
+	AddNetNamespace(netns *networkapi.NetNamespace)
+	UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32)
+	DeleteNetNamespace(netns *networkapi.NetNamespace)
 
 	GetVNID(namespace string) (uint32, error)
 	GetNamespaces(vnid uint32) []string
@@ -95,7 +95,7 @@ type OsdnNode struct {
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
-	egressPolicies     map[uint32][]osapi.EgressNetworkPolicy
+	egressPolicies     map[uint32][]networkapi.EgressNetworkPolicy
 	egressDNS          *common.EgressDNS
 
 	host             knetwork.Host
@@ -112,19 +112,19 @@ type OsdnNode struct {
 }
 
 // Called by higher layers to create the plugin SDN node instance
-func New(c *OsdnNodeConfig) (sdn.NodeInterface, error) {
+func New(c *OsdnNodeConfig) (network.NodeInterface, error) {
 	var policy osdnPolicy
 	var pluginId int
 	var minOvsVersion string
 	var useConnTrack bool
 	switch strings.ToLower(c.PluginName) {
-	case sdn.SingleTenantPluginName:
+	case network.SingleTenantPluginName:
 		policy = NewSingleTenantPlugin()
 		pluginId = 0
-	case sdn.MultiTenantPluginName:
+	case network.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
-	case sdn.NetworkPolicyPluginName:
+	case network.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
 		minOvsVersion = "2.6.0"
@@ -183,7 +183,7 @@ func New(c *OsdnNodeConfig) (sdn.NodeInterface, error) {
 		useConnTrack:       useConnTrack,
 		iptablesSyncPeriod: c.IPTablesSyncPeriod,
 		mtu:                c.MTU,
-		egressPolicies:     make(map[uint32][]osapi.EgressNetworkPolicy),
+		egressPolicies:     make(map[uint32][]networkapi.EgressNetworkPolicy),
 		egressDNS:          common.NewEgressDNS(),
 		kubeInformers:      c.KubeInformers,
 

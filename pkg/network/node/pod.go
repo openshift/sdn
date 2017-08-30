@@ -8,8 +8,8 @@ import (
 	"sync"
 	"syscall"
 
-	sdnapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/node/cniserver"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/node/cniserver"
 	"github.com/openshift/origin/pkg/util/ipcmd"
 	"github.com/openshift/origin/pkg/util/netutils"
 
@@ -333,7 +333,7 @@ func getVethInfo(netns, containerIfname string) (string, string, string, error) 
 
 // Adds a macvlan interface to a container, if requested, for use with the egress router feature
 func maybeAddMacvlan(pod *kapi.Pod, netns string) error {
-	val, ok := pod.Annotations[sdnapi.AssignMacvlanAnnotation]
+	val, ok := pod.Annotations[networkapi.AssignMacvlanAnnotation]
 	if !ok || val != "true" {
 		return nil
 	}
@@ -346,7 +346,7 @@ func maybeAddMacvlan(pod *kapi.Pod, netns string) error {
 		}
 	}
 	if !privileged {
-		return fmt.Errorf("pod has %q annotation but is not privileged", sdnapi.AssignMacvlanAnnotation)
+		return fmt.Errorf("pod has %q annotation but is not privileged", networkapi.AssignMacvlanAnnotation)
 	}
 
 	// Find interface with the default route

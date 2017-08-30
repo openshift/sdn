@@ -9,11 +9,11 @@ import (
 
 	osclient "github.com/openshift/origin/pkg/client"
 	osconfigapi "github.com/openshift/origin/pkg/cmd/server/api"
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	osapivalidation "github.com/openshift/origin/pkg/sdn/apis/network/validation"
-	"github.com/openshift/origin/pkg/sdn/common"
-	"github.com/openshift/origin/pkg/sdn/node"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	osapivalidation "github.com/openshift/origin/pkg/network/apis/network/validation"
+	"github.com/openshift/origin/pkg/network/common"
+	"github.com/openshift/origin/pkg/network/node"
 	"github.com/openshift/origin/pkg/util/netutils"
 
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,7 +38,7 @@ type OsdnMaster struct {
 }
 
 func Start(networkConfig osconfigapi.MasterNetworkConfig, osClient *osclient.Client, kClient kclientset.Interface, informers kinternalinformers.SharedInformerFactory) error {
-	if !sdn.IsOpenShiftNetworkPlugin(networkConfig.NetworkPluginName) {
+	if !network.IsOpenShiftNetworkPlugin(networkConfig.NetworkPluginName) {
 		return nil
 	}
 
@@ -57,9 +57,9 @@ func Start(networkConfig osconfigapi.MasterNetworkConfig, osClient *osclient.Cli
 		return err
 	}
 
-	configCN := &osapi.ClusterNetwork{
+	configCN := &networkapi.ClusterNetwork{
 		TypeMeta:   metav1.TypeMeta{Kind: "ClusterNetwork"},
-		ObjectMeta: metav1.ObjectMeta{Name: osapi.ClusterNetworkDefault},
+		ObjectMeta: metav1.ObjectMeta{Name: networkapi.ClusterNetworkDefault},
 
 		Network:          networkConfig.ClusterNetworkCIDR,
 		HostSubnetLength: networkConfig.HostSubnetLength,
@@ -73,7 +73,7 @@ func Start(networkConfig osconfigapi.MasterNetworkConfig, osClient *osclient.Cli
 	err = wait.PollImmediate(1*time.Second, time.Minute, func() (bool, error) {
 		// reset this so that failures come through correctly.
 		getError = nil
-		existingCN, err := master.osClient.ClusterNetwork().Get(osapi.ClusterNetworkDefault, metav1.GetOptions{})
+		existingCN, err := master.osClient.ClusterNetwork().Get(networkapi.ClusterNetworkDefault, metav1.GetOptions{})
 		if err != nil {
 			if !kapierrors.IsNotFound(err) {
 				// the first request can fail on permissions
@@ -123,12 +123,12 @@ func Start(networkConfig osconfigapi.MasterNetworkConfig, osClient *osclient.Cli
 	}
 
 	switch networkConfig.NetworkPluginName {
-	case sdn.MultiTenantPluginName:
+	case network.MultiTenantPluginName:
 		master.vnids = newMasterVNIDMap(true)
 		if err = master.VnidStartMaster(); err != nil {
 			return err
 		}
-	case sdn.NetworkPolicyPluginName:
+	case network.NetworkPolicyPluginName:
 		master.vnids = newMasterVNIDMap(false)
 		if err = master.VnidStartMaster(); err != nil {
 			return err
@@ -147,7 +147,7 @@ func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
-	var subnets []osapi.HostSubnet
+	var subnets []networkapi.HostSubnet
 	var pods []kapi.Pod
 	var services []kapi.Service
 	if subnetList, err := master.osClient.HostSubnets().List(metav1.ListOptions{}); err == nil {
@@ -163,7 +163,7 @@ func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
 	return master.networkInfo.CheckClusterObjects(subnets, pods, services)
 }
 
-func clusterNetworkChanged(obj *osapi.ClusterNetwork, old *osapi.ClusterNetwork) (bool, error) {
+func clusterNetworkChanged(obj *networkapi.ClusterNetwork, old *networkapi.ClusterNetwork) (bool, error) {
 	changed := false
 
 	if old.Network != obj.Network {

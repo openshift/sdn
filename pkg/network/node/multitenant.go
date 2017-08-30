@@ -9,8 +9,8 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapihelper "k8s.io/kubernetes/pkg/api/helper"
 
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
 )
 
 type multiTenantPlugin struct {
@@ -28,7 +28,7 @@ func NewMultiTenantPlugin() osdnPolicy {
 }
 
 func (mp *multiTenantPlugin) Name() string {
-	return sdn.MultiTenantPluginName
+	return network.MultiTenantPluginName
 }
 
 func (mp *multiTenantPlugin) Start(node *OsdnNode) error {
@@ -97,15 +97,15 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 	mp.node.podManager.UpdateLocalMulticastRules(netID)
 }
 
-func (mp *multiTenantPlugin) AddNetNamespace(netns *osapi.NetNamespace) {
+func (mp *multiTenantPlugin) AddNetNamespace(netns *networkapi.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, 0, netns.NetID)
 }
 
-func (mp *multiTenantPlugin) UpdateNetNamespace(netns *osapi.NetNamespace, oldNetID uint32) {
+func (mp *multiTenantPlugin) UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32) {
 	mp.updatePodNetwork(netns.Name, oldNetID, netns.NetID)
 }
 
-func (mp *multiTenantPlugin) DeleteNetNamespace(netns *osapi.NetNamespace) {
+func (mp *multiTenantPlugin) DeleteNetNamespace(netns *networkapi.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, netns.NetID, 0)
 }
 

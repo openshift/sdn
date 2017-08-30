@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	osclient "github.com/openshift/origin/pkg/client"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 )
 
 type nodeVNIDMap struct {
@@ -147,8 +147,8 @@ func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
 	return id, nil
 }
 
-func netnsIsMulticastEnabled(netns *osapi.NetNamespace) bool {
-	enabled, ok := netns.Annotations[osapi.MulticastEnabledAnnotation]
+func netnsIsMulticastEnabled(netns *networkapi.NetNamespace) bool {
+	enabled, ok := netns.Annotations[networkapi.MulticastEnabledAnnotation]
 	return enabled == "true" && ok
 }
 
@@ -177,7 +177,7 @@ func (vmap *nodeVNIDMap) Start() error {
 
 func (vmap *nodeVNIDMap) watchNetNamespaces() {
 	common.RunEventQueue(vmap.osClient, common.NetNamespaces, func(delta cache.Delta) error {
-		netns := delta.Object.(*osapi.NetNamespace)
+		netns := delta.Object.(*networkapi.NetNamespace)
 
 		log.V(5).Infof("Watch %s event for NetNamespace %q", delta.Type, netns.ObjectMeta.Name)
 		switch delta.Type {

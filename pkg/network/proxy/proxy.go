@@ -8,9 +8,9 @@ import (
 	"github.com/golang/glog"
 
 	osclient "github.com/openshift/origin/pkg/client"
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
@@ -30,7 +30,7 @@ type EndpointsConfigHandler interface {
 }
 
 type firewallItem struct {
-	ruleType osapi.EgressNetworkPolicyRuleType
+	ruleType networkapi.EgressNetworkPolicyRuleType
 	net      *net.IPNet
 }
 
@@ -60,8 +60,8 @@ type OsdnProxy struct {
 }
 
 // Called by higher layers to create the proxy plugin instance; only used by nodes
-func New(pluginName string, osClient *osclient.Client, kClient kclientset.Interface) (sdn.ProxyInterface, error) {
-	if !sdn.IsOpenShiftMultitenantNetworkPlugin(pluginName) {
+func New(pluginName string, osClient *osclient.Client, kClient kclientset.Interface) (network.ProxyInterface, error) {
+	if !network.IsOpenShiftMultitenantNetworkPlugin(pluginName) {
 		return nil, nil
 	}
 
@@ -106,7 +106,7 @@ func (proxy *OsdnProxy) Start(baseHandler pconfig.EndpointsHandler) error {
 
 func (proxy *OsdnProxy) watchEgressNetworkPolicies() {
 	common.RunEventQueue(proxy.osClient, common.EgressNetworkPolicies, func(delta cache.Delta) error {
-		policy := delta.Object.(*osapi.EgressNetworkPolicy)
+		policy := delta.Object.(*networkapi.EgressNetworkPolicy)
 
 		proxy.egressDNS.Delete(*policy)
 		if delta.Type == cache.Deleted {
@@ -127,7 +127,7 @@ func (proxy *OsdnProxy) watchEgressNetworkPolicies() {
 // TODO: Abstract common code shared between proxy and node
 func (proxy *OsdnProxy) watchNetNamespaces() {
 	common.RunEventQueue(proxy.osClient, common.NetNamespaces, func(delta cache.Delta) error {
-		netns := delta.Object.(*osapi.NetNamespace)
+		netns := delta.Object.(*networkapi.NetNamespace)
 		name := netns.ObjectMeta.Name
 
 		glog.V(5).Infof("Watch %s event for NetNamespace %q", delta.Type, name)
@@ -147,13 +147,13 @@ func (proxy *OsdnProxy) isNamespaceGlobal(ns string) bool {
 	proxy.idLock.Lock()
 	defer proxy.idLock.Unlock()
 
-	if proxy.ids[ns] == sdn.GlobalVNID {
+	if proxy.ids[ns] == network.GlobalVNID {
 		return true
 	}
 	return false
 }
 
-func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osapi.EgressNetworkPolicy) {
+func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkapi.EgressNetworkPolicy) {
 	ns := policy.Namespace
 	if proxy.isNamespaceGlobal(ns) {
 		// Firewall not allowed for global namespaces
@@ -253,7 +253,7 @@ func (proxy *OsdnProxy) firewallBlocksIP(namespace string, ip net.IP) bool {
 
 		for _, item := range ref.namespaceFirewalls[*ref.activePolicy] {
 			if item.net.Contains(ip) {
-				return item.ruleType == osapi.EgressNetworkPolicyRuleDeny
+				return item.ruleType == networkapi.EgressNetworkPolicyRuleDeny
 			}
 		}
 	}
@@ -365,11 +365,11 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 	}
 }
 
-func getPolicy(policyUID ktypes.UID, policies *osapi.EgressNetworkPolicyList) (osapi.EgressNetworkPolicy, bool) {
+func getPolicy(policyUID ktypes.UID, policies *networkapi.EgressNetworkPolicyList) (networkapi.EgressNetworkPolicy, bool) {
 	for _, p := range policies.Items {
 		if p.UID == policyUID {
 			return p, true
 		}
 	}
-	return osapi.EgressNetworkPolicy{}, false
+	return networkapi.EgressNetworkPolicy{}, false
 }

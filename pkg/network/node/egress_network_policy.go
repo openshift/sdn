@@ -5,8 +5,8 @@ import (
 
 	"github.com/golang/glog"
 
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
@@ -44,7 +44,7 @@ func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
 
 func (plugin *OsdnNode) watchEgressNetworkPolicies() {
 	common.RunEventQueue(plugin.osClient, common.EgressNetworkPolicies, func(delta cache.Delta) error {
-		policy := delta.Object.(*osapi.EgressNetworkPolicy)
+		policy := delta.Object.(*networkapi.EgressNetworkPolicy)
 
 		vnid, err := plugin.policy.GetVNID(policy.Namespace)
 		if err != nil {
@@ -75,7 +75,7 @@ func (plugin *OsdnNode) watchEgressNetworkPolicies() {
 }
 
 func (plugin *OsdnNode) UpdateEgressNetworkPolicyVNID(namespace string, oldVnid, newVnid uint32) {
-	var policy *osapi.EgressNetworkPolicy
+	var policy *networkapi.EgressNetworkPolicy
 
 	plugin.egressPoliciesLock.Lock()
 	defer plugin.egressPoliciesLock.Unlock()

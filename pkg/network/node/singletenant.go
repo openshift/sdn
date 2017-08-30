@@ -1,8 +1,8 @@
 package node
 
 import (
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
 )
 
 type singleTenantPlugin struct{}
@@ -12,7 +12,7 @@ func NewSingleTenantPlugin() osdnPolicy {
 }
 
 func (sp *singleTenantPlugin) Name() string {
-	return sdn.SingleTenantPluginName
+	return network.SingleTenantPluginName
 }
 
 func (sp *singleTenantPlugin) Start(node *OsdnNode) error {
@@ -21,13 +21,13 @@ func (sp *singleTenantPlugin) Start(node *OsdnNode) error {
 	return otx.EndTransaction()
 }
 
-func (sp *singleTenantPlugin) AddNetNamespace(netns *osapi.NetNamespace) {
+func (sp *singleTenantPlugin) AddNetNamespace(netns *networkapi.NetNamespace) {
 }
 
-func (sp *singleTenantPlugin) UpdateNetNamespace(netns *osapi.NetNamespace, oldNetID uint32) {
+func (sp *singleTenantPlugin) UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32) {
 }
 
-func (sp *singleTenantPlugin) DeleteNetNamespace(netns *osapi.NetNamespace) {
+func (sp *singleTenantPlugin) DeleteNetNamespace(netns *networkapi.NetNamespace) {
 }
 
 func (sp *singleTenantPlugin) GetVNID(namespace string) (uint32, error) {

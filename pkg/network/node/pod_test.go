@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/origin/pkg/sdn/node/cniserver"
+	"github.com/openshift/origin/pkg/network/node/cniserver"
 
 	utiltesting "k8s.io/client-go/util/testing"
 	khostport "k8s.io/kubernetes/pkg/kubelet/network/hostport"

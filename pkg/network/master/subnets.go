@@ -15,9 +15,9 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/retry"
 
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 	"github.com/openshift/origin/pkg/util/netutils"
 )
 
@@ -82,7 +82,7 @@ func (master *OsdnMaster) addNode(nodeName string, nodeIP string, hsAnnotations 
 		return "", fmt.Errorf("error allocating network for node %s: %v", nodeName, err)
 	}
 
-	sub = &osapi.HostSubnet{
+	sub = &networkapi.HostSubnet{
 		TypeMeta:   metav1.TypeMeta{Kind: "HostSubnet"},
 		ObjectMeta: metav1.ObjectMeta{Name: nodeName, Annotations: hsAnnotations},
 		Host:       nodeName,
@@ -226,7 +226,7 @@ func (master *OsdnMaster) handleDeleteNode(obj interface{}) {
 // Watch for all hostsubnet events and if one is found with the right annotation, use the SubnetAllocator to dole a real subnet
 func (master *OsdnMaster) watchSubnets() {
 	common.RunEventQueue(master.osClient, common.HostSubnets, func(delta cache.Delta) error {
-		hs := delta.Object.(*osapi.HostSubnet)
+		hs := delta.Object.(*networkapi.HostSubnet)
 		name := hs.ObjectMeta.Name
 		hostIP := hs.HostIP
 		subnet := hs.Subnet
@@ -234,7 +234,7 @@ func (master *OsdnMaster) watchSubnets() {
 		log.V(5).Infof("Watch %s event for HostSubnet %q", delta.Type, hs.ObjectMeta.Name)
 		switch delta.Type {
 		case cache.Sync, cache.Added, cache.Updated:
-			if _, ok := hs.Annotations[osapi.AssignHostSubnetAnnotation]; ok {
+			if _, ok := hs.Annotations[networkapi.AssignHostSubnetAnnotation]; ok {
 				// Delete the annotated hostsubnet and create a new one with an assigned subnet
 				// We do not update (instead of delete+create) because the watchSubnets on the nodes
 				// will skip the event if it finds that the hostsubnet has the same host
@@ -246,13 +246,13 @@ func (master *OsdnMaster) watchSubnets() {
 					return nil
 				}
 				var hsAnnotations map[string]string
-				if vnid, ok := hs.Annotations[osapi.FixedVNIDHostAnnotation]; ok {
+				if vnid, ok := hs.Annotations[networkapi.FixedVNIDHostAnnotation]; ok {
 					vnidInt, err := strconv.Atoi(vnid)
-					if err == nil && vnidInt >= 0 && uint32(vnidInt) <= sdn.MaxVNID {
+					if err == nil && vnidInt >= 0 && uint32(vnidInt) <= network.MaxVNID {
 						hsAnnotations = make(map[string]string)
-						hsAnnotations[osapi.FixedVNIDHostAnnotation] = strconv.Itoa(vnidInt)
+						hsAnnotations[networkapi.FixedVNIDHostAnnotation] = strconv.Itoa(vnidInt)
 					} else {
-						log.Errorf("Vnid %s is an invalid value for annotation %s. Annotation will be ignored.", vnid, osapi.FixedVNIDHostAnnotation)
+						log.Errorf("Vnid %s is an invalid value for annotation %s. Annotation will be ignored.", vnid, networkapi.FixedVNIDHostAnnotation)
 					}
 				}
 				_, err = master.addNode(name, hostIP, hsAnnotations, nil)
@@ -262,7 +262,7 @@ func (master *OsdnMaster) watchSubnets() {
 				}
 			}
 		case cache.Deleted:
-			if _, ok := hs.Annotations[osapi.AssignHostSubnetAnnotation]; !ok {
+			if _, ok := hs.Annotations[networkapi.AssignHostSubnetAnnotation]; !ok {
 				// release the subnet
 				_, ipnet, err := net.ParseCIDR(subnet)
 				if err != nil {

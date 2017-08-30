@@ -10,8 +10,8 @@ import (
 
 	"github.com/golang/glog"
 
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 	"github.com/openshift/origin/pkg/util/ovs"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -178,8 +178,8 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR, serviceNetworkCIDR, localS
 	// Table 100: egress network policy dispatch; edited by UpdateEgressNetworkPolicy()
 	// eg, "table=100, reg0=${tenant_id}, priority=2, ip, nw_dst=${external_cidr}, actions=drop
 	otx.AddFlow("table=100, priority=0, actions=output:2")
-	otx.AddFlow("table=100, priority=%d,tcp,tcp_dst=53,nw_dst=%s,actions=output:2", osapi.EgressNetworkPolicyMaxRules+1, nodeIP)
-	otx.AddFlow("table=100, priority=%d,udp,udp_dst=53,nw_dst=%s,actions=output:2", osapi.EgressNetworkPolicyMaxRules+1, nodeIP)
+	otx.AddFlow("table=100, priority=%d,tcp,tcp_dst=53,nw_dst=%s,actions=output:2", networkapi.EgressNetworkPolicyMaxRules+1, nodeIP)
+	otx.AddFlow("table=100, priority=%d,udp,udp_dst=53,nw_dst=%s,actions=output:2", networkapi.EgressNetworkPolicyMaxRules+1, nodeIP)
 
 	// Table 110: outbound multicast filtering, updated by UpdateLocalMulticastFlows()
 	// eg, "table=110, priority=100, reg0=${tenant_id}, actions=goto_table:111
@@ -390,7 +390,7 @@ func (oc *ovsController) TearDownPod(hostVeth, podIP, sandboxID string) error {
 	return oc.ovs.DeletePort(hostVeth)
 }
 
-func policyNames(policies []osapi.EgressNetworkPolicy) string {
+func policyNames(policies []networkapi.EgressNetworkPolicy) string {
 	names := make([]string, len(policies))
 	for i, policy := range policies {
 		names[i] = policy.Namespace + ":" + policy.Name
@@ -398,7 +398,7 @@ func policyNames(policies []osapi.EgressNetworkPolicy) string {
 	return strings.Join(names, ", ")
 }
 
-func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []osapi.EgressNetworkPolicy, vnid uint32, namespaces []string, egressDNS *common.EgressDNS) error {
+func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.EgressNetworkPolicy, vnid uint32, namespaces []string, egressDNS *common.EgressDNS) error {
 	otx := oc.ovs.NewTransaction()
 	var inputErr error
 
@@ -429,7 +429,7 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []osapi.EgressN
 			priority := len(policies[0].Spec.Egress) - i
 
 			var action string
-			if rule.Type == osapi.EgressNetworkPolicyRuleAllow {
+			if rule.Type == networkapi.EgressNetworkPolicyRuleAllow {
 				action = "output:2"
 			} else {
 				action = "drop"
@@ -479,11 +479,11 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []osapi.EgressN
 	}
 }
 
-func (oc *ovsController) AddHostSubnetRules(subnet *osapi.HostSubnet) error {
+func (oc *ovsController) AddHostSubnetRules(subnet *networkapi.HostSubnet) error {
 	otx := oc.ovs.NewTransaction()
 
 	otx.AddFlow("table=10, priority=100, tun_src=%s, actions=goto_table:30", subnet.HostIP)
-	if vnid, ok := subnet.Annotations[osapi.FixedVNIDHostAnnotation]; ok {
+	if vnid, ok := subnet.Annotations[networkapi.FixedVNIDHostAnnotation]; ok {
 		otx.AddFlow("table=50, priority=100, arp, nw_dst=%s, actions=load:%s->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", subnet.Subnet, vnid, subnet.HostIP)
 		otx.AddFlow("table=90, priority=100, ip, nw_dst=%s, actions=load:%s->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", subnet.Subnet, vnid, subnet.HostIP)
 	} else {
@@ -494,7 +494,7 @@ func (oc *ovsController) AddHostSubnetRules(subnet *osapi.HostSubnet) error {
 	return otx.EndTransaction()
 }
 
-func (oc *ovsController) DeleteHostSubnetRules(subnet *osapi.HostSubnet) error {
+func (oc *ovsController) DeleteHostSubnetRules(subnet *networkapi.HostSubnet) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=10, tun_src=%s", subnet.HostIP)
 	otx.DeleteFlows("table=50, arp, nw_dst=%s", subnet.Subnet)

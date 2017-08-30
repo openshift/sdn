@@ -10,7 +10,7 @@ import (
 	"github.com/golang/glog"
 
 	osclient "github.com/openshift/origin/pkg/client"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
 	"github.com/openshift/origin/pkg/util/netutils"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,11 +23,11 @@ import (
 	kinternalinformers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
 )
 
-func HostSubnetToString(subnet *osapi.HostSubnet) string {
+func HostSubnetToString(subnet *networkapi.HostSubnet) string {
 	return fmt.Sprintf("%s (host: %q, ip: %q, subnet: %q)", subnet.Name, subnet.Host, subnet.HostIP, subnet.Subnet)
 }
 
-func ClusterNetworkToString(n *osapi.ClusterNetwork) string {
+func ClusterNetworkToString(n *networkapi.ClusterNetwork) string {
 	return fmt.Sprintf("%s (network: %q, hostSubnetBits: %d, serviceNetwork: %q, pluginName: %q)", n.Name, n.Network, n.HostSubnetLength, n.ServiceNetwork, n.PluginName)
 }
 
@@ -101,7 +101,7 @@ func (ni *NetworkInfo) CheckHostNetworks(hostIPNets []*net.IPNet) error {
 	return kerrors.NewAggregate(errList)
 }
 
-func (ni *NetworkInfo) CheckClusterObjects(subnets []osapi.HostSubnet, pods []kapi.Pod, services []kapi.Service) error {
+func (ni *NetworkInfo) CheckClusterObjects(subnets []networkapi.HostSubnet, pods []kapi.Pod, services []kapi.Service) error {
 	var errList []error
 
 	for _, subnet := range subnets {
@@ -143,7 +143,7 @@ func (ni *NetworkInfo) CheckClusterObjects(subnets []osapi.HostSubnet, pods []ka
 }
 
 func GetNetworkInfo(osClient *osclient.Client) (*NetworkInfo, error) {
-	cn, err := osClient.ClusterNetwork().Get(osapi.ClusterNetworkDefault, metav1.GetOptions{})
+	cn, err := osClient.ClusterNetwork().Get(networkapi.ClusterNetworkDefault, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -188,11 +188,11 @@ func RunEventQueue(client kcache.Getter, resourceName ResourceName, process Proc
 
 	switch resourceName {
 	case HostSubnets:
-		expectedType = &osapi.HostSubnet{}
+		expectedType = &networkapi.HostSubnet{}
 	case NetNamespaces:
-		expectedType = &osapi.NetNamespace{}
+		expectedType = &networkapi.NetNamespace{}
 	case EgressNetworkPolicies:
-		expectedType = &osapi.EgressNetworkPolicy{}
+		expectedType = &networkapi.EgressNetworkPolicy{}
 	case NetworkPolicies:
 		expectedType = &extensions.NetworkPolicy{}
 	default:

@@ -22,9 +22,9 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	kinternalinformers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
 
-	"github.com/openshift/origin/pkg/sdn"
-	osapi "github.com/openshift/origin/pkg/sdn/apis/network"
-	"github.com/openshift/origin/pkg/sdn/common"
+	"github.com/openshift/origin/pkg/network"
+	networkapi "github.com/openshift/origin/pkg/network/apis/network"
+	"github.com/openshift/origin/pkg/network/common"
 )
 
 type networkPolicyPlugin struct {
@@ -67,7 +67,7 @@ func NewNetworkPolicyPlugin() osdnPolicy {
 }
 
 func (np *networkPolicyPlugin) Name() string {
-	return sdn.NetworkPolicyPluginName
+	return network.NetworkPolicyPluginName
 }
 
 func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
@@ -138,7 +138,7 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 	return nil
 }
 
-func (np *networkPolicyPlugin) AddNetNamespace(netns *osapi.NetNamespace) {
+func (np *networkPolicyPlugin) AddNetNamespace(netns *networkapi.NetNamespace) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
@@ -155,15 +155,15 @@ func (np *networkPolicyPlugin) AddNetNamespace(netns *osapi.NetNamespace) {
 	}
 }
 
-func (np *networkPolicyPlugin) UpdateNetNamespace(netns *osapi.NetNamespace, oldNetID uint32) {
+func (np *networkPolicyPlugin) UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32) {
 	if netns.NetID != oldNetID {
-		glog.Warning("Got VNID change for namespace %s while using %s plugin", netns.NetName, sdn.NetworkPolicyPluginName)
+		glog.Warning("Got VNID change for namespace %s while using %s plugin", netns.NetName, network.NetworkPolicyPluginName)
 	}
 
 	np.node.podManager.UpdateLocalMulticastRules(netns.NetID)
 }
 
-func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osapi.NetNamespace) {
+func (np *networkPolicyPlugin) DeleteNetNamespace(netns *networkapi.NetNamespace) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
