@@ -14,7 +14,7 @@ import (
 	"github.com/openshift/origin/pkg/util/netutils"
 
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
-	kapi "k8s.io/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/util/sysctl"
 
 	"github.com/vishvananda/netlink"
