@@ -19,11 +19,12 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	proxy "k8s.io/kubernetes/pkg/proxy"
+	"k8s.io/kubernetes/pkg/proxy/apis/kubeproxyconfig"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
 	"k8s.io/kubernetes/pkg/proxy/iptables"
+	"k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
@@ -90,7 +91,7 @@ func (c *NetworkConfig) RunProxy() {
 	}
 
 	switch c.ProxyConfig.Mode {
-	case componentconfig.ProxyModeIPTables:
+	case kubeproxyconfig.ProxyModeIPTables:
 		glog.V(0).Info("Using iptables Proxier.")
 		if bindAddr.Equal(net.IPv4zero) {
 			var err error
@@ -117,7 +118,7 @@ func (c *NetworkConfig) RunProxy() {
 			recorder,
 			healthzServer,
 		)
-		iptables.RegisterMetrics()
+		metrics.RegisterMetrics()
 
 		if err != nil {
 			glog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
@@ -128,7 +129,7 @@ func (c *NetworkConfig) RunProxy() {
 		// No turning back. Remove artifacts that might still exist from the userspace Proxier.
 		glog.V(0).Info("Tearing down userspace rules.")
 		userspace.CleanupLeftovers(iptInterface)
-	case componentconfig.ProxyModeUserspace:
+	case kubeproxyconfig.ProxyModeUserspace:
 		glog.V(0).Info("Using userspace Proxier.")
 		// This is a proxy.LoadBalancer which NewProxier needs but has methods we don't need for
 		// our config.EndpointsHandler.
