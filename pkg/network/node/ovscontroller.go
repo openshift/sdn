@@ -18,8 +18,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	kapi "k8s.io/kubernetes/pkg/apis/core"
-
-	"github.com/vishvananda/netlink"
 )
 
 type ovsController struct {
@@ -81,13 +79,6 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	_, err = oc.ovs.AddPort(Tun0, 2, "type=internal")
 	if err != nil {
 		return err
-	}
-	if oc.tunMAC == "" {
-		link, err := netlink.LinkByName(Tun0)
-		if err != nil {
-			return err
-		}
-		oc.tunMAC = link.Attrs().HardwareAddr.String()
 	}
 
 	otx := oc.ovs.NewTransaction()
@@ -666,6 +657,21 @@ func (oc *ovsController) FindUnusedVNIDs() []int {
 	return policyVNIDs.Difference(inUseVNIDs).UnsortedList()
 }
 
+func (oc *ovsController) ensureTunMAC() error {
+	if oc.tunMAC != "" {
+		return nil
+	}
+
+	val, err := oc.ovs.Get("Interface", Tun0, "mac_in_use")
+	if err != nil {
+		return fmt.Errorf("could not get %s MAC address: %v", Tun0, err)
+	} else if len(val) != 19 || val[0] != '"' || val[18] != '"' {
+		return fmt.Errorf("bad MAC address for %s: %q", Tun0, val)
+	}
+	oc.tunMAC = val[1:18]
+	return nil
+}
+
 func (oc *ovsController) UpdateNamespaceEgressRules(vnid uint32, nodeIP, egressHex string) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=100, reg0=%d", vnid)
@@ -677,6 +683,9 @@ func (oc *ovsController) UpdateNamespaceEgressRules(vnid uint32, nodeIP, egressH
 		otx.AddFlow("table=100, priority=100, reg0=%d, actions=drop", vnid)
 	} else if nodeIP == oc.localIP {
 		// Local Egress IP
+		if err := oc.ensureTunMAC(); err != nil {
+			return err
+		}
 		otx.AddFlow("table=100, priority=100, reg0=%d, ip, actions=set_field:%s->eth_dst,set_field:%s->pkt_mark,goto_table:101", vnid, oc.tunMAC, egressHex)
 	} else {
 		// Remote Egress IP; send via VXLAN
