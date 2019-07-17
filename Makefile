@@ -20,10 +20,12 @@ include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machine
 # $3 - context directory for image build
 # It will generate target "image-$(1)" for builing the image an binding it as a prerequisite to target "images".
 $(call build-image,origin-node,./images/sdn/Dockerfile,.)
+$(call build-image,origin-sdn-controller,./images/sdn-controller/Dockerfile,.)
 
 clean:
 	$(RM) ./openshift-sdn
 	$(RM) ./sdn-cni-plugin
+	$(RM) ./network-controller
 .PHONY: clean
 
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
