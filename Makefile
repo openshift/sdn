@@ -2,9 +2,10 @@ all: build
 .PHONY: all
 
 GO_BUILD_PACKAGES = \
-	./cmd/... \
-	./vendor/github.com/containernetworking/plugins/plugins/ipam/host-local \
-	./vendor/github.com/containernetworking/plugins/plugins/main/loopback
+    ./cmd/... \
+    ./vendor/github.com/containernetworking/plugins/plugins/ipam/host-local \
+    ./vendor/github.com/containernetworking/plugins/plugins/main/loopback \
+    ./vendor/k8s.io/kubernetes/cmd/kube-proxy
 
 # Include the library makefile
 include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machinery/make/, \
@@ -21,3 +22,4 @@ include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machine
 # It will generate target "image-$(1)" for builing the image an binding it as a prerequisite to target "images".
 $(call build-image,origin-node,./images/sdn/Dockerfile,.)
 $(call build-image,origin-sdn-controller,./images/sdn-controller/Dockerfile,.)
+$(call build-image,origin-kube-proxy,./images/kube-proxy/Dockerfile,.)
