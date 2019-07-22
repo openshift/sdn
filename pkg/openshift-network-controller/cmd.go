@@ -5,8 +5,6 @@ import (
 	"io"
 	"os"
 
-	"k8s.io/client-go/rest"
-
 	"github.com/coreos/go-systemd/daemon"
 	"github.com/spf13/cobra"
 	"k8s.io/klog"
@@ -36,7 +34,6 @@ func NewOpenShiftNetworkControllerCommand(name, basename string, out, errout io.
 		Short: "Start the OpenShift SDN controller",
 		Long:  longDescription,
 		Run: func(c *cobra.Command, args []string) {
-			rest.CommandNameOverride = name
 			kcmdutil.CheckErr(options.Validate())
 
 			serviceability.StartProfiler()
