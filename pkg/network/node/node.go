@@ -318,38 +318,48 @@ func (node *OsdnNode) validateMTU() error {
 		return fmt.Errorf("unable to determine MTU while performing validation")
 	}
 
-	if int(node.networkInfo.MTU) > mtu+50 {
+	needsTaint := mtu < int(node.networkInfo.MTU)+50
+	const MTUTaintKey string = "network.openshift.io/mtu-too-small"
+	mtuTooSmallTaint := &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"}
+	nodeObj, err := node.kClient.CoreV1().Nodes().Get(node.hostName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
+	}
+	tainted := taints.TaintExists(nodeObj.Spec.Taints, mtuTooSmallTaint)
+	if needsTaint != tainted {
 		resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			klog.V(2).Infof("Configured node MTU is more than default interface MTU plus VXLAN overhead, tainting node...")
-			n, err := node.kClient.CoreV1().Nodes().Get(node.hostName, metav1.GetOptions{})
-
+			nodeObj, err = node.kClient.CoreV1().Nodes().Get(node.hostName, metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
 			}
+			nodeObjCopy := nodeObj.DeepCopy()
+			var nodeWithTaintMods *corev1.Node
 
-			oldNode, err := json.Marshal(n)
+			if needsTaint && !tainted {
+				klog.V(2).Infof("Default interface MTU is less than VXLAN overhead, tainting node...")
+				nodeWithTaintMods, _, err = taints.AddOrUpdateTaint(nodeObjCopy, mtuTooSmallTaint)
+				if err != nil {
+					return fmt.Errorf("could not taint the node with key %s: %v", MTUTaintKey, err)
+				}
+			} else if !needsTaint && tainted {
+				klog.V(2).Infof("Node has too small MTU taint but default interface MTU is big enough, untainting node...")
+				nodeWithTaintMods, _, err = taints.RemoveTaint(nodeObjCopy, mtuTooSmallTaint)
+				if err != nil {
+					return fmt.Errorf("could not untaint the node with key %s: %v", MTUTaintKey, err)
+				}
+			}
 
+			nodeObjJson, err := json.Marshal(nodeObj)
 			if err != nil {
 				return fmt.Errorf("could not marshal old Node object: %v", err)
 			}
 
-			nodeClone := n.DeepCopy()
-
-			const MTUTaintKey string = "network.openshift.io/mtu-too-small"
-			taintedNode, _, err := taints.AddOrUpdateTaint(nodeClone, &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"})
-
-			if err != nil {
-				return fmt.Errorf("could not taint the node with key %s: %v", MTUTaintKey, err)
-			}
-
-			newNode, err := json.Marshal(taintedNode)
-
+			newNodeObjJson, err := json.Marshal(nodeWithTaintMods)
 			if err != nil {
 				return fmt.Errorf("could not marshal new Node object: %v", err)
 			}
 
-			patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldNode, newNode, corev1.Node{})
-
+			patchBytes, err := strategicpatch.CreateTwoWayMergePatch(nodeObjJson, newNodeObjJson, corev1.Node{})
 			if err != nil {
 				return fmt.Errorf("could not create patch for object: %v", err)
 			}
@@ -360,7 +370,7 @@ func (node *OsdnNode) validateMTU() error {
 		})
 
 		if resultErr != nil {
-			return fmt.Errorf("could not update node with taint after many retries: %v", resultErr)
+			return fmt.Errorf("could not update node taints after many retries: %v", resultErr)
 		}
 	}
 
