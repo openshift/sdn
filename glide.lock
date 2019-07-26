@@ -1,5 +1,5 @@
 hash: 0ab8da287bd54777c925abb2db45ef62e873e7cfff5d6d750714a078288ac3b5
-updated: 2019-07-22T10:04:49.644397765-04:00
+updated: 2019-07-26T11:36:52.816274936+02:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
@@ -251,7 +251,7 @@ imports:
   subpackages:
   - specs-go
 - name: github.com/openshift/api
-  version: 9525304a0adb725ab4a4a54539a1a6bf6cc343d3
+  version: b7d4eb0fa1e0c1e03f97c97c08d0ef1f025c0838
   subpackages:
   - config/v1
   - network/v1
@@ -268,7 +268,7 @@ imports:
   - network/informers/externalversions/network/v1
   - network/listers/network/v1
 - name: github.com/openshift/library-go
-  version: 83581c469d2eeb6dadfe86a4b6d8033b465ffd15
+  version: 523621232378681359817c52fe07670ce93b83b9
   subpackages:
   - pkg/config/leaderelection
   - pkg/network/networkapihelpers
@@ -847,6 +847,8 @@ imports:
   version: 51747d6e00da1fc578d5a333a93bb2abcbce7a95
 - name: k8s.io/klog
   version: 8139d8cb77af419532b33dfa7dd09fbc5f1d344f
+  subpackages:
+  - glog
 - name: k8s.io/kube-aggregator
   version: da8327669ac57b6e6a06676eeb7de19c9780f76d
 - name: k8s.io/kube-controller-manager
@@ -870,7 +872,7 @@ imports:
 - name: k8s.io/kubelet
   version: f6da02f583256d1a15cc44a101c80bfa2080a46f
 - name: k8s.io/kubernetes
-  version: f4098457640f3b7be2906f4ac751684a580c6e7f
+  version: 89abaaf762a79b1808832ffe80197a15dfb10ce1
   repo: https://github.com/openshift/kubernetes.git
   subpackages:
   - cmd/kube-proxy/app
