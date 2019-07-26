@@ -3,4 +3,5 @@
 /network-controller
 /loopback
 /host-local
+/kube-proxy
 
