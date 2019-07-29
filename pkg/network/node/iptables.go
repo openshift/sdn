@@ -179,7 +179,12 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 		},
 	)
 
-	var masqRules [][]string
+	masqRules := [][]string{
+		// Skip traffic already marked by kube-proxy for masquerading.
+		// This fixes a bug where traffic destined to a service's ExternalIP
+		// but also intended to go be SNAT'd to an EgressIP was dropped.
+		{"-m", "mark", "--mark", n.masqueradeBitHex + "/" + n.masqueradeBitHex, "-j", "RETURN"},
+	}
 	var masq2Rules [][]string
 	var filterRules [][]string
 	for _, cidr := range n.clusterNetworkCIDR {
@@ -200,12 +205,8 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			table:    "nat",
 			name:     "OPENSHIFT-MASQUERADE",
 			srcChain: "POSTROUTING",
-			srcRule: []string{
-				"-m", "comment", "--comment", "rules for masquerading OpenShift traffic",
-				// We want to exclude services that have already been marked for masquerading
-				"-m", "mark", "!", "--mark", n.masqueradeBitHex + "/" + n.masqueradeBitHex,
-			},
-			rules: masqRules,
+			srcRule:  []string{"-m", "comment", "--comment", "rules for masquerading OpenShift traffic"},
+			rules:    masqRules,
 		},
 		Chain{
 			table:    "filter",
