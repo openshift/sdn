@@ -45,9 +45,6 @@ import (
 	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
 
-const hostLocalDataDir = "/var/lib/cni/networks"
-const cniBinDir = "/opt/cni/bin"
-
 type osdnPolicy interface {
 	Name() string
 	Start(node *OsdnNode) error
