@@ -101,7 +101,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		enableUnidling = true
 		fallthrough
 	case "iptables":
-		klog.V(0).Info("Using iptables Proxier.")
+		klog.V(0).Infof("Using %s Proxier.", sdn.ProxyConfig.Mode)
 		if bindAddr.Equal(net.IPv4zero) {
 			var err error
 			bindAddr, err = getNodeIP(sdn.informers.KubeClient.CoreV1(), hostname)
