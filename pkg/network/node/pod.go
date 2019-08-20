@@ -15,13 +15,13 @@ import (
 	networkv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/cniserver"
-	"k8s.io/klog"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
+	kruntimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	kcontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	kbandwidth "k8s.io/kubernetes/pkg/util/bandwidth"
 
@@ -160,13 +160,39 @@ func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetwork
 	return m.cniServer.Start(m.handleCNIRequest)
 }
 
+func (m *podManager) InitRunningPods(existingPodSandboxes map[string]*kruntimeapi.PodSandbox, existingOFPodNetworks map[string]podNetworkInfo) error {
+	m.runningPodsLock.Lock()
+	defer m.runningPodsLock.Unlock()
+
+	for _, sandbox := range existingPodSandboxes {
+		sKey := getPodKey(sandbox.Metadata.Namespace, sandbox.Metadata.Name)
+
+		vnid, err := m.policy.GetVNID(sandbox.Metadata.Namespace)
+		if err != nil {
+			klog.Warningf("No VNID for pod %s", sKey)
+			continue
+		}
+
+		podNetworkInfo, ok := existingOFPodNetworks[sandbox.Id]
+		if !ok {
+			klog.Warningf("No network information for pod %s", sKey)
+			continue
+		}
+
+		m.runningPods[sKey] = &runningPod{vnid: vnid, ofport: podNetworkInfo.ofport}
+	}
+
+	klog.V(5).Infof("Finished initializing podManager with running pods at start-up")
+	return nil
+}
+
 // Returns a key for use with the runningPods map
-func getPodKey(request *cniserver.PodRequest) string {
-	return fmt.Sprintf("%s/%s", request.PodNamespace, request.PodName)
+func getPodKey(namespace, name string) string {
+	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
 func (m *podManager) getPod(request *cniserver.PodRequest) *runningPod {
-	return m.runningPods[getPodKey(request)]
+	return m.runningPods[getPodKey(request.PodNamespace, request.PodName)]
 }
 
 // Add a request to the podManager CNI request queue
@@ -230,7 +256,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 	m.runningPodsLock.Lock()
 	defer m.runningPodsLock.Unlock()
 
-	pk := getPodKey(request)
+	pk := getPodKey(request.PodNamespace, request.PodName)
 	result := &cniserver.PodResult{}
 	switch request.Command {
 	case cniserver.CNI_ADD:
