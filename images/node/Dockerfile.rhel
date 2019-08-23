@@ -6,8 +6,6 @@ RUN make build --warn-undefined-variables
 FROM registry.svc.ci.openshift.org/ocp/4.2:base
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
-COPY --from=builder /go/src/github.com/openshift/sdn/loopback /opt/cni/bin/
-COPY --from=builder /go/src/github.com/openshift/sdn/host-local /opt/cni/bin/
 
 RUN INSTALL_PKGS=" \
       openvswitch2.11 container-selinux socat ethtool nmap-ncat \

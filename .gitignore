@@ -1,7 +1,5 @@
 /openshift-sdn
 /sdn-cni-plugin
 /network-controller
-/loopback
-/host-local
 /kube-proxy
 
