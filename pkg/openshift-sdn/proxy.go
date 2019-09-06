@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -198,19 +197,16 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		sdn.ProxyConfig.ConfigSyncPeriod.Duration,
 	)
 	// customized handling registration that inserts a filter if needed
-	if err := sdn.OsdnProxy.Start(proxier); err != nil {
+	if err := sdn.OsdnProxy.Start(proxier, waitChan); err != nil {
 		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
 	}
 	proxier = sdn.OsdnProxy
 
-	// Wrap the proxy to know when it finally initializes
-	waitingProxy := newWaitingProxyHandler(proxier, waitChan)
-
 	iptInterface.AddReloadFunc(proxier.Sync)
-	serviceConfig.RegisterEventHandler(waitingProxy)
+	serviceConfig.RegisterEventHandler(proxier)
 	go serviceConfig.Run(utilwait.NeverStop)
 
-	endpointsConfig.RegisterEventHandler(waitingProxy)
+	endpointsConfig.RegisterEventHandler(proxier)
 	go endpointsConfig.Run(utilwait.NeverStop)
 
 	// Start up healthz server
@@ -272,72 +268,4 @@ func getNodeIP(client kv1core.CoreV1Interface, hostname string) (net.IP, error) 
 	}
 
 	return nodeIP, nil
-}
-
-type waitingProxyHandler struct {
-	sync.Mutex
-
-	// waitChan will be closed when both services and endpoints have
-	// been synced in the proxy
-	waitChan    chan<- bool
-	initialized bool
-
-	proxier         proxy.ProxyProvider
-	serviceSynced   bool
-	endpointsSynced bool
-}
-
-func newWaitingProxyHandler(proxier proxy.ProxyProvider, waitChan chan<- bool) *waitingProxyHandler {
-	return &waitingProxyHandler{
-		proxier:  proxier,
-		waitChan: waitChan,
-	}
-}
-
-func (wph *waitingProxyHandler) checkInitialized() {
-	if !wph.initialized && wph.serviceSynced && wph.endpointsSynced {
-		klog.V(2).Info("openshift-sdn proxy services and endpoints initialized")
-		wph.initialized = true
-		close(wph.waitChan)
-	}
-}
-
-func (wph *waitingProxyHandler) OnServiceAdd(service *v1.Service) {
-	wph.proxier.OnServiceAdd(service)
-}
-
-func (wph *waitingProxyHandler) OnServiceUpdate(oldService, service *v1.Service) {
-	wph.proxier.OnServiceUpdate(oldService, service)
-}
-
-func (wph *waitingProxyHandler) OnServiceDelete(service *v1.Service) {
-	wph.proxier.OnServiceDelete(service)
-}
-
-func (wph *waitingProxyHandler) OnServiceSynced() {
-	wph.proxier.OnServiceSynced()
-	wph.Lock()
-	defer wph.Unlock()
-	wph.serviceSynced = true
-	wph.checkInitialized()
-}
-
-func (wph *waitingProxyHandler) OnEndpointsAdd(endpoints *v1.Endpoints) {
-	wph.proxier.OnEndpointsAdd(endpoints)
-}
-
-func (wph *waitingProxyHandler) OnEndpointsUpdate(oldEndpoints, endpoints *v1.Endpoints) {
-	wph.proxier.OnEndpointsUpdate(oldEndpoints, endpoints)
-}
-
-func (wph *waitingProxyHandler) OnEndpointsDelete(endpoints *v1.Endpoints) {
-	wph.proxier.OnEndpointsDelete(endpoints)
-}
-
-func (wph *waitingProxyHandler) OnEndpointsSynced() {
-	wph.proxier.OnEndpointsSynced()
-	wph.Lock()
-	defer wph.Unlock()
-	wph.endpointsSynced = true
-	wph.checkInitialized()
 }
