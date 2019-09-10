@@ -54,7 +54,7 @@ type OsdnProxy struct {
 	networkInformers networkinformers.SharedInformerFactory
 	networkInfo      *common.ParsedClusterNetwork
 	egressDNS        *common.EgressDNS
-	baseProxy        kubeproxy.ProxyProvider
+	baseProxy        kubeproxy.Provider
 
 	lock         sync.Mutex
 	firewall     map[string]*proxyFirewallItem
@@ -78,7 +78,7 @@ func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider) error {
+func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error

@@ -17,10 +17,10 @@ import (
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
 )
 
-// RunnableProxy is an extra interface we layer on top of ProxyProvider that
+// RunnableProxy is an extra interface we layer on top of Provider that
 // lets us control exactly when the proxy is synced.
 type RunnableProxy interface {
-	proxy.ProxyProvider
+	proxy.Provider
 
 	SyncProxyRules()
 	SetSyncRunner(b *async.BoundedFrequencyRunner)
