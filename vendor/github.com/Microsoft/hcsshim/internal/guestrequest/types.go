@@ -1,7 +1,7 @@
 package guestrequest
 
 import (
-	"github.com/Microsoft/hcsshim/internal/schema2"
+	hcsschema "github.com/Microsoft/hcsshim/internal/schema2"
 )
 
 // Arguably, many of these (at least CombinedLayers) should have been generated
@@ -93,8 +93,24 @@ type RS4NetworkModifyRequest struct {
 	Settings          interface{} `json:"Settings,omitempty"`
 }
 
-// SignalProcessOptions is the options passed to either WCOW or LCOW
-// to signal a given process.
-type SignalProcessOptions struct {
-	Signal int `json:,omitempty`
+// SignalProcessOptionsLCOW is the options passed to LCOW to signal a given
+// process.
+type SignalProcessOptionsLCOW struct {
+	Signal int `json:",omitempty"`
+}
+
+type SignalValueWCOW string
+
+const (
+	SignalValueWCOWCtrlC        SignalValueWCOW = "CtrlC"
+	SignalValueWCOWCtrlBreak    SignalValueWCOW = "CtrlBreak"
+	SignalValueWCOWCtrlClose    SignalValueWCOW = "CtrlClose"
+	SignalValueWCOWCtrlLogOff   SignalValueWCOW = "CtrlLogOff"
+	SignalValueWCOWCtrlShutdown SignalValueWCOW = "CtrlShutdown"
+)
+
+// SignalProcessOptionsWCOW is the options passed to WCOW to signal a given
+// process.
+type SignalProcessOptionsWCOW struct {
+	Signal SignalValueWCOW `json:",omitempty"`
 }

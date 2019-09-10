@@ -182,28 +182,54 @@ func TestEndpointNamespaceAttachDetach(t *testing.T) {
 	}
 }
 
-func TestCreateEndpointWithNamespace(t *testing.T) {
-	network, err := HcnCreateTestNATNetwork()
+func TestAddL4ProxyPolicyOnEndpoint(t *testing.T) {
+	network, err := CreateTestOverlayNetwork()
 	if err != nil {
 		t.Fatal(err)
 	}
-	namespace, err := HcnCreateTestNamespace()
+	defer func() {
+		err = network.Delete()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	endpoint, err := HcnCreateTestEndpoint(network)
 	if err != nil {
 		t.Fatal(err)
 	}
-	Endpoint, err := HcnCreateTestEndpointWithNamespace(network, namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if Endpoint.HostComputeNamespace == "" {
-		t.Fatal("No Namespace detected.")
+	defer func() {
+		err = endpoint.Delete()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	policySetting := L4ProxyPolicySetting{
+		Port: "80",
+		FilterTuple: FiveTuple{
+			Protocols:       "6",
+			RemoteAddresses: "10.0.0.4",
+			Priority:        8,
+		},
+		ProxyType: ProxyTypeWFP,
 	}
 
-	err = Endpoint.Delete()
+	policyJSON, err := json.Marshal(policySetting)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = network.Delete()
+
+	endpointPolicy := EndpointPolicy{
+		Type:     L4Proxy,
+		Settings: policyJSON,
+	}
+
+	request := PolicyEndpointRequest{
+		Policies: []EndpointPolicy{endpointPolicy},
+	}
+
+	err = endpoint.ApplyPolicy(RequestTypeAdd, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +253,7 @@ func TestApplyPolicyOnEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("ACLS JSON:\n%s \n", jsonString)
-	err = Endpoint.ApplyPolicy(*endpointPolicyList)
+	err = Endpoint.ApplyPolicy(RequestTypeUpdate, *endpointPolicyList)
 	if err != nil {
 		t.Fatal(err)
 	}

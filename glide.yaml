@@ -2,63 +2,63 @@ package: github.com/openshift/sdn
 import:
 # kube first
 - package: k8s.io/api
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/apiextensions-apiserver
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/apimachinery
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/apiserver
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/client-go
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/cli-runtime
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/cloud-provider
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/cluster-bootstrap
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/code-generator
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/component-base
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/csi-api
-  version: kubernetes-1.14.0
+  version: master                           # FIXME
 - package: k8s.io/csi-translation-lib
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kube-aggregator
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kube-controller-manager
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kubelet
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kube-proxy
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kube-scheduler
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/metrics
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/sample-apiserver
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/sample-cli-plugin
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/sample-controller
-  version: kubernetes-1.14.0
+  version: kubernetes-1.16.0-beta.2
 - package: k8s.io/kubernetes
   repo:    https://github.com/openshift/kubernetes.git
-  version: sdn-4.2-kubernetes-1.14.0
- # this matches the 1.14 branch from kube
+  version: sdn-4.3-kubernetes-1.16.0-beta.2
+ # this matches the 1.16 branch from kube
 - package: k8s.io/gengo
-  version: 51747d6e00da1fc578d5a333a93bb2abcbce7a95
+  version: 26a664648505d962332bda642b27306bc10d1082
 - package: k8s.io/utils
-  version: c2654d5206da6b7b6ace12841e8f359bb89b443c
+  version: 581e00157fb1a0435d4fac54a52d1ca1e481d60e
 - package: k8s.io/kube-openapi
-  version: b3a7cee44a305be0a69e1b9ac03018307287e1b0
+  version: 743ec37842bffe49dd4221d9026f30fb1d5adbc4
 - package: k8s.io/klog
-  version: 8139d8cb77af419532b33dfa7dd09fbc5f1d344f # recent klog bump broke glog flags test in k8s.io/apiserver, pin
+  version: v0.4.0
 - package: github.com/coreos/etcd
-  version: v3.3.10
+  version: v3.3.15
 - package: google.golang.org/grpc
-  version: v1.13.0
+  version: v1.19.0
 - package: github.com/grpc-ecosystem/grpc-gateway
   version: v1.3.0
 - package: github.com/coreos/bbolt
@@ -68,55 +68,32 @@ import:
 
 # openshift second
 - package: github.com/openshift/api
-  version: master
+  version: prebase-1.16
 - package: github.com/openshift/client-go
-  version: master
+  version: prebase-1.16.0-beta.2
 - package: github.com/openshift/library-go
-  version: master
+  version: prebase-1.16.0-beta.2
 
 # forks third
 # master
 - package: github.com/onsi/ginkgo
   repo:    https://github.com/openshift/onsi-ginkgo.git
-  version: release-v1.2.0
-# pod - sjenning
-# origin-3.11-runc-871ba2e
-- package: github.com/opencontainers/runc
-  repo:    https://github.com/openshift/opencontainers-runc.git
-  version: 7c7775178c25e952571573f44a8df281824cf8e1
+  version: origin-4.3
 
 
-  # ours: shared with kube, but forced by openshift
+# ours: shared with kube, but forced by openshift
 # master: co-exist with klog
 - package: github.com/golang/glog
   repo:    https://github.com/openshift/golang-glog.git
   version: delegate-to-klog
 # networking
 - package: github.com/vishvananda/netlink
-  version: b2de5d10e38ecce8607e6b438b6d174f389a004e
-# retrieve latest version that fixes deadlock on kqueue
-- package: github.com/fsnotify/fsnotify
-  version: v1.4.7
-# pinned to the level that kubernetes uses.  Not sure why glide isn't matching this
-- package: github.com/sirupsen/logrus
-  version: 89742aefa4b206dcf400792f3bd35b542998eb3b
-# pinned to a level that kubernetes uses.
-- package: github.com/evanphx/json-patch
-  version: 5858425f75500d40c52783dce87d085a483ce135
-# pinned to a level that kubernetes 1.12 use
-- package: github.com/gorilla/mux
-  version: 08e7f807d38d6a870193019bb439056118661505
-# pinned to a level that kubernetes 1.12 use
-- package: github.com/ghodss/yaml
-  version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
+  version: 0e3b74dbe28f37fd911f9bca3565fdca33c03f29
 
 # mine: specific to openshift
 # networking
 - package: github.com/containernetworking/plugins
   version: ~0.6.0
-# master
-- package: github.com/getsentry/raven-go
-  version: 32a13797442ccb601b11761d74232773c1402d14
 # master? for bindata
 - package: github.com/jteeuwen/go-bindata
   version: a0ff2567cfb70903282db057e799fd826784d41d
@@ -152,11 +129,3 @@ import:
 # https://github.com/kubernetes/kubernetes/pull/72138
 - package: bitbucket.org/ww/goautoneg
   repo: https://github.com/munnerz/goautoneg.git
-
-# version that works with runc
-- package: golang.org/x/sys
-  version: 95c6576299259db960f6c5b9b69ea52422860fce
-
-# version from openshift.  may need later fitting
-- package: github.com/coreos/go-systemd
-  version: 39ca1b05acc7ad1220e09f133283b8859a8b71ab

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build ignore
-
 // Activation example used by the activation unit tests.
 package main
 
@@ -42,19 +40,19 @@ func main() {
 		panic("No files")
 	}
 
-	if os.Getenv("LISTEN_PID") == "" || os.Getenv("LISTEN_FDS") == "" || os.Getenv("LISTEN_FDNAMES") == "" {
+	if os.Getenv("LISTEN_PID") == "" || os.Getenv("LISTEN_FDS") == "" {
 		panic("Should not unset envs")
 	}
 
 	files = activation.Files(true)
 
-	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" || os.Getenv("LISTEN_FDNAMES") != "" {
+	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" {
 		panic("Can not unset envs")
 	}
 
 	// Write out the expected strings to the two pipes
-	files[0].Write([]byte("Hello world: " + files[0].Name()))
-	files[1].Write([]byte("Goodbye world: " + files[1].Name()))
+	files[0].Write([]byte("Hello world"))
+	files[1].Write([]byte("Goodbye world"))
 
 	return
 }

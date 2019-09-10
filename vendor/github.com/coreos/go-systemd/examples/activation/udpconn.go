@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build ignore
-
 // Activation example used by the activation unit tests.
 package main
 
@@ -37,12 +35,22 @@ func fixListenPid() {
 func main() {
 	fixListenPid()
 
-	pc, err := activation.PacketConns()
+	pc, _ := activation.PacketConns(false)
+
+	if len(pc) == 0 {
+		panic("No packetConns")
+	}
+
+	if os.Getenv("LISTEN_PID") == "" || os.Getenv("LISTEN_FDS") == "" {
+		panic("Should not unset envs")
+	}
+
+	pc, err := activation.PacketConns(true)
 	if err != nil {
 		panic(err)
 	}
 
-	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" || os.Getenv("LISTEN_FDNAMES") != "" {
+	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" {
 		panic("Can not unset envs")
 	}
 

@@ -122,8 +122,19 @@ function teardown() {
 
   wait_for_container 15 1 test_busybox
 
-  runc exec --user 1000:1000 --additional-gids 100 --additional-gids 99 test_busybox id 
+  runc exec --user 1000:1000 --additional-gids 100 --additional-gids 65534 test_busybox id
   [ "$status" -eq 0 ]
 
-  [[ ${output} == "uid=1000 gid=1000 groups=99(nogroup),100(users)" ]]
+  [[ ${output} == "uid=1000 gid=1000 groups=100(users),65534(nogroup)" ]]
+}
+
+@test "runc exec --preserve-fds" {
+  # run busybox detached
+  runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+  [ "$status" -eq 0 ]
+
+  run bash -c "cat hello > preserve-fds.test; exec 3<preserve-fds.test; $RUNC ${RUNC_USE_SYSTEMD:+--systemd-cgroup} --log /proc/self/fd/2 --root $ROOT exec --preserve-fds=1 test_busybox cat /proc/self/fd/3"
+  [ "$status" -eq 0 ]
+
+  [[ "${output}" == *"hello"* ]]
 }

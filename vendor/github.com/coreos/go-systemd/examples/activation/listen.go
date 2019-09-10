@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build ignore
-
 // Activation example used by the activation unit tests.
 package main
 
@@ -36,21 +34,31 @@ func fixListenPid() {
 func main() {
 	fixListenPid()
 
-	listenersWithNames, err := activation.ListenersWithNames()
+	listeners, _ := activation.Listeners(false)
+
+	if len(listeners) == 0 {
+		panic("No listeners")
+	}
+
+	if os.Getenv("LISTEN_PID") == "" || os.Getenv("LISTEN_FDS") == "" {
+		panic("Should not unset envs")
+	}
+
+	listeners, err := activation.Listeners(true)
 	if err != nil {
 		panic(err)
 	}
 
-	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" || os.Getenv("LISTEN_FDNAMES") != "" {
+	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" {
 		panic("Can not unset envs")
 	}
 
-	c0, _ := listenersWithNames["fd1"][0].Accept()
-	c1, _ := listenersWithNames["fd2"][0].Accept()
+	c0, _ := listeners[0].Accept()
+	c1, _ := listeners[1].Accept()
 
 	// Write out the expected strings to the two pipes
-	c0.Write([]byte("Hello world: fd1"))
-	c1.Write([]byte("Goodbye world: fd2"))
+	c0.Write([]byte("Hello world"))
+	c1.Write([]byte("Goodbye world"))
 
 	return
 }

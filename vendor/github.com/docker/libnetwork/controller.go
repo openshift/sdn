@@ -339,7 +339,6 @@ func (c *controller) clusterAgentInit() {
 				}
 			}
 		case cluster.EventNodeLeave:
-			keysAvailable = false
 			c.agentOperationStart()
 			c.Lock()
 			c.keys = nil
@@ -700,14 +699,24 @@ func (c *controller) RegisterDriver(networkType string, driver driverapi.Driver,
 	return nil
 }
 
+// XXX  This should be made driver agnostic.  See comment below.
+const overlayDSROptionString = "dsr"
+
 // NewNetwork creates a new network of the specified network type. The options
 // are network specific and modeled in a generic way.
 func (c *controller) NewNetwork(networkType, name string, id string, options ...NetworkOption) (Network, error) {
+	var (
+		cap            *driverapi.Capability
+		err            error
+		t              *network
+		skipCfgEpCount bool
+	)
+
 	if id != "" {
 		c.networkLocker.Lock(id)
 		defer c.networkLocker.Unlock(id)
 
-		if _, err := c.NetworkByID(id); err == nil {
+		if _, err = c.NetworkByID(id); err == nil {
 			return nil, NetworkNameError(id)
 		}
 	}
@@ -723,26 +732,22 @@ func (c *controller) NewNetwork(networkType, name string, id string, options ...
 	defaultIpam := defaultIpamForNetworkType(networkType)
 	// Construct the network object
 	network := &network{
-		name:        name,
-		networkType: networkType,
-		generic:     map[string]interface{}{netlabel.GenericData: make(map[string]string)},
-		ipamType:    defaultIpam,
-		id:          id,
-		created:     time.Now(),
-		ctrlr:       c,
-		persist:     true,
-		drvOnce:     &sync.Once{},
+		name:             name,
+		networkType:      networkType,
+		generic:          map[string]interface{}{netlabel.GenericData: make(map[string]string)},
+		ipamType:         defaultIpam,
+		id:               id,
+		created:          time.Now(),
+		ctrlr:            c,
+		persist:          true,
+		drvOnce:          &sync.Once{},
+		loadBalancerMode: loadBalancerModeDefault,
 	}
 
 	network.processOptions(options...)
-	if err := network.validateConfiguration(); err != nil {
+	if err = network.validateConfiguration(); err != nil {
 		return nil, err
 	}
-
-	var (
-		cap *driverapi.Capability
-		err error
-	)
 
 	// Reset network types, force local scope and skip allocation and
 	// plumbing for configuration networks. Reset of the config-only
@@ -790,15 +795,16 @@ func (c *controller) NewNetwork(networkType, name string, id string, options ...
 	// From this point on, we need the network specific configuration,
 	// which may come from a configuration-only network
 	if network.configFrom != "" {
-		t, err := c.getConfigNetwork(network.configFrom)
+		t, err = c.getConfigNetwork(network.configFrom)
 		if err != nil {
 			return nil, types.NotFoundErrorf("configuration network %q does not exist", network.configFrom)
 		}
-		if err := t.applyConfigurationTo(network); err != nil {
+		if err = t.applyConfigurationTo(network); err != nil {
 			return nil, types.InternalErrorf("Failed to apply configuration: %v", err)
 		}
+		network.generic[netlabel.Internal] = network.internal
 		defer func() {
-			if err == nil {
+			if err == nil && !skipCfgEpCount {
 				if err := t.getEpCnt().IncEndpointCnt(); err != nil {
 					logrus.Warnf("Failed to update reference count for configuration network %q on creation of network %q: %v",
 						t.Name(), network.Name(), err)
@@ -819,7 +825,13 @@ func (c *controller) NewNetwork(networkType, name string, id string, options ...
 
 	err = c.addNetwork(network)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "restoring existing network") {
+			// This error can be ignored and set this boolean
+			// value to skip a refcount increment for configOnly networks
+			skipCfgEpCount = true
+		} else {
+			return nil, err
+		}
 	}
 	defer func() {
 		if err != nil {
@@ -828,6 +840,21 @@ func (c *controller) NewNetwork(networkType, name string, id string, options ...
 			}
 		}
 	}()
+
+	// XXX If the driver type is "overlay" check the options for DSR
+	// being set.  If so, set the network's load balancing mode to DSR.
+	// This should really be done in a network option, but due to
+	// time pressure to get this in without adding changes to moby,
+	// swarm and CLI, it is being implemented as a driver-specific
+	// option.  Unfortunately, drivers can't influence the core
+	// "libnetwork.network" data type.  Hence we need this hack code
+	// to implement in this manner.
+	if gval, ok := network.generic[netlabel.GenericData]; ok && network.networkType == "overlay" {
+		optMap := gval.(map[string]string)
+		if _, ok := optMap[overlayDSROptionString]; ok {
+			network.loadBalancerMode = loadBalancerModeDSR
+		}
+	}
 
 addToStore:
 	// First store the endpoint count, then the network. To avoid to
@@ -1279,7 +1306,7 @@ func (c *controller) loadIPAMDriver(name string) error {
 	}
 
 	if err != nil {
-		if err == plugins.ErrNotFound {
+		if errors.Cause(err) == plugins.ErrNotFound {
 			return types.NotFoundErrorf(err.Error())
 		}
 		return err

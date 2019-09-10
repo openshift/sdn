@@ -4,6 +4,7 @@ package functional
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Microsoft/hcsshim/internal/hcs"
+	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcsoci"
 	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
-	"github.com/Microsoft/hcsshim/test/functional/utilities"
+	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 )
 
 // TestLCOWUVMNoSCSINoVPMemInitrd starts an LCOW utility VM without a SCSI controller and
@@ -46,7 +47,7 @@ func TestLCOWUVMNoSCSISingleVPMemVHD(t *testing.T) {
 
 func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected string) {
 	testutilities.RequiresBuild(t, osversion.RS5)
-	lcowUVM := testutilities.CreateLCOWUVMFromOpts(t, opts)
+	lcowUVM := testutilities.CreateLCOWUVMFromOpts(context.Background(), t, opts)
 	defer lcowUVM.Close()
 	out, err := exec.Command(`hcsdiag`, `exec`, `-uvm`, lcowUVM.ID(), `dmesg`).Output() // TODO: Move the CreateProcess.
 	if err != nil {
@@ -104,7 +105,7 @@ func testLCOWTimeUVMStart(t *testing.T, kernelDirect bool, rfsType uvm.Preferred
 			opts.RootFSFile = uvm.VhdFile
 		}
 
-		lcowUVM := testutilities.CreateLCOWUVMFromOpts(t, opts)
+		lcowUVM := testutilities.CreateLCOWUVMFromOpts(context.Background(), t, opts)
 		lcowUVM.Close()
 	}
 }
@@ -133,19 +134,19 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	defer os.RemoveAll(c2ScratchDir)
 	c2ScratchFile := filepath.Join(c2ScratchDir, "sandbox.vhdx")
 
-	lcowUVM := testutilities.CreateLCOWUVM(t, "uvm")
+	lcowUVM := testutilities.CreateLCOWUVM(context.Background(), t, "uvm")
 	defer lcowUVM.Close()
 
 	// Populate the cache and generate the scratch file for /tmp/scratch
-	if err := lcow.CreateScratch(lcowUVM, uvmScratchFile, lcow.DefaultScratchSizeGB, cacheFile, ""); err != nil {
+	if err := lcow.CreateScratch(context.Background(), lcowUVM, uvmScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := lcowUVM.AddSCSI(uvmScratchFile, `/tmp/scratch`, false); err != nil {
+	if _, _, err := lcowUVM.AddSCSI(context.Background(), uvmScratchFile, `/tmp/scratch`, false); err != nil {
 		t.Fatal(err)
 	}
 
 	// Now create the first containers sandbox, populate a spec
-	if err := lcow.CreateScratch(lcowUVM, c1ScratchFile, lcow.DefaultScratchSizeGB, cacheFile, ""); err != nil {
+	if err := lcow.CreateScratch(context.Background(), lcowUVM, c1ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
 	c1Spec := testutilities.GetDefaultLinuxSpec(t)
@@ -158,7 +159,7 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	}
 
 	// Now create the second containers sandbox, populate a spec
-	if err := lcow.CreateScratch(lcowUVM, c2ScratchFile, lcow.DefaultScratchSizeGB, cacheFile, ""); err != nil {
+	if err := lcow.CreateScratch(context.Background(), lcowUVM, c2ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
 	c2Spec := testutilities.GetDefaultLinuxSpec(t)
@@ -171,11 +172,11 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	}
 
 	// Create the two containers
-	c1hcsSystem, c1Resources, err := CreateContainerTestWrapper(c1Opts)
+	c1hcsSystem, c1Resources, err := CreateContainerTestWrapper(context.Background(), c1Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c2hcsSystem, c2Resources, err := CreateContainerTestWrapper(c2Opts)
+	c2hcsSystem, c2Resources, err := CreateContainerTestWrapper(context.Background(), c2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,15 +186,15 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	//ID                                     PID         STATUS      BUNDLE         CREATED                        OWNER
 	//3a724c2b-f389-5c71-0555-ebc6f5379b30   138         running     /run/gcs/c/1   2018-06-04T21:23:39.1253911Z   root
 	//7a8229a0-eb60-b515-55e7-d2dd63ffae75   158         created     /run/gcs/c/2   2018-06-04T21:23:39.4249048Z   root
-	if err := c1hcsSystem.Start(); err != nil {
+	if err := c1hcsSystem.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer hcsoci.ReleaseResources(c1Resources, lcowUVM, true)
+	defer hcsoci.ReleaseResources(context.Background(), c1Resources, lcowUVM, true)
 
-	if err := c2hcsSystem.Start(); err != nil {
+	if err := c2hcsSystem.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer hcsoci.ReleaseResources(c2Resources, lcowUVM, true)
+	defer hcsoci.ReleaseResources(context.Background(), c2Resources, lcowUVM, true)
 
 	// Start the init process in each container and grab it's stdout comparing to expected
 	runInitProcess(t, c1hcsSystem, "hello lcow container one")
@@ -203,22 +204,21 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 
 // Helper to run the init process in an LCOW container; verify it exits with exit
 // code 0; verify stderr is empty; check output is as expected.
-func runInitProcess(t *testing.T, s *hcs.System, expected string) {
-	var outB, errB bytes.Buffer
-	p, bc, err := lcow.CreateProcess(&lcow.ProcessOptions{
-		HCSSystem:   s,
-		Stdout:      &outB,
-		Stderr:      &errB,
-		CopyTimeout: 30 * time.Second,
-	})
+func runInitProcess(t *testing.T, s cow.Container, expected string) {
+	var errB bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := &hcsoci.Cmd{
+		Host:    s,
+		Stderr:  &errB,
+		Context: ctx,
+	}
+	outb, err := cmd.Output()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("stderr: %s", err)
 	}
-	defer p.Close()
-	if bc.Err != 0 {
-		t.Fatalf("got %d bytes on stderr: %s", bc.Err, errB.String())
-	}
-	if strings.TrimSpace(outB.String()) != expected {
-		t.Fatalf("got %q (%d) expecting %q", outB.String(), bc.Out, expected)
+	out := string(outb)
+	if strings.TrimSpace(out) != expected {
+		t.Fatalf("got %q expecting %q", string(out), expected)
 	}
 }

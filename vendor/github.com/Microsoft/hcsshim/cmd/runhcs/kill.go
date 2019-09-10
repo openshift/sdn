@@ -1,15 +1,13 @@
 package main
 
 import (
-	"strconv"
-	"strings"
+	gcontext "context"
 
 	"github.com/Microsoft/hcsshim/internal/appargs"
-	"github.com/Microsoft/hcsshim/internal/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/schema1"
+	"github.com/Microsoft/hcsshim/internal/signals"
 	"github.com/Microsoft/hcsshim/osversion"
-	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
@@ -56,12 +54,12 @@ signal to the init process of the "ubuntu01" container:
 					// This is the Nth container in a Pod
 					hostID = c.HostID
 				}
-				uvm, err := hcs.OpenComputeSystem(hostID)
+				uvm, err := hcs.OpenComputeSystem(gcontext.Background(), hostID)
 				if err != nil {
 					return err
 				}
 				defer uvm.Close()
-				if props, err := uvm.Properties(schema1.PropertyTypeGuestConnection); err == nil &&
+				if props, err := uvm.Properties(gcontext.Background(), schema1.PropertyTypeGuestConnection); err == nil &&
 					props.GuestConnectionInfo.GuestDefinedCapabilities.SignalProcessSupported {
 					signalsSupported = true
 				}
@@ -71,11 +69,21 @@ signal to the init process of the "ubuntu01" container:
 			}
 		}
 
-		signal := 0
+		var sigOptions interface{}
 		if signalsSupported {
-			signal, err = validateSigstr(context.Args().Get(1), signalsSupported, c.Spec.Linux != nil)
-			if err != nil {
-				return err
+			sigStr := context.Args().Get(1)
+			if c.Spec.Linux == nil {
+				opts, err := signals.ValidateSigstrWCOW(sigStr, signalsSupported)
+				if err != nil {
+					return err
+				}
+				sigOptions = opts
+			} else {
+				opts, err := signals.ValidateSigstrLCOW(sigStr, signalsSupported)
+				if err != nil {
+					return err
+				}
+				sigOptions = opts
 			}
 		}
 
@@ -84,83 +92,19 @@ signal to the init process of the "ubuntu01" container:
 			return err
 		}
 
-		p, err := c.hc.OpenProcess(pid)
+		p, err := c.hc.OpenProcess(gcontext.Background(), pid)
 		if err != nil {
 			return err
 		}
 		defer p.Close()
 
-		if signalsSupported && (c.Spec.Linux != nil || !c.Spec.Process.Terminal) {
-			opts := guestrequest.SignalProcessOptions{
-				Signal: signal,
-			}
-			return p.Signal(opts)
+		if signalsSupported && sigOptions != nil && (c.Spec.Linux != nil || !c.Spec.Process.Terminal) {
+			_, err = p.Signal(gcontext.Background(), sigOptions)
+		} else {
+			// Legacy signal issue a kill
+			_, err = p.Kill(gcontext.Background())
 		}
 
-		// Legacy signal issue a kill
-		return p.Kill()
+		return err
 	},
-}
-
-func validateSigstr(sigstr string, signalsSupported bool, isLcow bool) (int, error) {
-	errInvalidSignal := errors.Errorf("invalid signal '%s'", sigstr)
-
-	// All flavors including legacy default to SIGTERM on LCOW CtrlC on Windows
-	if sigstr == "" {
-		if isLcow {
-			return 0xf, nil
-		}
-		return 0, nil
-	}
-
-	sigstr = strings.ToUpper(sigstr)
-
-	if !signalsSupported {
-		if isLcow {
-			switch sigstr {
-			case "15":
-				fallthrough
-			case "TERM":
-				fallthrough
-			case "SIGTERM":
-				return 0xf, nil
-			default:
-				return 0, errInvalidSignal
-			}
-		}
-		switch sigstr {
-		case "0":
-			fallthrough
-		case "CTRLC":
-			return 0x0, nil
-		default:
-			return 0, errInvalidSignal
-		}
-	}
-
-	var sigmap map[string]int
-	if isLcow {
-		sigmap = signalMapLcow
-	} else {
-		sigmap = signalMapWindows
-	}
-
-	signal, err := strconv.Atoi(sigstr)
-	if err != nil {
-		// Signal might still match the string value
-		for k, v := range sigmap {
-			if k == sigstr {
-				return v, nil
-			}
-		}
-		return 0, errInvalidSignal
-	}
-
-	// Match signal by value
-	for _, v := range sigmap {
-		if signal == v {
-			return signal, nil
-		}
-	}
-	return 0, errInvalidSignal
 }

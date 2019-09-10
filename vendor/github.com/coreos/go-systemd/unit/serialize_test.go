@@ -68,7 +68,7 @@ ExecStart=/usr/bin/sleep infinity
 `,
 		},
 
-		// options are grouped into sections
+		// no optimization for unsorted options
 		{
 			[]*UnitOption{
 				&UnitOption{"Unit", "Description", "Foo"},
@@ -77,34 +77,12 @@ ExecStart=/usr/bin/sleep infinity
 			},
 			`[Unit]
 Description=Foo
-BindsTo=bar.service
 
 [Service]
 ExecStart=/usr/bin/sleep infinity
-`,
-		},
 
-		// options are ordered within groups, and sections are ordered in the order in which they were first seen
-		{
-			[]*UnitOption{
-				&UnitOption{"Unit", "Description", "Foo"},
-				&UnitOption{"Service", "ExecStart", "/usr/bin/sleep infinity"},
-				&UnitOption{"Unit", "BindsTo", "bar.service"},
-				&UnitOption{"X-Foo", "Bar", "baz"},
-				&UnitOption{"Service", "ExecStop", "/usr/bin/sleep 1"},
-				&UnitOption{"Unit", "Documentation", "https://foo.com"},
-			},
-			`[Unit]
-Description=Foo
+[Unit]
 BindsTo=bar.service
-Documentation=https://foo.com
-
-[Service]
-ExecStart=/usr/bin/sleep infinity
-ExecStop=/usr/bin/sleep 1
-
-[X-Foo]
-Bar=baz
 `,
 		},
 
@@ -162,7 +140,7 @@ o
 
 		output := string(outBytes)
 		if tt.output != output {
-			t.Errorf("case %d: incorrect output", i)
+			t.Errorf("case %d: incorrect output")
 			t.Logf("Expected:\n%s", tt.output)
 			t.Logf("Actual:\n%s", output)
 		}

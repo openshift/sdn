@@ -48,15 +48,15 @@ func TestActivation(t *testing.T) {
 	}
 
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "LISTEN_FDS=2", "LISTEN_FDNAMES=fd1", "FIX_LISTEN_PID=1")
+	cmd.Env = append(cmd.Env, "LISTEN_FDS=2", "FIX_LISTEN_PID=1")
 
 	err := cmd.Run()
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
 
-	correctStringWritten(t, r1, "Hello world: fd1")
-	correctStringWritten(t, r2, "Goodbye world: LISTEN_FD_4")
+	correctStringWritten(t, r1, "Hello world")
+	correctStringWritten(t, r2, "Goodbye world")
 }
 
 func TestActivationNoFix(t *testing.T) {
@@ -65,7 +65,7 @@ func TestActivationNoFix(t *testing.T) {
 	cmd.Env = append(cmd.Env, "LISTEN_FDS=2")
 
 	out, _ := cmd.CombinedOutput()
-	if !bytes.Contains(out, []byte("No files")) {
+	if bytes.Contains(out, []byte("No files")) == false {
 		t.Fatalf("Child didn't error out as expected")
 	}
 }
@@ -76,7 +76,7 @@ func TestActivationNoFiles(t *testing.T) {
 	cmd.Env = append(cmd.Env, "LISTEN_FDS=0", "FIX_LISTEN_PID=1")
 
 	out, _ := cmd.CombinedOutput()
-	if !bytes.Contains(out, []byte("No files")) {
+	if bytes.Contains(out, []byte("No files")) == false {
 		t.Fatalf("Child didn't error out as expected")
 	}
 }

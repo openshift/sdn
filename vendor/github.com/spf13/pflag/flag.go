@@ -57,9 +57,9 @@ that give one-letter shorthands for flags. You can use these by appending
 	var ip = flag.IntP("flagname", "f", 1234, "help message")
 	var flagvar bool
 	func init() {
-		flag.BoolVarP("boolname", "b", true, "help message")
+		flag.BoolVarP(&flagvar, "boolname", "b", true, "help message")
 	}
-	flag.VarP(&flagVar, "varname", "v", 1234, "help message")
+	flag.VarP(&flagval, "varname", "v", "help message")
 Shorthand letters can be used with single dashes on the command line.
 Boolean shorthand flags can be combined with other shorthand flags.
 
@@ -925,13 +925,16 @@ func stripUnknownFlagValue(args []string) []string {
 	}
 
 	first := args[0]
-	if first[0] == '-' {
+	if len(first) > 0 && first[0] == '-' {
 		//--unknown --next-flag ...
 		return args
 	}
 
 	//--unknown arg ... (args will be arg ...)
-	return args[1:]
+	if len(args) > 1 {
+		return args[1:]
+	}
+	return nil
 }
 
 func (f *FlagSet) parseLongArg(s string, args []string, fn parseFunc) (a []string, err error) {
@@ -990,11 +993,12 @@ func (f *FlagSet) parseLongArg(s string, args []string, fn parseFunc) (a []strin
 }
 
 func (f *FlagSet) parseSingleShortArg(shorthands string, args []string, fn parseFunc) (outShorts string, outArgs []string, err error) {
+	outArgs = args
+
 	if strings.HasPrefix(shorthands, "test.") {
 		return
 	}
 
-	outArgs = args
 	outShorts = shorthands[1:]
 	c := shorthands[0]
 
