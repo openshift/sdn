@@ -12,6 +12,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/kubernetes/pkg/proxy"
+	proxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/util/async"
 
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
@@ -30,6 +31,8 @@ type RunnableProxy interface {
 // delegating idled services to the unidling proxy and other services to the
 // primary proxy.
 type HybridProxier struct {
+	proxyconfig.NoopEndpointSliceHandler
+
 	mainProxy     RunnableProxy
 	unidlingProxy RunnableProxy
 	syncPeriod    time.Duration

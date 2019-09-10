@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	kubeproxy "k8s.io/kubernetes/pkg/proxy"
+	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	networkclient "github.com/openshift/client-go/network/clientset/versioned"
@@ -49,6 +50,8 @@ type proxyEndpoints struct {
 }
 
 type OsdnProxy struct {
+	kubeproxyconfig.NoopEndpointSliceHandler
+
 	kClient          kubernetes.Interface
 	networkClient    networkclient.Interface
 	networkInformers networkinformers.SharedInformerFactory
