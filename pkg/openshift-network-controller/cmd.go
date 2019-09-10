@@ -71,6 +71,6 @@ func (o *OpenShiftNetworkController) StartNetworkController() error {
 		return err
 	}
 
-	go daemon.SdNotify(false, "READY=1")
+	go daemon.SdNotify("READY=1")
 	select {}
 }
