@@ -49,6 +49,8 @@ type proxyEndpoints struct {
 }
 
 type OsdnProxy struct {
+	sync.Mutex
+
 	kClient          kubernetes.Interface
 	networkClient    networkclient.Interface
 	networkInformers networkinformers.SharedInformerFactory
@@ -56,7 +58,12 @@ type OsdnProxy struct {
 	egressDNS        *common.EgressDNS
 	baseProxy        kubeproxy.ProxyProvider
 
-	lock         sync.Mutex
+	// waitChan will be closed when both services and endpoints have
+	// been synced in the proxy
+	waitChan        chan<- bool
+	servicesSynced  bool
+	endpointsSynced bool
+
 	firewall     map[string]*proxyFirewallItem
 	allEndpoints map[ktypes.UID]*proxyEndpoints
 
@@ -64,7 +71,7 @@ type OsdnProxy struct {
 	ids    map[string]uint32
 }
 
-// Called by higher layers to create the proxy plugin instance; only used by nodes
+// Called by higher layers to create the proxy plugin instance
 func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	networkInformers networkinformers.SharedInformerFactory) (*OsdnProxy, error) {
 	return &OsdnProxy{
@@ -78,7 +85,7 @@ func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider) error {
+func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider, waitChan chan<- bool) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error
@@ -87,14 +94,15 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider) error {
 		return fmt.Errorf("could not get network info: %s", err)
 	}
 	proxy.baseProxy = proxier
+	proxy.waitChan = waitChan
 
 	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
 
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 
 	for _, policy := range policies.Items {
 		proxy.egressDNS.Add(policy)
@@ -108,8 +116,8 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider) error {
 }
 
 func (proxy *OsdnProxy) updateEgressNetworkPolicyLocked(policy networkv1.EgressNetworkPolicy) {
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 	proxy.updateEgressNetworkPolicy(policy)
 }
 
@@ -125,8 +133,8 @@ func (proxy *OsdnProxy) handleAddOrUpdateEgressNetworkPolicy(obj, _ interface{},
 	proxy.egressDNS.Delete(*policy)
 	proxy.egressDNS.Add(*policy)
 
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 	proxy.updateEgressNetworkPolicy(*policy)
 }
 
@@ -286,9 +294,17 @@ func (proxy *OsdnProxy) endpointsBlocked(ep *corev1.Endpoints) bool {
 	return false
 }
 
+func (proxy *OsdnProxy) checkInitialized() {
+	if proxy.servicesSynced && proxy.endpointsSynced && proxy.waitChan != nil {
+		klog.V(2).Info("openshift-sdn proxy services and endpoints initialized")
+		close(proxy.waitChan)
+		proxy.waitChan = nil
+	}
+}
+
 func (proxy *OsdnProxy) OnEndpointsAdd(ep *corev1.Endpoints) {
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 
 	pep := &proxyEndpoints{ep, proxy.endpointsBlocked(ep)}
 	proxy.allEndpoints[ep.UID] = pep
@@ -298,8 +314,8 @@ func (proxy *OsdnProxy) OnEndpointsAdd(ep *corev1.Endpoints) {
 }
 
 func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 
 	pep := proxy.allEndpoints[ep.UID]
 	if pep == nil {
@@ -322,8 +338,8 @@ func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 }
 
 func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
-	proxy.lock.Lock()
-	defer proxy.lock.Unlock()
+	proxy.Lock()
+	defer proxy.Unlock()
 
 	pep := proxy.allEndpoints[ep.UID]
 	if pep == nil {
@@ -338,6 +354,8 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.baseProxy.OnEndpointsSynced()
+	proxy.endpointsSynced = true
+	proxy.checkInitialized()
 }
 
 func (proxy *OsdnProxy) OnServiceAdd(service *corev1.Service) {
@@ -355,6 +373,8 @@ func (proxy *OsdnProxy) OnServiceDelete(service *corev1.Service) {
 
 func (proxy *OsdnProxy) OnServiceSynced() {
 	proxy.baseProxy.OnServiceSynced()
+	proxy.servicesSynced = true
+	proxy.checkInitialized()
 }
 
 func (proxy *OsdnProxy) Sync() {
