@@ -419,8 +419,8 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			}
 			var portNum int
 			if port.Port == nil {
-				// FIXME: implement this?
-				return nil, fmt.Errorf("port fields with no port value are not implemented")
+				portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
+				continue
 			} else if port.Port.Type != intstr.Int {
 				// FIXME: implement this?
 				return nil, fmt.Errorf("named port values (%q) are not implemented", port.Port.StrVal)
