@@ -1,3 +1,5 @@
+// +build linux
+
 package netlink
 
 import (
@@ -75,6 +77,8 @@ func applyFilter(flowList []ConntrackFlow, ipv4Filter *ConntrackFilter, ipv6Filt
 // TestConntrackSocket test the opening of a NETFILTER family socket
 func TestConntrackSocket(t *testing.T) {
 	skipUnlessRoot(t)
+	setUpNetlinkTestWithKModule(t, "nf_conntrack")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_netlink")
 
 	h, err := NewHandle(unix.NETLINK_NETFILTER)
 	CheckErrorFail(t, err)
@@ -88,6 +92,10 @@ func TestConntrackSocket(t *testing.T) {
 // Creates some flows and checks that they are correctly fetched from the conntrack table
 func TestConntrackTableList(t *testing.T) {
 	skipUnlessRoot(t)
+	setUpNetlinkTestWithKModule(t, "nf_conntrack")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_netlink")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_ipv4")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_ipv6")
 
 	// Creates a new namespace and bring up the loopback interface
 	origns, ns, h := nsCreateAndEnter(t)
@@ -95,6 +103,8 @@ func TestConntrackTableList(t *testing.T) {
 	defer origns.Close()
 	defer ns.Close()
 	defer runtime.UnlockOSThread()
+
+	setUpF(t, "/proc/sys/net/netfilter/nf_conntrack_acct", "1")
 
 	// Flush the table to start fresh
 	err := h.ConntrackTableFlush(ConntrackTable)
@@ -116,6 +126,10 @@ func TestConntrackTableList(t *testing.T) {
 			(flow.Forward.SrcPort >= 2000 && flow.Forward.SrcPort <= 2005) {
 			found++
 		}
+
+		if flow.Forward.Bytes == 0 && flow.Forward.Packets == 0 && flow.Reverse.Bytes == 0 && flow.Reverse.Packets == 0 {
+			t.Error("No traffic statistics are collected")
+		}
 	}
 	if found != 5 {
 		t.Fatalf("Found only %d flows over 5", found)
@@ -133,6 +147,9 @@ func TestConntrackTableList(t *testing.T) {
 // Creates some flows and then call the table flush
 func TestConntrackTableFlush(t *testing.T) {
 	skipUnlessRoot(t)
+	setUpNetlinkTestWithKModule(t, "nf_conntrack")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_netlink")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_ipv4")
 
 	// Creates a new namespace and bring up the loopback interface
 	origns, ns, h := nsCreateAndEnter(t)
@@ -192,6 +209,9 @@ func TestConntrackTableFlush(t *testing.T) {
 // Creates 2 group of flows then deletes only one group and validates the result
 func TestConntrackTableDelete(t *testing.T) {
 	skipUnlessRoot(t)
+	setUpNetlinkTestWithKModule(t, "nf_conntrack")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_netlink")
+	setUpNetlinkTestWithKModule(t, "nf_conntrack_ipv4")
 
 	// Creates a new namespace and bring up the loopback interface
 	origns, ns, h := nsCreateAndEnter(t)
@@ -351,10 +371,10 @@ func TestConntrackFilter(t *testing.T) {
 
 	// SrcIP for NAT
 	filterV4 = &ConntrackFilter{}
-	filterV4.AddIP(ConntrackNatSrcIP, net.ParseIP("20.0.0.1"))
+	filterV4.AddIP(ConntrackReplySrcIP, net.ParseIP("20.0.0.1"))
 
 	filterV6 = &ConntrackFilter{}
-	filterV6.AddIP(ConntrackNatSrcIP, net.ParseIP("dddd:dddd:dddd:dddd:dddd:dddd:dddd:dddd"))
+	filterV6.AddIP(ConntrackReplySrcIP, net.ParseIP("dddd:dddd:dddd:dddd:dddd:dddd:dddd:dddd"))
 
 	v4Match, v6Match = applyFilter(flowList, filterV4, filterV6)
 	if v4Match != 1 || v6Match != 1 {
@@ -363,10 +383,10 @@ func TestConntrackFilter(t *testing.T) {
 
 	// DstIP for NAT
 	filterV4 = &ConntrackFilter{}
-	filterV4.AddIP(ConntrackNatDstIP, net.ParseIP("192.168.1.1"))
+	filterV4.AddIP(ConntrackReplyDstIP, net.ParseIP("192.168.1.1"))
 
 	filterV6 = &ConntrackFilter{}
-	filterV6.AddIP(ConntrackNatDstIP, net.ParseIP("dddd:dddd:dddd:dddd:dddd:dddd:dddd:dddd"))
+	filterV6.AddIP(ConntrackReplyDstIP, net.ParseIP("dddd:dddd:dddd:dddd:dddd:dddd:dddd:dddd"))
 
 	v4Match, v6Match = applyFilter(flowList, filterV4, filterV6)
 	if v4Match != 2 || v6Match != 0 {
@@ -375,10 +395,10 @@ func TestConntrackFilter(t *testing.T) {
 
 	// AnyIp for Nat
 	filterV4 = &ConntrackFilter{}
-	filterV4.AddIP(ConntrackNatAnyIP, net.ParseIP("192.168.1.1"))
+	filterV4.AddIP(ConntrackReplyAnyIP, net.ParseIP("192.168.1.1"))
 
 	filterV6 = &ConntrackFilter{}
-	filterV6.AddIP(ConntrackNatAnyIP, net.ParseIP("eeee:eeee:eeee:eeee:eeee:eeee:eeee:eeee"))
+	filterV6.AddIP(ConntrackReplyAnyIP, net.ParseIP("eeee:eeee:eeee:eeee:eeee:eeee:eeee:eeee"))
 
 	v4Match, v6Match = applyFilter(flowList, filterV4, filterV6)
 	if v4Match != 2 || v6Match != 1 {

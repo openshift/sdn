@@ -38,7 +38,7 @@ import:
   version: delegate-to-klog
 # networking
 - package: github.com/vishvananda/netlink
-  version: 0e3b74dbe28f37fd911f9bca3565fdca33c03f29
+  version: 07130f38b91e869b1445b5f888ba2a9b64d73b9d
 
 # mine: specific to openshift
 # networking
