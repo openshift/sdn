@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
@@ -220,9 +220,15 @@ func (c *ServiceConfig) handleAddService(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("unexpected object type: %v", obj))
 		return
 	}
+	sent := false
 	for i := range c.eventHandlers {
+		sent = true
 		klog.V(4).Info("Calling handler.OnServiceAdd")
 		c.eventHandlers[i].OnServiceAdd(service)
+	}
+
+	if !sent {
+		klog.Warning("handleAddService with no handlers!")
 	}
 }
 
@@ -237,9 +243,15 @@ func (c *ServiceConfig) handleUpdateService(oldObj, newObj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("unexpected object type: %v", newObj))
 		return
 	}
+	sent := false
 	for i := range c.eventHandlers {
+		sent = true
 		klog.V(4).Info("Calling handler.OnServiceUpdate")
 		c.eventHandlers[i].OnServiceUpdate(oldService, service)
+	}
+
+	if !sent {
+		klog.Warning("handleUpdateService with no handlers!")
 	}
 }
 
