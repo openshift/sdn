@@ -12,7 +12,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	kapierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	ktypes "k8s.io/apimachinery/pkg/types"
@@ -141,9 +140,6 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 
 	policies, err := np.node.kClient.NetworkingV1().NetworkPolicies(corev1.NamespaceAll).List(metav1.ListOptions{})
 	if err != nil {
-		if kapierrs.IsForbidden(err) {
-			utilruntime.HandleError(fmt.Errorf("unable to query NetworkPolicies (%v) - please ensure your nodes have access to view NetworkPolicy", err))
-		}
 		return err
 	}
 	for _, policy := range policies.Items {
@@ -340,21 +336,21 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 }
 
 func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector) []string {
-	var vnids []string
+	var peerFlows []string
 	sel, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
 		// Shouldn't happen
 		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
-		return vnids
+		return peerFlows
 	}
 	for vnid, ns := range np.namespaces {
 		if kns, exists := np.kNamespaces[ns.name]; exists {
 			if sel.Matches(labels.Set(kns.Labels)) {
-				vnids = append(vnids, fmt.Sprintf("reg0=%d, ", vnid))
+				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", vnid))
 			}
 		}
 	}
-	return vnids
+	return peerFlows
 }
 
 func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelSelector) []string {
@@ -383,9 +379,9 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		}
 	}
 	if !affectsIngress {
-		// The rest of this file assumes that all policies affect ingress: a policy that
-		// only affects egress is, for our purposes, equivalent to one that affects
-		// ingress but does not select any pods.
+		// The rest of this function assumes that all policies affect ingress: a
+		// policy that only affects egress is, for our purposes, equivalent to one
+		// that affects ingress but does not select any pods.
 		npp.selectedIPs = []string{""}
 		return npp, nil
 	}
@@ -414,7 +410,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			} else if *port.Protocol == corev1.ProtocolTCP || *port.Protocol == corev1.ProtocolUDP || *port.Protocol == corev1.ProtocolSCTP {
 				protocol = strings.ToLower(string(*port.Protocol))
 			} else {
-				// FIXME: validation should catch this
+				// upstream is unlikely to add any more protocol values, but just in case...
 				return nil, fmt.Errorf("policy specifies unrecognized protocol %q", *port.Protocol)
 			}
 			var portNum int
@@ -422,14 +418,9 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 				portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
 				continue
 			} else if port.Port.Type != intstr.Int {
-				// FIXME: implement this?
 				return nil, fmt.Errorf("named port values (%q) are not implemented", port.Port.StrVal)
 			} else {
 				portNum = int(port.Port.IntVal)
-				if portNum < 0 || portNum > 0xFFFF {
-					// FIXME: validation should catch this
-					return nil, fmt.Errorf("port value out of bounds %q", port.Port.IntVal)
-				}
 			}
 			portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%d, ", protocol, portNum))
 		}
