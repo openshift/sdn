@@ -525,6 +525,16 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 				npp.watchesPods = true
 				peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector)...)
 			}
+
+			if peer.IPBlock != nil {
+				if peer.IPBlock.Except != nil {
+					// Currently IPBlocks with except rules are skipped.
+					klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", policy.Name, policy.Namespace)
+				} else {
+					// Network Policy has ipBlocks, allow traffic from those ips.
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+				}
+			}
 		}
 		for _, destFlow := range destFlows {
 			for _, peerFlow := range peerFlows {
