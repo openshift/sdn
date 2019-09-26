@@ -24,7 +24,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	"k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilnode "k8s.io/kubernetes/pkg/util/node"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
@@ -78,8 +77,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-proxy", Host: hostname})
 
 	execer := utilexec.New()
-	dbus := utildbus.New()
-	iptInterface := utiliptables.New(execer, dbus, protocol)
+	iptInterface := utiliptables.New(execer, protocol)
 
 	var proxier proxy.ProxyProvider
 	var healthzServer *healthcheck.HealthzServer
@@ -202,7 +200,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 	proxier = sdn.OsdnProxy
 
-	iptInterface.AddReloadFunc(proxier.Sync)
 	serviceConfig.RegisterEventHandler(proxier)
 	go serviceConfig.Run(utilwait.NeverStop)
 
