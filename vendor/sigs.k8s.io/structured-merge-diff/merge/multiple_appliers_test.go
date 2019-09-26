@@ -684,6 +684,120 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 	}
 }
 
+func TestMultipleAppliersDeducedType(t *testing.T) {
+	tests := map[string]TestCase{
+		"multiple_appliers_recursive_map_deduced": {
+			Ops: []Operation{
+				Apply{
+					Manager: "apply-one",
+					Object: `
+						a:
+						  b:
+						c:
+						  d:
+					`,
+					APIVersion: "v1",
+				},
+				Apply{
+					Manager: "apply-two",
+					Object: `
+						a:
+						c:
+						  d:
+					`,
+					APIVersion: "v2",
+				},
+				Update{
+					Manager: "controller-one",
+					Object: `
+						a:
+						  b:
+						    c:
+						c:
+						  d:
+						    e:
+					`,
+					APIVersion: "v3",
+				},
+				Update{
+					Manager: "controller-two",
+					Object: `
+						a:
+						  b:
+						    c:
+						      d:
+						c:
+						  d:
+						    e:
+						      f:
+					`,
+					APIVersion: "v2",
+				},
+				Update{
+					Manager: "controller-one",
+					Object: `
+						a:
+						  b:
+						    c:
+						      d:
+						        e:
+						c:
+						  d:
+						    e:
+						      f:
+						        g:
+					`,
+					APIVersion: "v3",
+				},
+				Apply{
+					Manager:    "apply-one",
+					Object:     ``,
+					APIVersion: "v4",
+				},
+			},
+			Object: `
+				a:
+				c:
+				  d:
+				    e:
+				      f:
+				        g:
+			`,
+			Managed: fieldpath.ManagedFields{
+				"apply-two": &fieldpath.VersionedSet{
+					Set: _NS(
+						_P("a"),
+						_P("c"),
+						_P("c", "d"),
+					),
+					APIVersion: "v2",
+				},
+				"controller-one": &fieldpath.VersionedSet{
+					Set: _NS(
+						_P("c", "d", "e"),
+						_P("c", "d", "e", "f", "g"),
+					),
+					APIVersion: "v3",
+				},
+				"controller-two": &fieldpath.VersionedSet{
+					Set: _NS(
+						_P("c", "d", "e", "f"),
+					),
+					APIVersion: "v2",
+				},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := test.Test(typed.DeducedParseableType); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestMultipleAppliersRealConversion(t *testing.T) {
 	tests := map[string]TestCase{
 		"multiple_appliers_recursive_map_real_conversion": {
@@ -825,7 +939,7 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 }
 
 // repeatingConverter repeats a single letterkey v times, where v is the version.
-type repeatingConverter struct{
+type repeatingConverter struct {
 	typed.ParseableType
 }
 
@@ -834,7 +948,7 @@ var _ merge.Converter = repeatingConverter{}
 var missingVersionError error = fmt.Errorf("cannot convert to invalid version")
 
 // Convert implements merge.Converter
-func (r repeatingConverter) Convert(v typed.TypedValue, version fieldpath.APIVersion) (typed.TypedValue, error) {
+func (r repeatingConverter) Convert(v *typed.TypedValue, version fieldpath.APIVersion) (*typed.TypedValue, error) {
 	if len(version) < 2 || string(version)[0] != 'v' {
 		return nil, missingVersionError
 	}
@@ -856,7 +970,7 @@ func (r repeatingConverter) Convert(v typed.TypedValue, version fieldpath.APIVer
 			if len(spaces) == 0 {
 				break
 			}
-			c := line[len(spaces):len(spaces)+1]
+			c := line[len(spaces) : len(spaces)+1]
 			c = strings.Repeat(c, versionNumber)
 			str2 = fmt.Sprintf("%v\n%v%v:", str2, spaces, c)
 		}
@@ -869,15 +983,15 @@ func (r repeatingConverter) Convert(v typed.TypedValue, version fieldpath.APIVer
 }
 
 func countLeadingSpace(line string) int {
-        spaces := 0
-        for _, letter := range line {
-                if letter == ' ' {
-                        spaces++
-                } else {
-                        break
-                }
-        }
-        return spaces
+	spaces := 0
+	for _, letter := range line {
+		if letter == ' ' {
+			spaces++
+		} else {
+			break
+		}
+	}
+	return spaces
 }
 
 // Convert implements merge.Converter

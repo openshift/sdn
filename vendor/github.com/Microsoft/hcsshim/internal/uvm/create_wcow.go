@@ -1,18 +1,23 @@
 package uvm
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Microsoft/hcsshim/internal/guid"
-	"github.com/Microsoft/hcsshim/internal/hcs"
+	"github.com/Microsoft/go-winio"
+	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/gcs"
+	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/mergemaps"
-	"github.com/Microsoft/hcsshim/internal/schema2"
+	"github.com/Microsoft/hcsshim/internal/oc"
+	hcsschema "github.com/Microsoft/hcsshim/internal/schema2"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wcow"
-	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 )
 
 // OptionsWCOW are the set of options passed to CreateWCOW() to create a utility vm.
@@ -30,25 +35,9 @@ type OptionsWCOW struct {
 // `owner` the owner of the compute system. If not passed will use the
 // executable files name.
 func NewDefaultOptionsWCOW(id, owner string) *OptionsWCOW {
-	opts := &OptionsWCOW{
-		Options: &Options{
-			ID:                   id,
-			Owner:                owner,
-			MemorySizeInMB:       1024,
-			AllowOvercommit:      true,
-			EnableDeferredCommit: false,
-			ProcessorCount:       defaultProcessorCount(),
-		},
+	return &OptionsWCOW{
+		Options: newDefaultOptions(id, owner),
 	}
-
-	if opts.ID == "" {
-		opts.ID = guid.New().String()
-	}
-	if opts.Owner == "" {
-		opts.Owner = filepath.Base(os.Args[0])
-	}
-
-	return opts
 }
 
 // CreateWCOW creates an HCS compute system representing a utility VM.
@@ -56,12 +45,21 @@ func NewDefaultOptionsWCOW(id, owner string) *OptionsWCOW {
 // WCOW Notes:
 //   - The scratch is always attached to SCSI 0:0
 //
-func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
-	logrus.Debugf("uvm::CreateWCOW %+v", opts)
+func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error) {
+	ctx, span := trace.StartSpan(ctx, "uvm::CreateWCOW")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
 
-	if opts.Options == nil {
-		opts.Options = &Options{}
+	if opts.ID == "" {
+		g, err := guid.NewV4()
+		if err != nil {
+			return nil, err
+		}
+		opts.ID = g.String()
 	}
+
+	span.AddAttributes(trace.StringAttribute(logfields.UVMID, opts.ID))
+	log.G(ctx).WithField("options", fmt.Sprintf("%+v", opts)).Debug("uvm::CreateLCOW options")
 
 	uvm := &UtilityVM{
 		id:                  opts.ID,
@@ -70,11 +68,23 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 		scsiControllerCount: 1,
 		vsmbShares:          make(map[string]*vsmbShare),
 	}
+	defer func() {
+		if err != nil {
+			uvm.Close()
+		}
+	}()
+
+	// To maintain compatability with Docker we need to automatically downgrade
+	// a user CPU count if the setting is not possible.
+	uvm.normalizeProcessorCount(ctx, opts.ProcessorCount)
+
+	// Align the requested memory size.
+	memorySizeInMB := uvm.normalizeMemorySize(ctx, opts.MemorySizeInMB)
 
 	if len(opts.LayerFolders) < 2 {
 		return nil, fmt.Errorf("at least 2 LayerFolders must be supplied")
 	}
-	uvmFolder, err := uvmfolder.LocateUVMFolder(opts.LayerFolders)
+	uvmFolder, err := uvmfolder.LocateUVMFolder(ctx, opts.LayerFolders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to locate utility VM folder from layer folders: %s", err)
 	}
@@ -86,11 +96,9 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 	//       - Update tests that rely on this current behaviour.
 	// Create the RW scratch in the top-most layer folder, creating the folder if it doesn't already exist.
 	scratchFolder := opts.LayerFolders[len(opts.LayerFolders)-1]
-	logrus.Debugf("uvm::CreateWCOW scratch folder: %s", scratchFolder)
 
 	// Create the directory if it doesn't exist
 	if _, err := os.Stat(scratchFolder); os.IsNotExist(err) {
-		logrus.Debugf("uvm::CreateWCOW creating folder: %s ", scratchFolder)
 		if err := os.MkdirAll(scratchFolder, 0777); err != nil {
 			return nil, fmt.Errorf("failed to create utility VM scratch folder: %s", err)
 		}
@@ -99,7 +107,7 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 	// Create sandbox.vhdx in the scratch folder based on the template, granting the correct permissions to it
 	scratchPath := filepath.Join(scratchFolder, "sandbox.vhdx")
 	if _, err := os.Stat(scratchPath); os.IsNotExist(err) {
-		if err := wcow.CreateUVMScratch(uvmFolder, scratchFolder, uvm.id); err != nil {
+		if err := wcow.CreateUVMScratch(ctx, uvmFolder, scratchFolder, uvm.id); err != nil {
 			return nil, fmt.Errorf("failed to create scratch: %s", err)
 		}
 	}
@@ -120,17 +128,18 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 			},
 			ComputeTopology: &hcsschema.Topology{
 				Memory: &hcsschema.Memory2{
-					SizeInMB:        opts.MemorySizeInMB,
+					SizeInMB:        memorySizeInMB,
 					AllowOvercommit: opts.AllowOvercommit,
 					// EnableHotHint is not compatible with physical.
 					EnableHotHint:        opts.AllowOvercommit,
 					EnableDeferredCommit: opts.EnableDeferredCommit,
 				},
 				Processor: &hcsschema.Processor2{
-					Count: defaultProcessorCount(),
+					Count:  uvm.processorCount,
+					Limit:  opts.ProcessorLimit,
+					Weight: opts.ProcessorWeight,
 				},
 			},
-			GuestConnection: &hcsschema.GuestConnection{},
 			Devices: &hcsschema.Devices{
 				Scsi: map[string]hcsschema.Scsi{
 					"0": {
@@ -169,6 +178,18 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 		},
 	}
 
+	if !opts.ExternalGuestConnection {
+		doc.VirtualMachine.GuestConnection = &hcsschema.GuestConnection{}
+	}
+
+	// Handle StorageQoS if set
+	if opts.StorageQoSBandwidthMaximum > 0 || opts.StorageQoSIopsMaximum > 0 {
+		doc.VirtualMachine.StorageQoS = &hcsschema.StorageQoS{
+			IopsMaximum:      opts.StorageQoSIopsMaximum,
+			BandwidthMaximum: opts.StorageQoSBandwidthMaximum,
+		}
+	}
+
 	uvm.scsiLocations[0][0].hostPath = doc.VirtualMachine.Devices.Scsi["0"].Attachments["0"].Path
 
 	fullDoc, err := mergemaps.MergeJSON(doc, ([]byte)(opts.AdditionHCSDocumentJSON))
@@ -176,11 +197,21 @@ func CreateWCOW(opts *OptionsWCOW) (_ *UtilityVM, err error) {
 		return nil, fmt.Errorf("failed to merge additional JSON '%s': %s", opts.AdditionHCSDocumentJSON, err)
 	}
 
-	hcsSystem, err := hcs.CreateComputeSystem(uvm.id, fullDoc)
+	err = uvm.create(ctx, fullDoc)
 	if err != nil {
-		logrus.Debugln("failed to create UVM: ", err)
 		return nil, err
 	}
-	uvm.hcsSystem = hcsSystem
+
+	if opts.ExternalGuestConnection {
+		l, err := winio.ListenHvsock(&winio.HvsockAddr{
+			VMID:      uvm.runtimeID,
+			ServiceID: gcs.WindowsGcsHvsockServiceID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		uvm.gcListener = l
+	}
+
 	return uvm, nil
 }
