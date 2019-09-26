@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	kubeproxy "k8s.io/kubernetes/pkg/proxy"
+	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	networkclient "github.com/openshift/client-go/network/clientset/versioned"
@@ -49,6 +50,7 @@ type proxyEndpoints struct {
 }
 
 type OsdnProxy struct {
+	kubeproxyconfig.NoopEndpointSliceHandler
 	sync.Mutex
 
 	kClient          kubernetes.Interface
@@ -56,7 +58,7 @@ type OsdnProxy struct {
 	networkInformers networkinformers.SharedInformerFactory
 	networkInfo      *common.ParsedClusterNetwork
 	egressDNS        *common.EgressDNS
-	baseProxy        kubeproxy.ProxyProvider
+	baseProxy        kubeproxy.Provider
 
 	// waitChan will be closed when both services and endpoints have
 	// been synced in the proxy
@@ -85,7 +87,7 @@ func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.ProxyProvider, waitChan chan<- bool) error {
+func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error

@@ -40,7 +40,7 @@ var (
 	loadBalancerConfig = map[string]*kernel.OSValue{
 		// expires connection from the IPVS connection table when the backend is not available
 		// more info: https://github.com/torvalds/linux/blob/master/Documentation/networking/ipvs-sysctl.txt#L126:1
-		"net.ipv4.vs.expire_nodest_conn": {"1", nil},
+		"net.ipv4.vs.expire_nodest_conn": {Value: "1", CheckFn: nil},
 	}
 )
 
@@ -227,7 +227,7 @@ func NewSandbox(key string, osCreate, isRestore bool) (Sandbox, error) {
 		logrus.Warnf("Failed to set the timeout on the sandbox netlink handle sockets: %v", err)
 	}
 	// In live-restore mode, IPV6 entries are getting cleaned up due to below code
-	// We should retain IPV6 configrations in live-restore mode when Docker Daemon
+	// We should retain IPV6 configurations in live-restore mode when Docker Daemon
 	// comes back. It should work as it is on other cases
 	// As starting point, disable IPv6 on all interfaces
 	if !isRestore && !n.isDefault {
@@ -384,6 +384,36 @@ func (n *networkNamespace) RemoveAliasIP(ifName string, ip *net.IPNet) error {
 	return n.nlHandle.AddrDel(iface, &netlink.Addr{IPNet: ip})
 }
 
+func (n *networkNamespace) DisableARPForVIP(srcName string) (Err error) {
+	dstName := ""
+	for _, i := range n.Interfaces() {
+		if i.SrcName() == srcName {
+			dstName = i.DstName()
+			break
+		}
+	}
+	if dstName == "" {
+		return fmt.Errorf("failed to find interface %s in sandbox", srcName)
+	}
+
+	err := n.InvokeFunc(func() {
+		path := filepath.Join("/proc/sys/net/ipv4/conf", dstName, "arp_ignore")
+		if err := ioutil.WriteFile(path, []byte{'1', '\n'}, 0644); err != nil {
+			Err = fmt.Errorf("Failed to set %s to 1: %v", path, err)
+			return
+		}
+		path = filepath.Join("/proc/sys/net/ipv4/conf", dstName, "arp_announce")
+		if err := ioutil.WriteFile(path, []byte{'2', '\n'}, 0644); err != nil {
+			Err = fmt.Errorf("Failed to set %s to 2: %v", path, err)
+			return
+		}
+	})
+	if err != nil {
+		return err
+	}
+	return
+}
+
 func (n *networkNamespace) InvokeFunc(f func()) error {
 	return nsInvoke(n.nsPath(), func(nsFD int) error { return nil }, func(callerFD int) error {
 		f()
@@ -394,13 +424,10 @@ func (n *networkNamespace) InvokeFunc(f func()) error {
 // InitOSContext initializes OS context while configuring network resources
 func InitOSContext() func() {
 	runtime.LockOSThread()
-	if err := ns.SetNamespace(); err != nil {
-		logrus.Error(err)
-	}
 	return runtime.UnlockOSThread
 }
 
-func nsInvoke(path string, prefunc func(nsFD int) error, postfunc func(callerFD int) error) error {
+func nsInvoke(path string, prefunc, postfunc func(int) error) error {
 	defer InitOSContext()()
 
 	newNs, err := netns.GetFromPath(path)
@@ -415,10 +442,17 @@ func nsInvoke(path string, prefunc func(nsFD int) error, postfunc func(callerFD 
 		return fmt.Errorf("failed in prefunc: %v", err)
 	}
 
+	// save the current namespace (host namespace)
+	curNs, err := netns.Get()
+	if err != nil {
+		return err
+	}
+	defer curNs.Close()
 	if err = netns.Set(newNs); err != nil {
 		return err
 	}
-	defer ns.SetNamespace()
+	// will restore the previous namespace before unlocking the thread
+	defer netns.Set(curNs)
 
 	// Invoked after the namespace switch.
 	return postfunc(ns.ParseHandlerInt())
@@ -651,7 +685,7 @@ func (n *networkNamespace) ApplyOSTweaks(types []SandboxType) {
 	for _, t := range types {
 		switch t {
 		case SandboxTypeLoadBalancer:
-			kernel.ApplyOSTweaks(loadBalancerConfig)
+			n.InvokeFunc(func() { kernel.ApplyOSTweaks(loadBalancerConfig) })
 		}
 	}
 }

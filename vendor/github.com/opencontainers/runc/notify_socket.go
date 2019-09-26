@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -37,8 +38,8 @@ func newNotifySocket(context *cli.Context, notifySocketHost string, id string) *
 	return notifySocket
 }
 
-func (ns *notifySocket) Close() error {
-	return ns.socket.Close()
+func (s *notifySocket) Close() error {
+	return s.socket.Close()
 }
 
 // If systemd is supporting sd_notify protocol, this function will add support
@@ -60,22 +61,28 @@ func (s *notifySocket) setupSocket() error {
 		return err
 	}
 
+	err = os.Chmod(s.socketPath, 0777)
+	if err != nil {
+		socket.Close()
+		return err
+	}
+
 	s.socket = socket
 	return nil
 }
 
 // pid1 must be set only with -d, as it is used to set the new process as the main process
 // for the service in systemd
-func (notifySocket *notifySocket) run(pid1 int) {
+func (s *notifySocket) run(pid1 int) {
 	buf := make([]byte, 512)
-	notifySocketHostAddr := net.UnixAddr{Name: notifySocket.host, Net: "unixgram"}
+	notifySocketHostAddr := net.UnixAddr{Name: s.host, Net: "unixgram"}
 	client, err := net.DialUnix("unixgram", nil, &notifySocketHostAddr)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	for {
-		r, err := notifySocket.socket.Read(buf)
+		r, err := s.socket.Read(buf)
 		if err != nil {
 			break
 		}

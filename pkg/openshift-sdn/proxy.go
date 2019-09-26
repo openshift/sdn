@@ -81,7 +81,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	dbus := utildbus.New()
 	iptInterface := utiliptables.New(execer, dbus, protocol)
 
-	var proxier proxy.ProxyProvider
+	var proxier proxy.Provider
 	var healthzServer *healthcheck.HealthzServer
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{

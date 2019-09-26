@@ -29,7 +29,7 @@ import (
 // State of the current test in terms of live object. One can check at
 // any time that Live and Managers match the expectations.
 type State struct {
-	Live     typed.TypedValue
+	Live     *typed.TypedValue
 	Parser   typed.ParseableType
 	Managers fieldpath.ManagedFields
 	Updater  *merge.Updater
@@ -88,15 +88,15 @@ func (s *State) Update(obj typed.YAMLObject, version fieldpath.APIVersion, manag
 		return err
 	}
 	tv, err := s.Parser.FromYAML(obj)
-	s.Live , err = s.Updater.Converter.Convert(s.Live, version)
+	s.Live, err = s.Updater.Converter.Convert(s.Live, version)
 	if err != nil {
 		return err
 	}
-	managers, err := s.Updater.Update(s.Live, tv, version, s.Managers, manager)
+	newObj, managers, err := s.Updater.Update(s.Live, tv, version, s.Managers, manager)
 	if err != nil {
 		return err
 	}
-	s.Live = tv
+	s.Live = newObj
 	s.Managers = managers
 
 	return nil
@@ -112,7 +112,7 @@ func (s *State) Apply(obj typed.YAMLObject, version fieldpath.APIVersion, manage
 	if err != nil {
 		return err
 	}
-	s.Live , err = s.Updater.Converter.Convert(s.Live, version)
+	s.Live, err = s.Updater.Converter.Convert(s.Live, version)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ type dummyConverter struct{}
 var _ merge.Converter = dummyConverter{}
 
 // Convert returns the object given in input, not doing any conversion.
-func (dummyConverter) Convert(v typed.TypedValue, version fieldpath.APIVersion) (typed.TypedValue, error) {
+func (dummyConverter) Convert(v *typed.TypedValue, version fieldpath.APIVersion) (*typed.TypedValue, error) {
 	if len(version) == 0 {
 		return nil, fmt.Errorf("cannot convert to invalid version: %q", version)
 	}

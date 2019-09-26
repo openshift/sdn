@@ -29,19 +29,12 @@ type Allocator struct {
 // Allocator implements allocator Interface
 var _ Interface = &Allocator{}
 
-// New creates a Allocator over a netid Range, calling allocatorFactory to construct the backing store.
-func New(r *NetIDRange, allocatorFactory allocator.AllocatorFactory) *Allocator {
+// NewInMemory creates a Allocator over a netid Range backed by in-memory store.
+func NewInMemory(r *NetIDRange) *Allocator {
 	return &Allocator{
 		netIDRange: r,
-		alloc:      allocatorFactory(int(r.Size), r.String()),
+		alloc:      allocator.NewAllocationMap(int(r.Size), r.String()),
 	}
-}
-
-// Helper that wraps New, for creating a range backed by an in-memory store.
-func NewInMemory(r *NetIDRange) *Allocator {
-	return New(r, func(max int, rangeSpec string) allocator.Interface {
-		return allocator.NewAllocationMap(max, rangeSpec)
-	})
 }
 
 // Free returns the count of netid left in the range.
