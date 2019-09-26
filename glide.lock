@@ -1,9 +1,6 @@
-hash: 122fd9d891cbe0d4f4b6b39d70494f4417593ed1b27d41b308c2afbfd7925381
-updated: 2019-09-27T06:46:46.52216796-04:00
+hash: 204fa9be3646404f30c4518cce67b1244fa40f00bdf73d17588cff295fe84ef6
+updated: 2019-09-27T06:48:53.073791893-04:00
 imports:
-- name: bitbucket.org/ww/goautoneg
-  version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
-  repo: https://github.com/munnerz/goautoneg.git
 - name: github.com/Azure/go-ansiterm
   version: d6e3b3328b783f23731bc4d058875b0371ff8109
   subpackages:
@@ -32,8 +29,6 @@ imports:
   - pkg/ipam
   - pkg/ns
   - pkg/utils/hwaddr
-- name: github.com/coreos/bbolt
-  version: 48ea1b39c25fc1bab3506fbc712ecbaa842c4d2d
 - name: github.com/coreos/etcd
   version: 27fc7e2296f506182f58ce846e48f36b34fe6842
   subpackages:
@@ -125,8 +120,6 @@ imports:
   - ptypes/timestamp
 - name: github.com/google/btree
   version: be84af90a1f71c9eeac820a4cdacb863122396d6
-- name: github.com/google/cadvisor
-  version: 8949c822ea91fa6b4996614a5ad6ade840be24ee
 - name: github.com/google/go-cmp
   version: 6f77996f0c42f7b84e5a2b252227263f93432e9b
   subpackages:
@@ -153,8 +146,6 @@ imports:
   - diskcache
 - name: github.com/grpc-ecosystem/go-grpc-prometheus
   version: c225b8c3b01faf2899099b768856a9e916e5087b
-- name: github.com/grpc-ecosystem/grpc-gateway
-  version: 8cc3a55af3bcf171a1c23a90c4df9cf591706104
 - name: github.com/hashicorp/golang-lru
   version: 7087cb70de9f7a8bc0a10c375cb0d2280a8edf9c
   subpackages:
@@ -165,8 +156,6 @@ imports:
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/json-iterator/go
   version: 27518f6661eba504be5a7a9a9f6d9460d892ade3
-- name: github.com/jteeuwen/go-bindata
-  version: a0ff2567cfb70903282db057e799fd826784d41d
 - name: github.com/konsorten/go-windows-terminal-sequences
   version: 5c8c8bd35d3832f5d134ae1e1e375b69a4d25242
 - name: github.com/lithammer/dedent
@@ -222,9 +211,6 @@ imports:
   version: a547fc61f48d567d5b4ec6f8aee5573d8efce11d
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
-- name: github.com/onsi/ginkgo
-  version: d0603c19fe78143eb81221b59025ebcb9b534957
-  repo: https://github.com/openshift/onsi-ginkgo.git
 - name: github.com/opencontainers/go-digest
   version: 279bed98673dd5bef374d3b6e4b09e2af76183bf
 - name: github.com/opencontainers/runc
@@ -320,11 +306,6 @@ imports:
   - trace
   - trace/internal
   - trace/tracestate
-- name: go4.org
-  version: 03efcb870d84809319ea509714dd6d19a1498483
-  repo: https://github.com/go4org/go4
-  subpackages:
-  - errorutil
 - name: golang.org/x/crypto
   version: e84da0312774c21d64ee2317962ef669b27ffb41
   subpackages:
@@ -384,9 +365,6 @@ imports:
   version: f51c12702a4d776e4c1fa9b0fabab841babae631
   subpackages:
   - rate
-- name: gonum.org/v1/gonum
-  version: cebdade430ccb61c1feba4878085f6cf8cb3320e
-  repo: https://github.com/gonum/gonum.git
 - name: google.golang.org/appengine
   version: 12d5545dc1cfa6047a286d5e853841b6471f4c19
   subpackages:
@@ -816,10 +794,6 @@ imports:
   - util/testing
 - name: k8s.io/cloud-provider
   version: a9c1f33e9fb973aced01c110c71f09cd9007f949
-- name: k8s.io/cluster-bootstrap
-  version: da9fdfce26bbeb478b99af3ccda35c5c4d53bd6d
-- name: k8s.io/code-generator
-  version: cd179ad6a2693011d6f2fa5cd64c6680ee99379f
 - name: k8s.io/component-base
   version: 547f6c5d70902c6683e93ad96f84adc6b943aedf
   subpackages:
@@ -836,18 +810,8 @@ imports:
   subpackages:
   - pkg/apis
   - pkg/apis/runtime/v1alpha2
-- name: k8s.io/csi-api
-  version: 94ac839bf26cd8861226396b93ddf920cbb7ccc9
-- name: k8s.io/csi-translation-lib
-  version: db86a8c7bb213e06fe7937e065916b81420aaa28
-- name: k8s.io/gengo
-  version: 26a664648505d962332bda642b27306bc10d1082
 - name: k8s.io/klog
   version: 3ca30a56d8a775276f9cdae009ba326fdc05af7f
-- name: k8s.io/kube-aggregator
-  version: 8c8f079fddc3d37cba5ac273f52d52d692994394
-- name: k8s.io/kube-controller-manager
-  version: 7a93a0ddadd81206441dd993811f0781812f9efb
 - name: k8s.io/kube-openapi
   version: 743ec37842bffe49dd4221d9026f30fb1d5adbc4
   subpackages:
@@ -862,8 +826,6 @@ imports:
   version: de037b596c1ec62a89779f6aeead31b40d1159dd
   subpackages:
   - config/v1alpha1
-- name: k8s.io/kube-scheduler
-  version: 3b5c1246eb18ad32e02b86892e9f8394bbd2e878
 - name: k8s.io/kubectl
   version: 21692a0861df75866d6f64e109f433fb4be7fef5
   subpackages:
@@ -876,8 +838,6 @@ imports:
   - pkg/util/term
   - pkg/validation
   - pkg/version
-- name: k8s.io/kubelet
-  version: 250a1838aa2c492c9096ff86558515b8639d7e87
 - name: k8s.io/kubernetes
   version: 7eb200efda2038f14864122d98179648357e026b
   repo: https://github.com/openshift/kubernetes.git
@@ -959,14 +919,6 @@ imports:
   - pkg/volume/util/subpath
   - pkg/windows/service
   - third_party/forked/golang/expansion
-- name: k8s.io/metrics
-  version: 227c654b25461c9b14f0436790aba3b2903e3416
-- name: k8s.io/sample-apiserver
-  version: d4c9c65c82af2052254e649de7434cc9fd2ec0da
-- name: k8s.io/sample-cli-plugin
-  version: e45c26d066f2965979c172db362a1d04b70b5f6c
-- name: k8s.io/sample-controller
-  version: 92eb3cb7496cb222a72e5411bc8e3c3f782e7717
 - name: k8s.io/utils
   version: 581e00157fb1a0435d4fac54a52d1ca1e481d60e
   subpackages:
