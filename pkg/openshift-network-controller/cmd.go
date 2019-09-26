@@ -10,8 +10,8 @@ import (
 	"k8s.io/klog"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubectl/util/templates"
+	kcmdutil "k8s.io/kubectl/pkg/cmd/util"
+	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/openshift/library-go/pkg/serviceability"
 )
