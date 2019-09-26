@@ -1,5 +1,5 @@
 hash: 122fd9d891cbe0d4f4b6b39d70494f4417593ed1b27d41b308c2afbfd7925381
-updated: 2019-09-25T16:12:00.96182745+02:00
+updated: 2019-09-27T06:46:46.52216796-04:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
@@ -100,7 +100,7 @@ imports:
 - name: github.com/go-openapi/swag
   version: 1d0bd113de87027671077d3c71eb3ac5d7dbba72
 - name: github.com/godbus/dbus
-  version: 6eb4cf171088115fc4f087cb8a302859c601a546
+  version: 5ae69d1623c4c46049fbe4f8ef2d3af85fa766a7
 - name: github.com/gogo/protobuf
   version: 65acae22fc9d1fe290b33faa2bd64cdc20a463a0
   subpackages:
@@ -188,7 +188,7 @@ imports:
   subpackages:
   - pkg/guid
 - name: github.com/Microsoft/hcsshim
-  version: 10079297f84d15d34549527f2290c1148ce450b3
+  version: 82c7525d98c8990d0ceb533322bc9c72fbddaf70
   subpackages:
   - hcn
   - internal/cni
@@ -228,7 +228,7 @@ imports:
 - name: github.com/opencontainers/go-digest
   version: 279bed98673dd5bef374d3b6e4b09e2af76183bf
 - name: github.com/opencontainers/runc
-  version: 7507c64ff675606c5ff96b0dd8889a60c589f14d
+  version: 84373aaa560b3f14cfda210b2f34ca14fd4b1fce
   subpackages:
   - libcontainer/cgroups
   - libcontainer/configs
