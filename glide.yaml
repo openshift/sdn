@@ -3,17 +3,9 @@ import:
 # kube first
 - package: k8s.io/api
   version: kubernetes-1.16.0
-- package: k8s.io/apiextensions-apiserver
-  version: kubernetes-1.16.0
 - package: k8s.io/apimachinery
   version: kubernetes-1.16.0
-- package: k8s.io/apiserver
-  version: kubernetes-1.16.0
 - package: k8s.io/client-go
-  version: kubernetes-1.16.0
-- package: k8s.io/cli-runtime
-  version: kubernetes-1.16.0
-- package: k8s.io/cloud-provider
   version: kubernetes-1.16.0
 - package: k8s.io/component-base
   version: kubernetes-1.16.0
@@ -24,15 +16,8 @@ import:
 - package: k8s.io/kubernetes
   repo:    https://github.com/openshift/kubernetes.git
   version: sdn-4.3-kubernetes-1.16.0
- # this matches the 1.14 branch from kube
-- package: k8s.io/utils
-  version: 581e00157fb1a0435d4fac54a52d1ca1e481d60e
-- package: k8s.io/kube-openapi
-  version: 743ec37842bffe49dd4221d9026f30fb1d5adbc4
 - package: k8s.io/klog
   version: v0.4.0
-- package: github.com/coreos/etcd
-  version: 27fc7e2296f506182f58ce846e48f36b34fe6842
 - package: google.golang.org/grpc
   version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
 - package: github.com/coreos/go-systemd
@@ -69,6 +54,3 @@ import:
 # why do we have this?
 - package: google.golang.org/appengine
   version: 12d5545dc1cfa6047a286d5e853841b6471f4c19
-
-# force glide to pull this in
-- package: github.com/google/uuid
