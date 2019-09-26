@@ -47,10 +47,3 @@ import:
 # used to be ~v1 to keep up with fixes.  It didn't build past v1.0.8.
 - package: github.com/miekg/dns
   version: v1.0.8
-# etcd pins a very old version that has contention issues
-- package: github.com/google/btree
-  version: master
-
-# why do we have this?
-- package: google.golang.org/appengine
-  version: 12d5545dc1cfa6047a286d5e853841b6471f4c19
