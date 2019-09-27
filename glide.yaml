@@ -21,10 +21,6 @@ import:
   version: kubernetes-1.16.0
 - package: k8s.io/component-base
   version: kubernetes-1.16.0
-- package: k8s.io/csi-api
-  version: master # FIXME
-- package: k8s.io/csi-translation-lib
-  version: kubernetes-1.16.0
 - package: k8s.io/kube-aggregator
   version: kubernetes-1.16.0
 - package: k8s.io/kube-controller-manager
