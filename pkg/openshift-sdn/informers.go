@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -41,7 +42,10 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 		return err
 	}
 
-	kubeInformers := kinformers.NewSharedInformerFactory(kubeClient, sdn.ProxyConfig.IPTables.SyncPeriod.Duration)
+	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		kinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = "!service.kubernetes.io/service-proxy-name"
+		}))
 	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
 
 	sdn.informers = &informers{
