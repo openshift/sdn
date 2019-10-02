@@ -25,6 +25,7 @@ func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
 	plugin.egressPoliciesLock.Lock()
 	defer plugin.egressPoliciesLock.Unlock()
 
+	plugin.garbageCollectEgressPolicy()
 	for _, policy := range policies.Items {
 		vnid, err := plugin.policy.GetVNID(policy.Namespace)
 		if err != nil {
@@ -67,7 +68,8 @@ func (plugin *OsdnNode) handleDeleteEgressNetworkPolicy(obj interface{}) {
 func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *networkapi.EgressNetworkPolicy, eventType watch.EventType) {
 	vnid, err := plugin.policy.GetVNID(policy.Namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not find netid for namespace %q: %v", policy.Namespace, err))
+		utilruntime.HandleError(fmt.Errorf("Could not find netid for namespace %q: %v. Attempting garbage collection.", policy.Namespace, err))
+		plugin.garbageCollectEgressPolicy()
 		return
 	}
 
@@ -133,5 +135,19 @@ func (plugin *OsdnNode) syncEgressDNSPolicyRules() {
 
 			plugin.updateEgressNetworkPolicyRules(vnid)
 		}()
+	}
+}
+
+func (plugin *OsdnNode) garbageCollectEgressPolicy() {
+	plugin.egressPoliciesLock.Lock()
+	defer plugin.egressPoliciesLock.Unlock()
+
+	existingVNIDs := plugin.oc.FindEgressPolicyVNIDs()
+	klog.V(4).Infof("garbageCollectEgressPolicy: found %v", existingVNIDs)
+	for vnid := range existingVNIDs {
+		if len(plugin.egressPolicies[vnid]) == 0 {
+			klog.V(2).Infof("Garbage collecting 0x%x", vnid)
+			plugin.oc.UpdateEgressNetworkPolicyRules([]networkapi.EgressNetworkPolicy{}, vnid, []string{}, plugin.egressDNS)
+		}
 	}
 }

@@ -735,6 +735,34 @@ func (oc *ovsController) findInUseAndPolicyVNIDs() (sets.Int, sets.Int) {
 	return inUseVNIDs, policyVNIDs
 }
 
+// FindEgressPolicyVNIDs returns a list of VNIDs currently present in table 101.
+// This function does not verify whether the rules are expected to be there.
+func (oc *ovsController) FindEgressPolicyVNIDs() map[uint32]int {
+	vnids := make(map[uint32]int)
+	flows, err := oc.ovs.DumpFlows("table=101")
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("FindEgressPolicyVNIDs: could not DumpFlows: %v", err))
+		return vnids
+	}
+
+	for _, flow := range flows {
+		parsed, err := ovs.ParseFlow(ovs.ParseForDump, flow)
+		if err != nil {
+			klog.Warningf("FindEgressPolicyVNIDs: could not parse flow %q: %v", flow, err)
+			continue
+		}
+		if field, exists := parsed.FindField("reg0"); exists {
+			vnid, err := strconv.ParseInt(field.Value, 0, 32)
+			if err != nil {
+				klog.Warningf("FindEgressPolicyVNIDs: could not parse VNID in 'reg0=%s': %v", field.Value, err)
+				continue
+			}
+			vnids[uint32(vnid)] = 1
+		}
+	}
+	return vnids
+}
+
 func (oc *ovsController) ensureTunMAC() error {
 	if oc.tunMAC != "" {
 		return nil
