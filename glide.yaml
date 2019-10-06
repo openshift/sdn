@@ -3,72 +3,25 @@ import:
 # kube first
 - package: k8s.io/api
   version: kubernetes-1.16.0
-- package: k8s.io/apiextensions-apiserver
-  version: kubernetes-1.16.0
 - package: k8s.io/apimachinery
-  version: kubernetes-1.16.0
-- package: k8s.io/apiserver
   version: kubernetes-1.16.0
 - package: k8s.io/client-go
   version: kubernetes-1.16.0
-- package: k8s.io/cli-runtime
-  version: kubernetes-1.16.0
-- package: k8s.io/cloud-provider
-  version: kubernetes-1.16.0
-- package: k8s.io/cluster-bootstrap
-  version: kubernetes-1.16.0
-- package: k8s.io/code-generator
-  version: kubernetes-1.16.0
 - package: k8s.io/component-base
   version: kubernetes-1.16.0
-- package: k8s.io/csi-api
-  version: master # FIXME
-- package: k8s.io/csi-translation-lib
-  version: kubernetes-1.16.0
-- package: k8s.io/kube-aggregator
-  version: kubernetes-1.16.0
-- package: k8s.io/kube-controller-manager
-  version: kubernetes-1.16.0
-- package: k8s.io/kubelet
-  version: kubernetes-1.16.0
 - package: k8s.io/kube-proxy
-  version: kubernetes-1.16.0
-- package: k8s.io/kube-scheduler
-  version: kubernetes-1.16.0
-- package: k8s.io/metrics
-  version: kubernetes-1.16.0
-- package: k8s.io/sample-apiserver
-  version: kubernetes-1.16.0
-- package: k8s.io/sample-cli-plugin
-  version: kubernetes-1.16.0
-- package: k8s.io/sample-controller
   version: kubernetes-1.16.0
 - package: k8s.io/kubectl
   version: kubernetes-1.16.0
 - package: k8s.io/kubernetes
   repo:    https://github.com/openshift/kubernetes.git
   version: sdn-4.3-kubernetes-1.16.0
- # this matches the 1.14 branch from kube
-- package: k8s.io/gengo
-  version: 26a664648505d962332bda642b27306bc10d1082
-- package: k8s.io/utils
-  version: 581e00157fb1a0435d4fac54a52d1ca1e481d60e
-- package: k8s.io/kube-openapi
-  version: 743ec37842bffe49dd4221d9026f30fb1d5adbc4
 - package: k8s.io/klog
   version: v0.4.0
-- package: github.com/coreos/etcd
-  version: 27fc7e2296f506182f58ce846e48f36b34fe6842
 - package: google.golang.org/grpc
   version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
-- package: github.com/grpc-ecosystem/grpc-gateway
-  version: v1.3.0
-- package: github.com/coreos/bbolt
-  version: v1.3.1-coreos.6
 - package: github.com/coreos/go-systemd
   version: v20
-- package: github.com/google/cadvisor
-  version: v0.32.0
 
 # openshift second
 - package: github.com/openshift/api
@@ -77,12 +30,6 @@ import:
   version: prebase-1.16
 - package: github.com/openshift/library-go
   version: prebase-1.16
-
-# forks third
-# master
-- package: github.com/onsi/ginkgo
-  repo:    https://github.com/openshift/onsi-ginkgo.git
-  version: origin-4.3
 
 # ours: shared with kube, but forced by openshift
 # master: co-exist with klog
@@ -97,38 +44,6 @@ import:
 # networking
 - package: github.com/containernetworking/plugins
   version: ~0.6.0
-# master? for bindata
-- package: github.com/jteeuwen/go-bindata
-  version: a0ff2567cfb70903282db057e799fd826784d41d
 # used to be ~v1 to keep up with fixes.  It didn't build past v1.0.8.
 - package: github.com/miekg/dns
   version: v1.0.8
-# etcd pins a very old version that has contention issues
-- package: github.com/google/btree
-  version: master
-
-# why do we have this?
-- package: google.golang.org/appengine
-  version: 12d5545dc1cfa6047a286d5e853841b6471f4c19
-
-# to avoid go4.org website outages on glide update
-- package: go4.org
-  repo: https://github.com/go4org/go4
-  version: 03efcb870d84809319ea509714dd6d19a1498483
-  subpackages:
-  - errorutil
-
-# force glide to pull this in
-- package: github.com/google/uuid
-
-# due to https://github.com/Masterminds/glide/issues/881 manually show where
-# to get gonum.org/v1/gonum from
-- package: gonum.org/v1/gonum
-  repo: https://github.com/gonum/gonum.git
-  version: cebdade430ccb61c1feba4878085f6cf8cb3320e
-
-# set alias location for this package due to
-# https://github.com/Masterminds/glide/issues/1057; upstream did this in
-# https://github.com/kubernetes/kubernetes/pull/72138
-- package: bitbucket.org/ww/goautoneg
-  repo: https://github.com/munnerz/goautoneg.git

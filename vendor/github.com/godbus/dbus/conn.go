@@ -30,6 +30,12 @@ var ErrClosed = errors.New("dbus: connection closed by user")
 type Conn struct {
 	transport
 
+	ctx       context.Context
+	cancelCtx context.CancelFunc
+
+	closeOnce sync.Once
+	closeErr  error
+
 	busObj BusObject
 	unixFD bool
 	uuid   string
@@ -210,6 +216,14 @@ func WithOutgoingInterceptor(interceptor Interceptor) ConnOption {
 	}
 }
 
+// WithContext overrides  the default context for the connection.
+func WithContext(ctx context.Context) ConnOption {
+	return func(conn *Conn) error {
+		conn.ctx = ctx
+		return nil
+	}
+}
+
 // NewConn creates a new private *Conn from an already established connection.
 func NewConn(conn io.ReadWriteCloser, opts ...ConnOption) (*Conn, error) {
 	return newConn(genericTransport{conn}, opts...)
@@ -231,6 +245,15 @@ func newConn(tr transport, opts ...ConnOption) (*Conn, error) {
 			return nil, err
 		}
 	}
+	if conn.ctx == nil {
+		conn.ctx = context.Background()
+	}
+	conn.ctx, conn.cancelCtx = context.WithCancel(conn.ctx)
+	go func() {
+		<-conn.ctx.Done()
+		conn.Close()
+	}()
+
 	conn.calls = newCallTracker()
 	if conn.handler == nil {
 		conn.handler = NewDefaultHandler()
@@ -257,22 +280,33 @@ func (conn *Conn) BusObject() BusObject {
 // and the channels passed to Eavesdrop and Signal are closed. This method must
 // not be called on shared connections.
 func (conn *Conn) Close() error {
-	conn.outHandler.close()
-	if term, ok := conn.signalHandler.(Terminator); ok {
-		term.Terminate()
-	}
+	conn.closeOnce.Do(func() {
+		conn.outHandler.close()
+		if term, ok := conn.signalHandler.(Terminator); ok {
+			term.Terminate()
+		}
 
-	if term, ok := conn.handler.(Terminator); ok {
-		term.Terminate()
-	}
+		if term, ok := conn.handler.(Terminator); ok {
+			term.Terminate()
+		}
 
-	conn.eavesdroppedLck.Lock()
-	if conn.eavesdropped != nil {
-		close(conn.eavesdropped)
-	}
-	conn.eavesdroppedLck.Unlock()
+		conn.eavesdroppedLck.Lock()
+		if conn.eavesdropped != nil {
+			close(conn.eavesdropped)
+		}
+		conn.eavesdroppedLck.Unlock()
 
-	return conn.transport.Close()
+		conn.cancelCtx()
+
+		conn.closeErr = conn.transport.Close()
+	})
+	return conn.closeErr
+}
+
+// Context returns the context associated with the connection.  The
+// context will be cancelled when the connection is closed.
+func (conn *Conn) Context() context.Context {
+	return conn.ctx
 }
 
 // Eavesdrop causes conn to send all incoming messages to the given channel
