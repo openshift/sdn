@@ -1,0 +1,5 @@
+diff --no-dereference -N -r current/vendor/github.com/vishvananda/netlink/link_linux.go updated/vendor/github.com/vishvananda/netlink/link_linux.go
+1774c1774
+< 			gre.FlowBased = true
+---
+> 			gre.FlowBased = int8(datum.Value[0]) != 0
