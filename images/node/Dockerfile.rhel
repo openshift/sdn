@@ -14,6 +14,7 @@ RUN INSTALL_PKGS=" \
       iputils binutils xz sysvinit-tools dbus nftables \
       " && \
     yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
+    rpm -e --nodeps openvswitch-selinux-extra-policy && \
     mkdir -p /etc/sysconfig/cni/net.d && \
     yum clean all && rm -rf /var/cache/*
 
