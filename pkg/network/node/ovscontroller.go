@@ -193,7 +193,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// Table 80: IP policy enforcement; mostly managed by the osdnPolicy
 	otx.AddFlow("table=80, priority=300, ip, nw_src=%s/32, actions=output:NXM_NX_REG2[]", localSubnetGateway)
 	// eg, "table=80, priority=100, reg0=${tenant_id}, reg1=${tenant_id}, actions=output:NXM_NX_REG2[]"
-	otx.AddFlow("table=80, priority=0, actions=drop")
+	otx.AddFlow("table=82, priority=0, actions=drop")
 
 	// Table 90: IP to remote container; filled in by AddHostSubnetRules()
 	// eg, "table=90, priority=100, ip, nw_dst=${remote_subnet_cidr}, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31], set_field:${remote_node_ip}->tun_dst,output:1"

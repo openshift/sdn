@@ -68,6 +68,12 @@ type npPolicy struct {
 
 	flows       []string
 	selectedIPs []string
+	ipBlocks    map[int]*ipBlockExceptFlows
+}
+
+type ipBlockExceptFlows struct {
+	allowed string
+	except  []string
 }
 
 // npCacheEntry caches information about matches for a LabelSelector
@@ -268,6 +274,8 @@ func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
 	klog.V(5).Infof("syncNamespace %d", npns.vnid)
 	otx := np.node.oc.NewTransaction()
 	otx.DeleteFlows("table=80, reg1=%d", npns.vnid)
+	otx.DeleteFlows("table=81, reg1=%d", npns.vnid)
+	otx.DeleteFlows("table=82, reg1=%d", npns.vnid)
 	if npns.inUse {
 		allPodsSelected := false
 
@@ -280,6 +288,38 @@ func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
 				allPodsSelected = true
 			}
 		}
+
+		ipBlockIndex := 1
+		// ipBlocks with Except rules are validated in Table 81
+		otx.AddFlow("table=80, priority=1, reg1=%d, actions=load:%d->NXM_NX_REG3[],goto_table:81", npns.vnid, ipBlockIndex)
+
+		for _, npp := range npns.policies {
+			for _, ipBlock := range npp.ipBlocks {
+				priority := 100
+				// Default low-priority rule for the current ipBlock set. This rule is hit if traffic does not match
+				// the current ipBlock. So, we reiterate to see if it matches some other ipBlock set.
+				otx.AddFlow("table=81, priority=%d, reg1=%d, reg3=%d, actions=load:%d->NXM_NX_REG3[],resubmit:81", priority, npns.vnid, ipBlockIndex, ipBlockIndex+1)
+				// Each flow in a given ipBlock has a unique priority
+				priority++
+
+				// Program a low-priority rule for the allowedIPCidr of ipBlock
+				otx.AddFlow("table=81, priority=%d, reg1=%d, reg3=%d, %s actions=output:NXM_NX_REG2[]", priority, npns.vnid, ipBlockIndex, ipBlock.allowed)
+				priority++
+
+				// For incoming traffic that matches the except IPs, we should not drop the traffic right away, but should
+				// continue to search if there is some "other" ipBlock that allows that traffic.
+				for _, except := range ipBlock.except {
+					otx.AddFlow("table=81, priority=%d, reg1=%d, reg3=%d, %s actions=load:%d->NXM_NX_REG3[],resubmit:81", priority, npns.vnid, ipBlockIndex, except, ipBlockIndex+1)
+					priority++
+				}
+
+				// Increment ipBlockIndex to program flows that match traffic for the next ipBlock set.
+				ipBlockIndex++
+			}
+		}
+
+		// Default flow that always exists, even if there are no ipBlock with except rules
+		otx.AddFlow("table=81, priority=0, actions=goto_table:82")
 
 		if allPodsSelected {
 			// Some policy selects all pods, so all pods are "isolated" and no
@@ -296,12 +336,12 @@ func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
 				for _, ip := range npp.selectedIPs {
 					if !selectedIPs.Has(ip) {
 						selectedIPs.Insert(ip)
-						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
+						otx.AddFlow("table=82, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 					}
 				}
 			}
 
-			otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
+			otx.AddFlow("table=82, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 		}
 	}
 	if err := otx.Commit(); err != nil {
@@ -443,7 +483,8 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 }
 
 func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) (*npPolicy, error) {
-	npp := &npPolicy{policy: *policy}
+	npp := &npPolicy{policy: *policy,
+		ipBlocks: make(map[int]*ipBlockExceptFlows)}
 
 	affectsIngress := false
 	for _, ptype := range policy.Spec.PolicyTypes {
@@ -473,6 +514,8 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 
 	for _, rule := range policy.Spec.Ingress {
 		var portFlows, peerFlows []string
+		ipBlockWithExceptRules := make(map[int]*ipBlockExceptFlows)
+
 		if len(rule.Ports) == 0 {
 			portFlows = []string{""}
 		}
@@ -501,6 +544,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		if len(rule.From) == 0 {
 			peerFlows = []string{""}
 		}
+		index := 0
 		for _, peer := range rule.From {
 			if peer.PodSelector != nil && peer.NamespaceSelector == nil {
 				if len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0 {
@@ -528,8 +572,22 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 
 			if peer.IPBlock != nil {
 				if peer.IPBlock.Except != nil {
-					// Currently IPBlocks with except rules are skipped.
-					klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", policy.Name, policy.Namespace)
+					// When an ipBlock has an except rule, except does not mean "drop".
+					// It just means that the excepted IPs aren't allowed by this rule.
+					// For ipBlocks with except rules, we program the rules as follows.
+					// 1. podSelector, namespaceSelector and ipBlock flows without any except rules will take
+					//    precedence over ipBlocks with except rules.
+					// 2. when we have an ipBlock with except rule[s] and traffic matches the except rule,
+					//    we will continue to search if there is some other ipBlock rule that allows such traffic.
+					//    If we are successful, we allow the traffic, otherwise drop it.
+
+					ipb := &ipBlockExceptFlows{}
+					ipBlockWithExceptRules[index] = ipb
+					for _, exceptCidr := range peer.IPBlock.Except {
+						ipBlockWithExceptRules[index].except = append(ipBlockWithExceptRules[index].except, fmt.Sprintf("ip, nw_src=%s, ", exceptCidr))
+					}
+					ipBlockWithExceptRules[index].allowed = fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR)
+					index++
 				} else {
 					// Network Policy has ipBlocks, allow traffic from those ips.
 					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
@@ -537,11 +595,26 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			}
 		}
 		for _, destFlow := range destFlows {
+			for _, portFlow := range portFlows {
+				for i, ipBlock := range ipBlockWithExceptRules {
+					ipb := &ipBlockExceptFlows{}
+					npp.ipBlocks[i] = ipb
+					for _, except := range ipBlock.except {
+						npp.ipBlocks[i].except = append(npp.ipBlocks[i].except, fmt.Sprintf("%s%s%s", destFlow, except, portFlow))
+					}
+					npp.ipBlocks[i].allowed = fmt.Sprintf("%s%s%s", destFlow, ipBlock.allowed, portFlow)
+				}
+			}
+
 			for _, peerFlow := range peerFlows {
 				for _, portFlow := range portFlows {
 					npp.flows = append(npp.flows, fmt.Sprintf("%s%s%s", destFlow, peerFlow, portFlow))
 				}
 			}
+		}
+
+		for i := range ipBlockWithExceptRules {
+			delete(ipBlockWithExceptRules, i)
 		}
 	}
 
@@ -569,7 +642,8 @@ func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *ne
 	npp, err := np.parseNetworkPolicy(npns, policy)
 	if err != nil {
 		klog.Infof("Unsupported NetworkPolicy %s/%s (%v); treating as deny-all", policy.Namespace, policy.Name, err)
-		npp = &npPolicy{policy: *policy}
+		npp = &npPolicy{policy: *policy,
+			ipBlocks: make(map[int]*ipBlockExceptFlows)}
 	}
 
 	oldNPP, existed := npns.policies[policy.UID]
@@ -624,6 +698,10 @@ func (np *networkPolicyPlugin) handleDeleteNetworkPolicy(obj interface{}) {
 
 	if npns, exists := np.namespaces[vnid]; exists {
 		np.cleanupNetworkPolicy(policy)
+		for i := range npns.policies[policy.UID].ipBlocks {
+			delete(npns.policies[policy.UID].ipBlocks, i)
+		}
+
 		delete(npns.policies, policy.UID)
 		if npns.inUse {
 			np.syncNamespace(npns)
