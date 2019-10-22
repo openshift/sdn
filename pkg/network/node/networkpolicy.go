@@ -12,7 +12,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	kapierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	ktypes "k8s.io/apimachinery/pkg/types"
@@ -30,15 +29,21 @@ import (
 )
 
 type networkPolicyPlugin struct {
-	node  *OsdnNode
-	vnids *nodeVNIDMap
-
-	lock        sync.Mutex
-	namespaces  map[uint32]*npNamespace
-	kNamespaces map[string]corev1.Namespace
-	pods        map[ktypes.UID]corev1.Pod
-
+	node   *OsdnNode
+	vnids  *nodeVNIDMap
 	runner *async.BoundedFrequencyRunner
+
+	lock sync.Mutex
+	// namespacesByName includes every Namespace, including ones that we haven't seen
+	// a NetNamespace for, and is only used in the informer-related methods.
+	namespacesByName map[string]*npNamespace
+	// namespaces includes only the namespaces that we have a VNID for, and is used
+	// for all flow-generating methods
+	namespaces map[uint32]*npNamespace
+	// nsMatchCache caches matches for namespaceSelectors; see selectNamespaceInternal
+	nsMatchCache map[string]*npCacheEntry
+
+	pods map[ktypes.UID]corev1.Pod
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -48,7 +53,11 @@ type npNamespace struct {
 	inUse bool
 	dirty bool
 
+	labels   map[string]string
 	policies map[ktypes.UID]*npPolicy
+
+	gotNamespace    bool
+	gotNetNamespace bool
 }
 
 // npPolicy is a parsed version of a single NetworkPolicy object
@@ -61,6 +70,12 @@ type npPolicy struct {
 	selectedIPs []string
 }
 
+// npCacheEntry caches information about matches for a LabelSelector
+type npCacheEntry struct {
+	selector labels.Selector
+	matches  map[string]uint32
+}
+
 type refreshForType string
 
 const (
@@ -70,9 +85,11 @@ const (
 
 func NewNetworkPolicyPlugin() osdnPolicy {
 	return &networkPolicyPlugin{
-		namespaces:  make(map[uint32]*npNamespace),
-		kNamespaces: make(map[string]corev1.Namespace),
-		pods:        make(map[ktypes.UID]corev1.Pod),
+		namespaces:       make(map[uint32]*npNamespace),
+		namespacesByName: make(map[string]*npNamespace),
+		pods:             make(map[ktypes.UID]corev1.Pod),
+
+		nsMatchCache: make(map[string]*npCacheEntry),
 	}
 }
 
@@ -127,23 +144,21 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 		return err
 	}
 	for _, ns := range namespaces.Items {
-		np.kNamespaces[ns.Name] = ns
+		npns := newNPNamespace(ns.Name)
+		npns.labels = ns.Labels
+		npns.gotNamespace = true
+		np.namespacesByName[ns.Name] = npns
 
 		if vnid, err := np.vnids.WaitAndGetVNID(ns.Name); err == nil {
-			np.namespaces[vnid] = &npNamespace{
-				name:     ns.Name,
-				vnid:     vnid,
-				inUse:    inUseVNIDs.Has(int(vnid)),
-				policies: make(map[ktypes.UID]*npPolicy),
-			}
+			npns.vnid = vnid
+			npns.inUse = inUseVNIDs.Has(int(vnid))
+			npns.gotNetNamespace = true
+			np.namespaces[vnid] = npns
 		}
 	}
 
 	policies, err := np.node.kClient.NetworkingV1().NetworkPolicies(corev1.NamespaceAll).List(metav1.ListOptions{})
 	if err != nil {
-		if kapierrs.IsForbidden(err) {
-			utilruntime.HandleError(fmt.Errorf("unable to query NetworkPolicies (%v) - please ensure your nodes have access to view NetworkPolicy", err))
-		}
 		return err
 	}
 	for _, policy := range policies.Items {
@@ -158,20 +173,31 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 	return nil
 }
 
+func newNPNamespace(name string) *npNamespace {
+	return &npNamespace{
+		name:     name,
+		policies: make(map[ktypes.UID]*npPolicy),
+	}
+}
+
 func (np *networkPolicyPlugin) AddNetNamespace(netns *networkv1.NetNamespace) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	if _, exists := np.namespaces[netns.NetID]; exists {
-		klog.Warningf("Got AddNetNamespace for already-existing namespace %s (%d)", netns.NetName, netns.NetID)
-		return
+	npns := np.namespacesByName[netns.NetName]
+	if npns == nil {
+		npns = newNPNamespace(netns.NetName)
+		np.namespacesByName[netns.NetName] = npns
 	}
 
-	np.namespaces[netns.NetID] = &npNamespace{
-		name:     netns.NetName,
-		vnid:     netns.NetID,
-		inUse:    false,
-		policies: make(map[ktypes.UID]*npPolicy),
+	npns.vnid = netns.NetID
+	npns.inUse = false
+	np.namespaces[netns.NetID] = npns
+
+	npns.gotNetNamespace = true
+	if npns.gotNamespace {
+		np.updateMatchCache(npns)
+		np.refreshNetworkPolicies(refreshForNamespaces)
 	}
 }
 
@@ -187,15 +213,24 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *networkv1.NetNamespace)
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	if npns, exists := np.namespaces[netns.NetID]; exists {
-		if npns.inUse {
-			npns.inUse = false
-			// We call syncNamespaceFlows() not syncNamespace() because it
-			// needs to happen before we forget about the namespace.
-			np.syncNamespaceFlows(npns)
-		}
-		delete(np.namespaces, netns.NetID)
+	npns, exists := np.namespaces[netns.NetID]
+	if !exists {
+		return
 	}
+
+	if npns.inUse {
+		npns.inUse = false
+		// We call syncNamespaceFlows() not syncNamespace() because it
+		// needs to happen before we forget about the namespace.
+		np.syncNamespaceFlows(npns)
+	}
+	delete(np.namespaces, netns.NetID)
+	npns.gotNetNamespace = false
+
+	// We don't need to call refreshNetworkPolicies here; if the VNID doesn't get
+	// reused then the stale flows won't hurt anything, and if it does get reused then
+	// things will be cleaned up then. However, we do have to clean up the cache.
+	np.updateMatchCache(npns)
 }
 
 func (np *networkPolicyPlugin) GetVNID(namespace string) (uint32, error) {
@@ -303,8 +338,50 @@ func (np *networkPolicyPlugin) SyncVNIDRules() {
 	}
 }
 
+// Match namespaces against a selector, using a cache so that, eg, when a new Namespace is
+// added, we only figure out if it matches "name: default" once, rather than recomputing
+// the set of namespaces that match that selector for every single "allow-from-default"
+// policy in the cluster.
+//
+// Yes, if a selector matches against multiple labels then the order they appear in
+// cacheKey here is non-deterministic, but that just means that, eg, we might compute the
+// results twice rather than just once, and twice is still better than 10,000 times.
+func (np *networkPolicyPlugin) selectNamespacesInternal(selector labels.Selector) map[string]uint32 {
+	cacheKey := selector.String()
+	match := np.nsMatchCache[cacheKey]
+	if match == nil {
+		match = &npCacheEntry{selector: selector, matches: make(map[string]uint32)}
+		for vnid, npns := range np.namespaces {
+			if npns.gotNamespace && selector.Matches(labels.Set(npns.labels)) {
+				match.matches[npns.name] = vnid
+			}
+		}
+		np.nsMatchCache[cacheKey] = match
+	}
+	return match.matches
+}
+
+func (np *networkPolicyPlugin) updateMatchCache(npns *npNamespace) {
+	for _, match := range np.nsMatchCache {
+		if npns.gotNamespace && npns.gotNetNamespace && match.selector.Matches(labels.Set(npns.labels)) {
+			match.matches[npns.name] = npns.vnid
+		} else {
+			delete(match.matches, npns.name)
+		}
+	}
+}
+
+func (np *networkPolicyPlugin) flushMatchCache(lsel *metav1.LabelSelector) {
+	selector, err := metav1.LabelSelectorAsSelector(lsel)
+	if err != nil {
+		// Shouldn't happen
+		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
+		return
+	}
+	delete(np.nsMatchCache, selector.String())
+}
+
 func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel *metav1.LabelSelector) []string {
-	namespaces := make(map[string]uint32)
 	var peerFlows []string
 
 	nsSel, err := metav1.LabelSelectorAsSelector(nsLabelSel)
@@ -321,13 +398,7 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 		return nil
 	}
 
-	for vnid, ns := range np.namespaces {
-		if kns, exists := np.kNamespaces[ns.name]; exists {
-			if nsSel.Matches(labels.Set(kns.Labels)) {
-				namespaces[ns.name] = vnid
-			}
-		}
-	}
+	namespaces := np.selectNamespacesInternal(nsSel)
 	for _, pod := range np.pods {
 		vnid, exists := namespaces[pod.Namespace]
 		if exists && podSel.Matches(labels.Set(pod.Labels)) {
@@ -340,21 +411,19 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 }
 
 func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector) []string {
-	var vnids []string
+	var peerFlows []string
 	sel, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
 		// Shouldn't happen
 		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
-		return vnids
+		return peerFlows
 	}
-	for vnid, ns := range np.namespaces {
-		if kns, exists := np.kNamespaces[ns.name]; exists {
-			if sel.Matches(labels.Set(kns.Labels)) {
-				vnids = append(vnids, fmt.Sprintf("reg0=%d, ", vnid))
-			}
-		}
+
+	namespaces := np.selectNamespacesInternal(sel)
+	for _, vnid := range namespaces {
+		peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", vnid))
 	}
-	return vnids
+	return peerFlows
 }
 
 func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelSelector) []string {
@@ -383,9 +452,9 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		}
 	}
 	if !affectsIngress {
-		// The rest of this file assumes that all policies affect ingress: a policy that
-		// only affects egress is, for our purposes, equivalent to one that affects
-		// ingress but does not select any pods.
+		// The rest of this function assumes that all policies affect ingress: a
+		// policy that only affects egress is, for our purposes, equivalent to one
+		// that affects ingress but does not select any pods.
 		npp.selectedIPs = []string{""}
 		return npp, nil
 	}
@@ -414,7 +483,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			} else if *port.Protocol == corev1.ProtocolTCP || *port.Protocol == corev1.ProtocolUDP || *port.Protocol == corev1.ProtocolSCTP {
 				protocol = strings.ToLower(string(*port.Protocol))
 			} else {
-				// FIXME: validation should catch this
+				// upstream is unlikely to add any more protocol values, but just in case...
 				return nil, fmt.Errorf("policy specifies unrecognized protocol %q", *port.Protocol)
 			}
 			var portNum int
@@ -422,14 +491,9 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 				portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
 				continue
 			} else if port.Port.Type != intstr.Int {
-				// FIXME: implement this?
 				return nil, fmt.Errorf("named port values (%q) are not implemented", port.Port.StrVal)
 			} else {
 				portNum = int(port.Port.IntVal)
-				if portNum < 0 || portNum > 0xFFFF {
-					// FIXME: validation should catch this
-					return nil, fmt.Errorf("port value out of bounds %q", port.Port.IntVal)
-				}
 			}
 			portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%d, ", protocol, portNum))
 		}
@@ -474,6 +538,21 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 	sort.Strings(npp.flows)
 	klog.V(5).Infof("Parsed NetworkPolicy: %#v", npp)
 	return npp, nil
+}
+
+// Cleans up after a NetworkPolicy that is being deleted
+func (np *networkPolicyPlugin) cleanupNetworkPolicy(policy *networkingv1.NetworkPolicy) {
+	for _, rule := range policy.Spec.Ingress {
+		for _, peer := range rule.From {
+			if peer.NamespaceSelector != nil {
+				if len(peer.NamespaceSelector.MatchLabels) != 0 || len(peer.NamespaceSelector.MatchExpressions) != 0 {
+					// This is overzealous; there may still be other policies
+					// with the same selector. But it's simple.
+					np.flushMatchCache(peer.NamespaceSelector)
+				}
+			}
+		}
+	}
 }
 
 func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) bool {
@@ -534,6 +613,7 @@ func (np *networkPolicyPlugin) handleDeleteNetworkPolicy(obj interface{}) {
 	defer np.lock.Unlock()
 
 	if npns, exists := np.namespaces[vnid]; exists {
+		np.cleanupNetworkPolicy(policy)
 		delete(npns.policies, policy.UID)
 		if npns.inUse {
 			np.syncNamespace(npns)
@@ -602,8 +682,22 @@ func (np *networkPolicyPlugin) handleAddOrUpdateNamespace(obj, _ interface{}, ev
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	np.kNamespaces[ns.Name] = *ns
-	np.refreshNetworkPolicies(refreshForNamespaces)
+	npns := np.namespacesByName[ns.Name]
+	if npns == nil {
+		npns = newNPNamespace(ns.Name)
+		np.namespacesByName[ns.Name] = npns
+	}
+
+	if npns.gotNamespace && reflect.DeepEqual(npns.labels, ns.Labels) {
+		return
+	}
+	npns.labels = ns.Labels
+
+	npns.gotNamespace = true
+	if npns.gotNetNamespace {
+		np.updateMatchCache(npns)
+		np.refreshNetworkPolicies(refreshForNamespaces)
+	}
 }
 
 func (np *networkPolicyPlugin) handleDeleteNamespace(obj interface{}) {
@@ -613,8 +707,18 @@ func (np *networkPolicyPlugin) handleDeleteNamespace(obj interface{}) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	delete(np.kNamespaces, ns.Name)
-	np.refreshNetworkPolicies(refreshForNamespaces)
+	npns := np.namespacesByName[ns.Name]
+	if npns == nil {
+		return
+	}
+
+	delete(np.namespacesByName, ns.Name)
+	npns.gotNamespace = false
+
+	// We don't need to call refreshNetworkPolicies here; if the VNID doesn't get
+	// reused then the stale flows won't hurt anything, and if it does get reused then
+	// things will be cleaned up then. However, we do have to clean up the cache.
+	np.updateMatchCache(npns)
 }
 
 func (np *networkPolicyPlugin) refreshNetworkPolicies(refreshFor refreshForType) {
