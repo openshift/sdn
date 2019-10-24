@@ -145,7 +145,7 @@ func (vmap *nodeVNIDMap) setVNID(name string, id uint32, mcEnabled bool) {
 	vmap.mcEnabled[name] = mcEnabled
 	vmap.addNamespaceToSet(name, id)
 
-	klog.Infof("Associate netid %d to namespace %q with mcEnabled %v", id, name, mcEnabled)
+	klog.V(4).Infof("Associate netid %d to namespace %q with mcEnabled %v", id, name, mcEnabled)
 }
 
 func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
@@ -159,7 +159,7 @@ func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
 	vmap.removeNamespaceFromSet(name, id)
 	delete(vmap.ids, name)
 	delete(vmap.mcEnabled, name)
-	klog.Infof("Dissociate netid %d from namespace %q", id, name)
+	klog.V(4).Infof("Dissociate netid %d from namespace %q", id, name)
 	return id, nil
 }
 
