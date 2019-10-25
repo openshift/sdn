@@ -113,11 +113,11 @@ func (pcn *ParsedClusterNetwork) CheckHostNetworks(hostIPNets []*net.IPNet) erro
 	errList := []error{}
 	for _, ipNet := range hostIPNets {
 		for _, clusterNetwork := range pcn.ClusterNetworks {
-			if CIDRsOverlap(ipNet.String(), clusterNetwork.ClusterCIDR.String()) {
+			if cidrsOverlap(ipNet, clusterNetwork.ClusterCIDR) {
 				errList = append(errList, fmt.Errorf("cluster IP: %s conflicts with host network: %s", clusterNetwork.ClusterCIDR.IP.String(), ipNet.String()))
 			}
 		}
-		if CIDRsOverlap(ipNet.String(), pcn.ServiceNetwork.String()) {
+		if cidrsOverlap(ipNet, pcn.ServiceNetwork) {
 			errList = append(errList, fmt.Errorf("service IP: %s conflicts with host network: %s", pcn.ServiceNetwork.String(), ipNet.String()))
 		}
 	}
