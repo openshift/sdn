@@ -21,6 +21,10 @@ func networkID(n int) string {
 }
 
 func allocateExpected(sna *SubnetAllocator, n int, expected string) error {
+	// Canonicalize expected; eg "fd01:0:0:0::/64" -> "fd01::/64"
+	_, expectedCIDR, _ := net.ParseCIDR(expected)
+	expected = expectedCIDR.String()
+
 	sn, err := sna.AllocateNetwork()
 	if err != nil {
 		return fmt.Errorf("failed to allocate %s (%s): %v", networkID(n), expected, err)
@@ -40,8 +44,8 @@ func allocateNotExpected(sna *SubnetAllocator, n int) error {
 	return nil
 }
 
-// 10.1.SSSSSSSS.HHHHHHHH
-func TestAllocateSubnet(t *testing.T) {
+// 10.1.ssssssss.hhhhhhhh
+func TestAllocateSubnetIPv4(t *testing.T) {
 	sna, err := newSubnetAllocator("10.1.0.0/16", 8)
 	if err != nil {
 		t.Fatal("Failed to initialize subnet allocator: ", err)
@@ -57,8 +61,36 @@ func TestAllocateSubnet(t *testing.T) {
 	}
 }
 
-// 10.1.SSSSSSHH.HHHHHHHH
-func TestAllocateSubnetLargeHostBits(t *testing.T) {
+// fd01:0:0:SSSS:HHHH:HHHH:HHHH:HHHH
+func TestAllocateSubnetIPv6(t *testing.T) {
+	sna, err := newSubnetAllocator("fd01::/48", 64)
+	if err != nil {
+		t.Fatal("Failed to initialize subnet allocator: ", err)
+	}
+
+	// IPv6 allocation skips the 0 subnet, so we start with n=1
+	for n := 1; n < 256; n++ {
+		if err := allocateExpected(sna, n, fmt.Sprintf("fd01:0:0:%x::/64", n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := allocateExpected(sna, 256, "fd01:0:0:100::/64"); err != nil {
+		t.Fatal(err)
+	}
+
+	// We have 16 bits for subnet, after which it will wrap around (and then allocate
+	// the next previously-unallocated value, skipping the 0 subnet again).
+	sna.ranges[0].next = 0xFFFF
+	if err := allocateExpected(sna, -1, "fd01:0:0:ffff::/64"); err != nil {
+		t.Fatal(err)
+	}
+	if err := allocateExpected(sna, -1, "fd01:0:0:101::/64"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 10.1.sssssshh.hhhhhhhh
+func TestAllocateSubnetLargeHostBitsIPv4(t *testing.T) {
 	sna, err := newSubnetAllocator("10.1.0.0/16", 10)
 	if err != nil {
 		t.Fatal("Failed to initialize subnet allocator: ", err)
@@ -74,8 +106,24 @@ func TestAllocateSubnetLargeHostBits(t *testing.T) {
 	}
 }
 
-// 10.1.SSSSSSSS.SSHHHHHH
-func TestAllocateSubnetLargeSubnetBits(t *testing.T) {
+// fd01:0:0:SSSH:HHHH:HHHH:HHHH:HHHH
+func TestAllocateSubnetLargeHostBitsIPv6(t *testing.T) {
+	sna, err := newSubnetAllocator("fd01::/48", 68)
+	if err != nil {
+		t.Fatal("Failed to initialize subnet allocator: ", err)
+	}
+
+	// (Because of the small subnet size we won't skip the 0 subnet like in the
+	// other IPv6 cases.)
+	for n := 0; n < 256; n++ {
+		if err := allocateExpected(sna, n, fmt.Sprintf("fd01:0:0:%x::/60", n<<4)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// 10.1.ssssssss.sshhhhhh
+func TestAllocateSubnetLargeSubnetBitsIPv4(t *testing.T) {
 	sna, err := newSubnetAllocator("10.1.0.0/16", 6)
 	if err != nil {
 		t.Fatal("Failed to initialize subnet allocator: ", err)
@@ -107,8 +155,39 @@ func TestAllocateSubnetLargeSubnetBits(t *testing.T) {
 	}
 }
 
-// 10.000000SS.SSSSSSHH.HHHHHHHH
-func TestAllocateSubnetOverlapping(t *testing.T) {
+// fd01:0:0:SSSS:SSSS:SHHH:HHHH:HHHH
+func TestAllocateSubnetLargeSubnetBitsIPv6(t *testing.T) {
+	sna, err := newSubnetAllocator("fd01::/48", 44)
+	if err != nil {
+		t.Fatal("Failed to initialize subnet allocator: ", err)
+	}
+
+	// For IPv6 we expect to see the networks just get allocated in order
+	for n := 1; n < 256; n++ {
+		// (Many of the IPv6 strings we Sprintf here won't be in canonical
+		// format, but allocateExpecting() will fix them for us.)
+		if err := allocateExpected(sna, n, fmt.Sprintf("fd01:0:0:0:%x:%x::/84", n>>4, (n<<12)&0xFFFF)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := allocateExpected(sna, -1, "fd01:0:0:0:10:0::/84"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Even though we theoretically have 36 bits of subnets, SubnetAllocator will only
+	// use the lower 24 bits before looping around and then allocating the next
+	// previously-unallocated subnet.
+	sna.ranges[0].next = 0x00FFFFFF
+	if err := allocateExpected(sna, -1, "fd01:0:0:000f:ffff:f000::/84"); err != nil {
+		t.Fatal(err)
+	}
+	if err := allocateExpected(sna, -1, "fd01:0:0:0:10:1000::/84"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 10.000000ss.sssssshh.hhhhhhhh
+func TestAllocateSubnetOverlappingIPv4(t *testing.T) {
 	sna, err := newSubnetAllocator("10.0.0.0/14", 10)
 	if err != nil {
 		t.Fatal("Failed to initialize subnet allocator: ", err)
@@ -137,14 +216,32 @@ func TestAllocateSubnetOverlapping(t *testing.T) {
 	}
 }
 
-// 10.1.HHHHHHHH.HHHHHHHH
-func TestAllocateSubnetNoSubnetBits(t *testing.T) {
+// There's no TestAllocateSubnetOverlappingIPv6 because it wouldn't be any different from
+// TestAllocateSubnetLargeSubnetBitsIPv6.
+
+// 10.1.hhhhhhhh.hhhhhhhh
+func TestAllocateSubnetNoSubnetBitsIPv4(t *testing.T) {
 	sna, err := newSubnetAllocator("10.1.0.0/16", 16)
 	if err != nil {
 		t.Fatal("Failed to initialize subnet allocator: ", err)
 	}
 
 	if err := allocateExpected(sna, 0, "10.1.0.0/16"); err != nil {
+		t.Fatal(err)
+	}
+	if err := allocateNotExpected(sna, 1); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAllocateSubnetNoSubnetBitsIPv6(t *testing.T) {
+	// fd01:0:0:0:HHHH:HHHH:HHHH:HHHH
+	sna, err := newSubnetAllocator("fd01::/64", 64)
+	if err != nil {
+		t.Fatal("Failed to initialize subnet allocator: ", err)
+	}
+
+	if err := allocateExpected(sna, 0, "fd01::/64"); err != nil {
 		t.Fatal(err)
 	}
 	if err := allocateNotExpected(sna, 1); err != nil {
@@ -164,6 +261,21 @@ func TestAllocateSubnetInvalidHostBitsOrCIDR(t *testing.T) {
 	}
 
 	_, err = newSubnetAllocator("10.1.0.0/33", 16)
+	if err == nil {
+		t.Fatal("Unexpectedly succeeded in initializing subnet allocator")
+	}
+
+	_, err = newSubnetAllocator("fd01::/64", 66)
+	if err == nil {
+		t.Fatal("Unexpectedly succeeded in initializing subnet allocator")
+	}
+
+	_, err = newSubnetAllocator("fd01::/64", 0)
+	if err == nil {
+		t.Fatal("Unexpectedly succeeded in initializing subnet allocator")
+	}
+
+	_, err = newSubnetAllocator("fd01::/129", 64)
 	if err == nil {
 		t.Fatal("Unexpectedly succeeded in initializing subnet allocator")
 	}
@@ -290,21 +402,5 @@ func TestMultipleSubnets(t *testing.T) {
 
 	if err := allocateNotExpected(sna, -1); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestIPUint32Conversion(t *testing.T) {
-	ip := net.ParseIP("10.1.2.3")
-	if ip == nil {
-		t.Fatal("Failed to parse IP")
-	}
-
-	u := IPToUint32(ip)
-	t.Log(u)
-	ip2 := Uint32ToIP(u)
-	t.Log(ip2)
-
-	if !ip2.Equal(ip) {
-		t.Fatal("Conversion back and forth failed")
 	}
 }

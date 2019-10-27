@@ -1,7 +1,6 @@
 package master
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -84,22 +83,33 @@ func (sna *SubnetAllocator) ReleaseNetwork(subnet string) error {
 type subnetAllocatorRange struct {
 	network    *net.IPNet
 	hostBits   uint32
+	subnetBits uint32
+	next       uint32
+	allocMap   map[string]bool
+
+	// IPv4-only address-alignment hackery; see below
 	leftShift  uint32
 	leftMask   uint32
 	rightShift uint32
 	rightMask  uint32
-	next       uint32
-	allocMap   map[string]bool
 }
 
 func newSubnetAllocatorRange(network *net.IPNet, hostBits uint32) (*subnetAllocatorRange, error) {
-	netMaskSize, _ := network.Mask.Size()
+	netMaskSize, addrLen := network.Mask.Size()
 	if hostBits == 0 {
 		return nil, fmt.Errorf("host capacity cannot be zero.")
-	} else if hostBits > (32 - uint32(netMaskSize)) {
+	} else if hostBits > uint32(addrLen-netMaskSize) {
 		return nil, fmt.Errorf("subnet capacity cannot be larger than number of networks available.")
 	}
-	subnetBits := 32 - uint32(netMaskSize) - hostBits
+	subnetBits := uint32(addrLen-netMaskSize) - hostBits
+
+	snr := &subnetAllocatorRange{
+		network:    network,
+		hostBits:   hostBits,
+		subnetBits: subnetBits,
+		next:       0,
+		allocMap:   make(map[string]bool),
+	}
 
 	// In the simple case, the subnet part of the 32-bit IP address is just the subnet
 	// number shifted hostBits to the left. However, if hostBits isn't a multiple of
@@ -114,30 +124,22 @@ func newSubnetAllocatorRange(network *net.IPNet, hostBits uint32) (*subnetAlloca
 	// 10.1.255.0/26 (just like we would with /24s in the hostBits=8 case), and only
 	// if we use up all of those subnets do we start allocating 10.1.0.64/26,
 	// 10.1.1.64/26, etc.
-	var leftShift, rightShift uint32
-	var leftMask, rightMask uint32
-	if hostBits%8 != 0 && ((hostBits-1)/8 != (hostBits+subnetBits-1)/8) {
-		leftShift = 8 - (hostBits % 8)
-		leftMask = uint32(1)<<(32-uint32(netMaskSize)) - 1
-		rightShift = subnetBits - leftShift
-		rightMask = (uint32(1)<<leftShift - 1) << hostBits
-	} else {
-		leftShift = 0
-		leftMask = 0xFFFFFFFF
-		rightShift = 0
-		rightMask = 0
+	//
+	// (For IPv6 we just don't bother worrying about this.)
+	if addrLen == 32 && hostBits%8 != 0 && ((hostBits-1)/8 != (hostBits+subnetBits-1)/8) {
+		// leftShift is used to move the subnet id left by the number of bits that
+		// the subnet part extends into the overlap octet (which is to say, the
+		// number of bits that the host part ISN'T using in that octet). leftMask
+		// masks out the bits that get shifted left out of the subnet part
+		snr.leftShift = 8 - (hostBits % 8)
+		snr.leftMask = 1<<subnetBits - 1
+		// rightShift and rightMask are used to copy the shifted-out upper bits of
+		// the subnet id back down to the lower bits
+		snr.rightShift = subnetBits - snr.leftShift
+		snr.rightMask = 1<<snr.leftShift - 1
 	}
 
-	return &subnetAllocatorRange{
-		network:    network,
-		hostBits:   hostBits,
-		leftShift:  leftShift,
-		leftMask:   leftMask,
-		rightShift: rightShift,
-		rightMask:  rightMask,
-		next:       0,
-		allocMap:   make(map[string]bool),
-	}, nil
+	return snr, nil
 }
 
 // markAllocatedNetwork marks network as being in use, if it is part of snr's range.
@@ -152,23 +154,42 @@ func (snr *subnetAllocatorRange) markAllocatedNetwork(network *net.IPNet) bool {
 
 // allocateNetwork returns a new subnet, or nil if the range is full
 func (snr *subnetAllocatorRange) allocateNetwork() *net.IPNet {
-	var (
-		numSubnets    uint32
-		numSubnetBits uint32
-	)
-
-	baseipu := IPToUint32(snr.network.IP)
-	netMaskSize, _ := snr.network.Mask.Size()
-	numSubnetBits = 32 - uint32(netMaskSize) - snr.hostBits
-	numSubnets = 1 << numSubnetBits
+	netMaskSize, addrLen := snr.network.Mask.Size()
+	numSubnets := uint32(1) << snr.subnetBits
+	if snr.subnetBits > 24 {
+		// We need to make sure that the uint32 math below won't overflow. If
+		// snr.subnetBits > 32 then numSubnets has already overflowed, but also if
+		// numSubnets is between 1<<24 and 1<<32 then "base << (snr.hostBits % 8)"
+		// below could overflow if snr.hostBits%8 is non-0. So we cap numSubnets
+		// at 1<<24. "16M subnets ought to be enough for anybody."
+		numSubnets = 1 << 24
+	}
 
 	var i uint32
 	for i = 0; i < numSubnets; i++ {
 		n := (i + snr.next) % numSubnets
-		shifted := n << snr.hostBits
-		ipu := baseipu | ((shifted << snr.leftShift) & snr.leftMask) | ((shifted >> snr.rightShift) & snr.rightMask)
-		genIp := Uint32ToIP(ipu)
-		genSubnet := &net.IPNet{IP: genIp, Mask: net.CIDRMask(int(numSubnetBits)+netMaskSize, 32)}
+		base := n
+		if snr.leftShift != 0 {
+			base = ((base << snr.leftShift) & snr.leftMask) | ((base >> snr.rightShift) & snr.rightMask)
+		} else if addrLen == 128 && snr.subnetBits >= 16 {
+			// Skip the 0 subnet (and other subnets with all 0s in the low word)
+			// since the extra 0 word will get compressed out and make the address
+			// look different from addresses on other subnets.
+			if (base & 0xFFFF) == 0 {
+				continue
+			}
+		}
+
+		genIP := append([]byte{}, []byte(snr.network.IP)...)
+		subnetBits := base << (snr.hostBits % 8)
+		b := (uint32(addrLen) - snr.hostBits - 1) / 8
+		for subnetBits != 0 {
+			genIP[b] |= byte(subnetBits)
+			subnetBits >>= 8
+			b--
+		}
+
+		genSubnet := &net.IPNet{IP: genIP, Mask: net.CIDRMask(int(snr.subnetBits)+netMaskSize, addrLen)}
 		if !snr.allocMap[genSubnet.String()] {
 			snr.allocMap[genSubnet.String()] = true
 			snr.next = n + 1
@@ -189,14 +210,4 @@ func (snr *subnetAllocatorRange) releaseNetwork(network *net.IPNet) bool {
 
 	snr.allocMap[network.String()] = false
 	return true
-}
-
-func IPToUint32(ip net.IP) uint32 {
-	return binary.BigEndian.Uint32(ip.To4())
-}
-
-func Uint32ToIP(u uint32) net.IP {
-	ip := make([]byte, 4)
-	binary.BigEndian.PutUint32(ip, u)
-	return net.IPv4(ip[0], ip[1], ip[2], ip[3])
 }
