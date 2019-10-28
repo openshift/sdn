@@ -23,3 +23,11 @@ $(call build-image,sdn,origin-sdn,./images/sdn/Dockerfile,.)
 $(call build-image,node,origin-node,./images/node/Dockerfile,.)
 $(call build-image,sdn-controller,origin-sdn-controller,./images/sdn-controller/Dockerfile,.)
 $(call build-image,kube-proxy,origin-kube-proxy,./images/kube-proxy/Dockerfile,.)
+
+# The "real" Dockerfiles depend on OVS from the Fast Datapath channel, which requires
+# fiddling with RHEL subscriptions. For testing purposes it's easier to just build a
+# Fedora-based image
+build-image-sdn-test:
+	podman build --no-cache -f images/sdn/Dockerfile.fedora -t sdn-test .
+
+.PHONY: build-image-sdn-test
