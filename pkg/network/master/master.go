@@ -38,9 +38,7 @@ type OsdnMaster struct {
 	netNamespaceInformer networkinformers.NetNamespaceInformer
 
 	// Used for allocating subnets in order
-	subnetAllocatorList []*SubnetAllocator
-	// Used for clusterNetwork --> subnetAllocator lookup
-	subnetAllocatorMap map[common.ParsedClusterNetworkEntry]*SubnetAllocator
+	subnetAllocator *SubnetAllocator
 
 	// Holds Node IP used in creating host subnet for a node
 	hostSubnetNodeIPs map[ktypes.UID]string
@@ -66,8 +64,7 @@ func Start(networkClient networkclient.Interface, kClient kclientset.Interface,
 		hostSubnetInformer:   networkInformers.Network().V1().HostSubnets(),
 		netNamespaceInformer: networkInformers.Network().V1().NetNamespaces(),
 
-		subnetAllocatorMap: map[common.ParsedClusterNetworkEntry]*SubnetAllocator{},
-		hostSubnetNodeIPs:  map[ktypes.UID]string{},
+		hostSubnetNodeIPs: map[ktypes.UID]string{},
 	}
 
 	if err = master.checkClusterNetworkAgainstLocalNetworks(); err != nil {
