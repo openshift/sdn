@@ -20,6 +20,7 @@ import (
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
+	masterutil "github.com/openshift/sdn/pkg/network/master/util"
 )
 
 const (
@@ -38,7 +39,7 @@ type OsdnMaster struct {
 	netNamespaceInformer networkinformers.NetNamespaceInformer
 
 	// Used for allocating subnets in order
-	subnetAllocator *SubnetAllocator
+	subnetAllocator *masterutil.SubnetAllocator
 
 	// Holds Node IP used in creating host subnet for a node
 	hostSubnetNodeIPs map[ktypes.UID]string

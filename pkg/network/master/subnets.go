@@ -16,10 +16,11 @@ import (
 	networkapi "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
+	masterutil "github.com/openshift/sdn/pkg/network/master/util"
 )
 
 func (master *OsdnMaster) startSubnetMaster() error {
-	master.subnetAllocator = NewSubnetAllocator()
+	master.subnetAllocator = masterutil.NewSubnetAllocator()
 	for _, cn := range master.networkInfo.ClusterNetworks {
 		err := master.subnetAllocator.AddNetworkRange(cn.ClusterCIDR.String(), cn.HostSubnetLength)
 		if err != nil {
