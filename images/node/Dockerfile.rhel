@@ -1,11 +1,16 @@
 FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.12 AS builder
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
-RUN CGO_ENABLED=0 make build --warn-undefined-variables
+RUN CGO_ENABLED=1 make build --warn-undefined-variables
+
+FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.12 AS builder_cni
+WORKDIR /go/src/github.com/openshift/sdn
+COPY . .
+RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build --warn-undefined-variables
 
 FROM registry.svc.ci.openshift.org/ocp/4.2:base
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/
-COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
+COPY --from=builder_cni /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
 
 RUN INSTALL_PKGS=" \
       openvswitch2.11 container-selinux socat ethtool nmap-ncat \
