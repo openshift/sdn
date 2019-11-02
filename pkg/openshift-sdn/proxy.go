@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -215,13 +216,25 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 
 	// Start up a metrics server if requested
+	if len(sdn.ProxyConfig.MetricsBindAddress) == 0 {
+		klog.Infof("Defaulting metrics bind path for debugging only")
+		sdn.ProxyConfig.MetricsBindAddress = "*:9665"
+	}
 	if len(sdn.ProxyConfig.MetricsBindAddress) > 0 {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
 		})
 		mux.Handle("/metrics", prometheus.Handler())
+
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
 		go utilwait.Until(func() {
+			klog.Infof("Started metrics on %s", sdn.ProxyConfig.MetricsBindAddress)
 			err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
 			if err != nil {
 				utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
