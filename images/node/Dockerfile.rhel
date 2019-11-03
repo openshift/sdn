@@ -12,6 +12,9 @@ FROM registry.svc.ci.openshift.org/ocp/4.2:base
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/
 COPY --from=builder_cni /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
 
+RUN sed -i -e 's/enabled \?= \?0/enabled = 1/' /etc/yum.repos.d/*
+RUN ls /etc/yum.repos.d/*
+
 RUN INSTALL_PKGS=" \
       openvswitch2.11 container-selinux socat ethtool nmap-ncat \
       libmnl libnetfilter_conntrack conntrack-tools \
