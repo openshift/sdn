@@ -442,13 +442,18 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 	return ips
 }
 
-func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) (*npPolicy, error) {
+func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) *npPolicy {
 	npp := &npPolicy{policy: *policy}
 
-	affectsIngress := false
+	var affectsIngress, affectsEgress bool
 	for _, ptype := range policy.Spec.PolicyTypes {
 		if ptype == networkingv1.PolicyTypeIngress {
 			affectsIngress = true
+		} else if ptype == networkingv1.PolicyTypeEgress {
+			if !affectsEgress {
+				klog.Warningf("Ignoring egress rules in NetworkPolicy %s/%s", policy.Namespace, policy.Name)
+			}
+			affectsEgress = true
 		}
 	}
 	if !affectsIngress {
@@ -456,7 +461,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		// policy that only affects egress is, for our purposes, equivalent to one
 		// that affects ingress but does not select any pods.
 		npp.selectedIPs = []string{""}
-		return npp, nil
+		return npp
 	}
 
 	var destFlows []string
@@ -484,14 +489,16 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 				protocol = strings.ToLower(string(*port.Protocol))
 			} else {
 				// upstream is unlikely to add any more protocol values, but just in case...
-				return nil, fmt.Errorf("policy specifies unrecognized protocol %q", *port.Protocol)
+				klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unrecognized Protocol %q", policy.Namespace, policy.Name, *port.Protocol)
+				continue
 			}
 			var portNum int
 			if port.Port == nil {
 				portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
 				continue
 			} else if port.Port.Type != intstr.Int {
-				return nil, fmt.Errorf("named port values (%q) are not implemented", port.Port.StrVal)
+				klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unsupported named port %q", policy.Namespace, policy.Name, port.Port.StrVal)
+				continue
 			} else {
 				portNum = int(port.Port.IntVal)
 			}
@@ -547,7 +554,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 
 	sort.Strings(npp.flows)
 	klog.V(5).Infof("Parsed NetworkPolicy: %#v", npp)
-	return npp, nil
+	return npp
 }
 
 // Cleans up after a NetworkPolicy that is being deleted
@@ -566,12 +573,7 @@ func (np *networkPolicyPlugin) cleanupNetworkPolicy(policy *networkingv1.Network
 }
 
 func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) bool {
-	npp, err := np.parseNetworkPolicy(npns, policy)
-	if err != nil {
-		klog.Infof("Unsupported NetworkPolicy %s/%s (%v); treating as deny-all", policy.Namespace, policy.Name, err)
-		npp = &npPolicy{policy: *policy}
-	}
-
+	npp := np.parseNetworkPolicy(npns, policy)
 	oldNPP, existed := npns.policies[policy.UID]
 	npns.policies[policy.UID] = npp
 
