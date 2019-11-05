@@ -37,7 +37,12 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	kubeClient, err := kubernetes.NewForConfig(kubeConfig)
+
+	protoKubeConfig := rest.CopyConfig(kubeConfig)
+	protoKubeConfig.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	protoKubeConfig.ContentType = "application/vnd.kubernetes.protobuf"
+
+	kubeClient, err := kubernetes.NewForConfig(protoKubeConfig)
 	if err != nil {
 		return err
 	}
