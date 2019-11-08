@@ -20,6 +20,7 @@ import (
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
+	masterutil "github.com/openshift/sdn/pkg/network/master/util"
 )
 
 const (
@@ -38,9 +39,7 @@ type OsdnMaster struct {
 	netNamespaceInformer networkinformers.NetNamespaceInformer
 
 	// Used for allocating subnets in order
-	subnetAllocatorList []*SubnetAllocator
-	// Used for clusterNetwork --> subnetAllocator lookup
-	subnetAllocatorMap map[common.ParsedClusterNetworkEntry]*SubnetAllocator
+	subnetAllocator *masterutil.SubnetAllocator
 
 	// Holds Node IP used in creating host subnet for a node
 	hostSubnetNodeIPs map[ktypes.UID]string
@@ -66,8 +65,7 @@ func Start(networkClient networkclient.Interface, kClient kclientset.Interface,
 		hostSubnetInformer:   networkInformers.Network().V1().HostSubnets(),
 		netNamespaceInformer: networkInformers.Network().V1().NetNamespaces(),
 
-		subnetAllocatorMap: map[common.ParsedClusterNetworkEntry]*SubnetAllocator{},
-		hostSubnetNodeIPs:  map[ktypes.UID]string{},
+		hostSubnetNodeIPs: map[ktypes.UID]string{},
 	}
 
 	if err = master.checkClusterNetworkAgainstLocalNetworks(); err != nil {

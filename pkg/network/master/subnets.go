@@ -16,11 +16,27 @@ import (
 	networkapi "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
+	masterutil "github.com/openshift/sdn/pkg/network/master/util"
 )
 
 func (master *OsdnMaster) startSubnetMaster() error {
-	if err := master.initSubnetAllocators(); err != nil {
+	master.subnetAllocator = masterutil.NewSubnetAllocator()
+	for _, cn := range master.networkInfo.ClusterNetworks {
+		err := master.subnetAllocator.AddNetworkRange(cn.ClusterCIDR.String(), cn.HostSubnetLength)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Populate subnet allocator
+	subnets, err := master.networkClient.NetworkV1().HostSubnets().List(metav1.ListOptions{})
+	if err != nil {
 		return err
+	}
+	for _, sn := range subnets.Items {
+		if err := master.subnetAllocator.MarkAllocatedNetwork(sn.Subnet); err != nil {
+			utilruntime.HandleError(err)
+		}
 	}
 
 	master.watchNodes()
@@ -112,9 +128,9 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 		}
 		hsAnnotations[networkapi.NodeUIDAnnotation] = nodeUID
 	}
-	network, err := master.allocateNetwork(nodeName)
+	network, err := master.subnetAllocator.AllocateNetwork()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error allocating network for node %s: %v", nodeName, err)
 	}
 	sub = &networkapi.HostSubnet{
 		TypeMeta:   metav1.TypeMeta{Kind: "HostSubnet"},
@@ -125,7 +141,7 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 	}
 	sub, err = master.networkClient.NetworkV1().HostSubnets().Create(sub)
 	if err != nil {
-		if er := master.releaseNetwork(network); er != nil {
+		if er := master.subnetAllocator.ReleaseNetwork(network); er != nil {
 			utilruntime.HandleError(er)
 		}
 		return "", fmt.Errorf("error allocating subnet for node %q: %v", nodeName, err)
@@ -245,7 +261,7 @@ func (master *OsdnMaster) handleDeleteSubnet(obj interface{}) {
 		return
 	}
 
-	if err := master.releaseNetwork(hs.Subnet); err != nil {
+	if err := master.subnetAllocator.ReleaseNetwork(hs.Subnet); err != nil {
 		utilruntime.HandleError(err)
 	}
 }
