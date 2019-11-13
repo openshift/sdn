@@ -1,10 +1,13 @@
 package openshift_sdn
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"time"
 
+	networkclient "github.com/openshift/client-go/network/clientset/versioned"
+	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
 	v1 "k8s.io/api/core/v1"
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -12,10 +15,8 @@ import (
 	kinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/proxy/apis"
-
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
 )
 
 var defaultInformerResyncPeriod = 30 * time.Minute
@@ -67,6 +68,9 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 		}))
 
 	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
+
+	kubeInformers.Core().V1().Services().Informer().AddEventHandler(eventHandlingLogger{})
+	kubeInformers.Core().V1().Endpoints().Informer().AddEventHandler(eventHandlingLogger{})
 
 	sdn.informers = &informers{
 		KubeClient:    kubeClient,
@@ -120,4 +124,26 @@ func defaultClientTransport(rt http.RoundTripper) http.RoundTripper {
 func applyClientConnectionOverrides(kubeConfig *rest.Config) {
 	kubeConfig.QPS = 10.0
 	kubeConfig.Burst = 20
+}
+
+type eventHandlingLogger struct{}
+
+func describe(obj interface{}) string {
+	if svc, ok := obj.(*v1.Service); ok {
+		return fmt.Sprintf("%+v", svc)
+	} else if ep, ok := obj.(*v1.Endpoints); ok {
+		return fmt.Sprintf("%+v", ep)
+	} else {
+		return fmt.Sprintf("%T", obj)
+	}
+}
+
+func (eventHandlingLogger) OnAdd(obj interface{}) {
+	klog.Infof("ADD %s", describe(obj))
+}
+func (eventHandlingLogger) OnUpdate(oldObj, newObj interface{}) {
+	klog.Infof("UPDATE %s -> %s", describe(oldObj), describe(newObj))
+}
+func (eventHandlingLogger) OnDelete(obj interface{}) {
+	klog.Infof("DELETE %s", describe(obj))
 }
