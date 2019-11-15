@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/klog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
@@ -222,10 +222,16 @@ func (sct *ServiceChangeTracker) Update(previous, current *v1.Service) bool {
 	}
 	// previous == nil && current == nil is unexpected, we should return false directly.
 	if svc == nil {
+		klog.V(1).Infof("sct.Update(nil, nil)!?")
 		return false
 	}
 	metrics.ServiceChangesTotal.Inc()
 	namespacedName := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
+
+	// HACK HACK HACK
+	if svc.Namespace == "openshift-ingress" {
+		klog.V(1).Infof("Got update for ingress, old %#v new %#v", previous, current)
+	}
 
 	sct.lock.Lock()
 	defer sct.lock.Unlock()

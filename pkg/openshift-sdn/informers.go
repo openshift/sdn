@@ -69,9 +69,6 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 
 	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
 
-	kubeInformers.Core().V1().Services().Informer().AddEventHandler(eventHandlingLogger{})
-	kubeInformers.Core().V1().Endpoints().Informer().AddEventHandler(eventHandlingLogger{})
-
 	sdn.informers = &informers{
 		KubeClient:    kubeClient,
 		NetworkClient: networkClient,
@@ -84,6 +81,9 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 
 // start starts the informers.
 func (i *informers) start(stopCh <-chan struct{}) {
+	i.KubeInformers.Core().V1().Services().Informer().AddEventHandler(eventHandlingLogger{})
+	i.KubeInformers.Core().V1().Endpoints().Informer().AddEventHandler(eventHandlingLogger{})
+
 	i.KubeInformers.Start(stopCh)
 	i.NetworkInformers.Start(stopCh)
 }

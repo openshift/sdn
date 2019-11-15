@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -164,8 +164,9 @@ func (c *EndpointsConfig) handleUpdateEndpoints(oldObj, newObj interface{}) {
 		return
 	}
 	for i := range c.eventHandlers {
-		klog.V(4).Infof("Calling handler.OnEndpointsUpdate")
+		klog.V(1).Infof("Calling handler.OnEndpointsUpdate %s/%s %s -> %s", endpoints.Namespace, endpoints.Name, oldEndpoints.ResourceVersion, oldEndpoints.ResourceVersion)
 		c.eventHandlers[i].OnEndpointsUpdate(oldEndpoints, endpoints)
+		klog.V(1).Infof("Done calling handler.OnEndpointsUpdate %s/%s %s -> %s", endpoints.Namespace, endpoints.Name, oldEndpoints.ResourceVersion, oldEndpoints.ResourceVersion)
 	}
 }
 
@@ -311,6 +312,7 @@ func (c *ServiceConfig) RegisterEventHandler(handler ServiceHandler) {
 // Run waits for cache synced and invokes handlers after syncing.
 func (c *ServiceConfig) Run(stopCh <-chan struct{}) {
 	klog.Info("Starting service config controller")
+	utilruntime.ReallyCrash = true
 
 	if !cache.WaitForNamedCacheSync("service config", stopCh, c.listerSynced) {
 		return
@@ -329,8 +331,9 @@ func (c *ServiceConfig) handleAddService(obj interface{}) {
 		return
 	}
 	for i := range c.eventHandlers {
-		klog.V(4).Info("Calling handler.OnServiceAdd")
+		klog.V(1).Infof("Calling handler.OnServiceAdd %s/%s", service.Namespace, service.Name)
 		c.eventHandlers[i].OnServiceAdd(service)
+		klog.V(1).Infof("done handler.OnServiceAdd %s/%s", service.Namespace, service.Name)
 	}
 }
 
@@ -346,8 +349,9 @@ func (c *ServiceConfig) handleUpdateService(oldObj, newObj interface{}) {
 		return
 	}
 	for i := range c.eventHandlers {
-		klog.V(4).Info("Calling handler.OnServiceUpdate")
+		klog.V(1).Infof("Calling handler.OnServiceUpdate %s/%s %s -> %s", service.Namespace, service.Name, oldService.ResourceVersion, service.ResourceVersion)
 		c.eventHandlers[i].OnServiceUpdate(oldService, service)
+		klog.V(1).Infof("Done handler.OnServiceUpdate %s/%s %s -> %s", service.Namespace, service.Name, oldService.ResourceVersion, service.ResourceVersion)
 	}
 }
 
@@ -365,7 +369,7 @@ func (c *ServiceConfig) handleDeleteService(obj interface{}) {
 		}
 	}
 	for i := range c.eventHandlers {
-		klog.V(4).Info("Calling handler.OnServiceDelete")
+		klog.V(1).Info("Calling handler.OnServiceDelete")
 		c.eventHandlers[i].OnServiceDelete(service)
 	}
 }

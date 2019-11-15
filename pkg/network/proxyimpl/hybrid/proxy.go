@@ -114,17 +114,18 @@ func (p *HybridProxier) OnServiceUpdate(oldService, service *corev1.Service) {
 	}
 
 	p.usingUserspaceLock.Lock()
-	defer p.usingUserspaceLock.Unlock()
 
 	// NB: usingUserspace can only change in the endpoints handler,
 	// so that should deal with calling OnServiceDelete on switches
 	if isUsingUserspace, ok := p.usingUserspace[svcName]; ok && isUsingUserspace {
-		klog.V(6).Infof("hybrid proxy: update svc %s/%s in unidling proxy", service.Namespace, service.Name)
+		defer klog.V(1).Infof("hybrid proxy: updated svc %s/%s in unidling proxy", service.Namespace, service.Name)
 		p.unidlingProxy.OnServiceUpdate(oldService, service)
 	} else {
-		klog.V(6).Infof("hybrid proxy: update svc %s/%s in main proxy", service.Namespace, service.Name)
+		defer klog.V(1).Infof("hybrid proxy: updated svc %s/%s in main pr oxy", service.Namespace, service.Name)
 		p.mainProxy.OnServiceUpdate(oldService, service)
 	}
+
+	p.usingUserspaceLock.Unlock()
 }
 
 func (p *HybridProxier) OnServiceDelete(service *corev1.Service) {
