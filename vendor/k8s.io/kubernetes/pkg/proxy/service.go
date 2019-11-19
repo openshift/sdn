@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/klog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
@@ -237,8 +237,12 @@ func (sct *ServiceChangeTracker) Update(previous, current *v1.Service) bool {
 		sct.items[namespacedName] = change
 	}
 	change.current = sct.serviceToServiceMap(current)
+
+	klog.V(1).Infof("Comparing previous change %+v with current change %+v", change.previous, change.current)
+
 	// if change.previous equal to change.current, it means no change
 	if reflect.DeepEqual(change.previous, change.current) {
+		klog.V(1).Infof("Compared and found equal previous change %+v with current change %+v", change.previous, change.current)
 		delete(sct.items, namespacedName)
 	}
 	metrics.ServiceChangesPending.Set(float64(len(sct.items)))
