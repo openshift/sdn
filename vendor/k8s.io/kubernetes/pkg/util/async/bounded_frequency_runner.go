@@ -218,7 +218,7 @@ func (bfr *BoundedFrequencyRunner) tryRun() {
 		bfr.lastRun = bfr.timer.Now()
 		bfr.timer.Stop()
 		bfr.timer.Reset(bfr.maxInterval)
-		klog.V(3).Infof("%s: ran, next possible in %v, periodic in %v", bfr.name, bfr.minInterval, bfr.maxInterval)
+		klog.V(2).Infof("%s: ran, next possible in %v, periodic in %v", bfr.name, bfr.minInterval, bfr.maxInterval)
 		return
 	}
 
@@ -234,6 +234,6 @@ func (bfr *BoundedFrequencyRunner) tryRun() {
 		// it might get a delivery in the mean time, but that is OK.
 		bfr.timer.Stop()
 		bfr.timer.Reset(nextPossible)
-		klog.V(3).Infof("%s: throttled, scheduling run in %v", bfr.name, nextPossible)
+		klog.V(2).Infof("%s: throttled, scheduling run in %v", bfr.name, nextPossible)
 	}
 }
