@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/klog"
 
@@ -239,7 +240,7 @@ func (sct *ServiceChangeTracker) Update(previous, current *v1.Service) bool {
 	change.current = sct.serviceToServiceMap(current)
 
 	klog.V(2).Infof("Comparing previous change %+v with current change %+v", change.previous, change.current)
-
+	time.Sleep(100 * time.Millisecond)
 	// if change.previous equal to change.current, it means no change
 	if reflect.DeepEqual(change.previous, change.current) {
 		//klog.V(1).Infof("Compared and found equal previous change %+v with current change %+v", change.previous, change.current)

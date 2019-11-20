@@ -322,7 +322,7 @@ func NewProxier(ipt utiliptables.Interface,
 		networkInterfacer:        utilproxy.RealNetwork{},
 	}
 	burstSyncs := 2
-	klog.V(3).Infof("minSyncPeriod: %v, syncPeriod: %v, burstSyncs: %d", minSyncPeriod, syncPeriod, burstSyncs)
+	klog.V(2).Infof("minSyncPeriod: %v, syncPeriod: %v, burstSyncs: %d", minSyncPeriod, syncPeriod, burstSyncs)
 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
 	return proxier, nil
 }
