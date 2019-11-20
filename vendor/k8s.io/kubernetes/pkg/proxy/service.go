@@ -238,11 +238,11 @@ func (sct *ServiceChangeTracker) Update(previous, current *v1.Service) bool {
 	}
 	change.current = sct.serviceToServiceMap(current)
 
-	klog.V(1).Infof("Comparing previous change %+v with current change %+v", change.previous, change.current)
+	klog.V(2).Infof("Comparing previous change %+v with current change %+v", change.previous, change.current)
 
 	// if change.previous equal to change.current, it means no change
 	if reflect.DeepEqual(change.previous, change.current) {
-		klog.V(1).Infof("Compared and found equal previous change %+v with current change %+v", change.previous, change.current)
+		//klog.V(1).Infof("Compared and found equal previous change %+v with current change %+v", change.previous, change.current)
 		delete(sct.items, namespacedName)
 	}
 	metrics.ServiceChangesPending.Set(float64(len(sct.items)))
