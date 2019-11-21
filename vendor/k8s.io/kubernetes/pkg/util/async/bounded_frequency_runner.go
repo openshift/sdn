@@ -219,6 +219,7 @@ func (bfr *BoundedFrequencyRunner) tryRun() {
 		bfr.timer.Stop()
 		bfr.timer.Reset(bfr.maxInterval)
 		klog.V(2).Infof("%s: ran, next possible in %v, periodic in %v", bfr.name, bfr.minInterval, bfr.maxInterval)
+		time.Sleep(5 * time.Millisecond)
 		return
 	}
 
@@ -227,13 +228,13 @@ func (bfr *BoundedFrequencyRunner) tryRun() {
 	elapsed := bfr.timer.Since(bfr.lastRun)    // how long since last run
 	nextPossible := bfr.minInterval - elapsed  // time to next possible run
 	nextScheduled := bfr.maxInterval - elapsed // time to next periodic run
-	klog.V(4).Infof("%s: %v since last run, possible in %v, scheduled in %v", bfr.name, elapsed, nextPossible, nextScheduled)
+	klog.V(2).Infof("%s: %v since last run, possible in %v, scheduled in %v", bfr.name, elapsed, nextPossible, nextScheduled)
 
 	if nextPossible < nextScheduled {
 		// Set the timer for ASAP, but don't drain here.  Assuming Loop is running,
 		// it might get a delivery in the mean time, but that is OK.
 		bfr.timer.Stop()
 		bfr.timer.Reset(nextPossible)
-		klog.V(3).Infof("%s: throttled, scheduling run in %v", bfr.name, nextPossible)
+		klog.V(2).Infof("%s: throttled, scheduling run in %v", bfr.name, nextPossible)
 	}
 }
