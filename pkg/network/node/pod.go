@@ -275,6 +275,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		if err != nil {
 			PodOperationsErrors.WithLabelValues(PodOperationSetup).Inc()
 			result.Err = err
+			klog.Errorf("sandbox setup for %s failed: %v", pk, err)
 		}
 	case cniserver.CNI_UPDATE:
 		vnid, err := m.podHandler.update(request)
@@ -282,8 +283,10 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 			if runningPod, exists := m.runningPods[pk]; exists {
 				runningPod.vnid = vnid
 			}
+		} else {
+			result.Err = err
+			klog.Errorf("sandbox update for %s failed: %v", pk, err)
 		}
-		result.Err = err
 	case cniserver.CNI_DEL:
 		if runningPod, exists := m.runningPods[pk]; exists {
 			delete(m.runningPods, pk)
@@ -294,9 +297,11 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		result.Err = m.podHandler.teardown(request)
 		if result.Err != nil {
 			PodOperationsErrors.WithLabelValues(PodOperationTeardown).Inc()
+			klog.Errorf("sandbox teardown for %s failed: %v", pk, err)
 		}
 	default:
 		result.Err = fmt.Errorf("unhandled CNI request %v", request.Command)
+		klog.Errorf("sandbox operation for %s failed: %v", pk, result.Err)
 	}
 	return result
 }
