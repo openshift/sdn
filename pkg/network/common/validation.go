@@ -63,7 +63,7 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 				allErrs = append(allErrs, field.Invalid(field.NewPath("hostsubnetlength"), clusterNet.HostSubnetLength, "subnet length must be at least 2"))
 			}
 
-			if (clusterIPNet != nil) && (serviceIPNet != nil) && CIDRsOverlap(clusterIPNet.String(), serviceIPNet.String()) {
+			if (clusterIPNet != nil) && (serviceIPNet != nil) && cidrsOverlap(clusterIPNet, serviceIPNet) {
 				allErrs = append(allErrs, field.Invalid(field.NewPath("serviceNetwork"), clusterNet.ServiceNetwork, "service network overlaps with cluster network"))
 			}
 		}
@@ -97,13 +97,13 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 		}
 
 		for _, cidr := range testedCIDRS {
-			if CIDRsOverlap(clusterIPNet.String(), cidr.String()) {
+			if cidrsOverlap(clusterIPNet, cidr) {
 				allErrs = append(allErrs, field.Invalid(field.NewPath("clusterNetworks").Index(i).Child("cidr"), cn.CIDR, fmt.Sprintf("cidr range overlaps with another cidr %q", cidr.String())))
 			}
 		}
 		testedCIDRS = append(testedCIDRS, clusterIPNet)
 
-		if (clusterIPNet != nil) && (serviceIPNet != nil) && CIDRsOverlap(clusterIPNet.String(), serviceIPNet.String()) {
+		if (clusterIPNet != nil) && (serviceIPNet != nil) && cidrsOverlap(clusterIPNet, serviceIPNet) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("serviceNetwork"), clusterNet.ServiceNetwork, fmt.Sprintf("service network overlaps with cluster network cidr: %s", clusterIPNet.String())))
 		}
 	}
@@ -163,14 +163,6 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	}
 }
 
-func CIDRsOverlap(cidr1, cidr2 string) bool {
-	_, ipNet1, err := net.ParseCIDR(cidr1)
-	if err != nil {
-		return false
-	}
-	_, ipNet2, err := net.ParseCIDR(cidr2)
-	if err != nil {
-		return false
-	}
-	return ipNet1.Contains(ipNet2.IP) || ipNet2.Contains(ipNet1.IP)
+func cidrsOverlap(cidr1, cidr2 *net.IPNet) bool {
+	return cidr1.Contains(cidr2.IP) || cidr2.Contains(cidr1.IP)
 }
