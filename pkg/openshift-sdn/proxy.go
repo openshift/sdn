@@ -166,7 +166,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	// are registered yet.
 	serviceConfig := pconfig.NewServiceConfig(
 		sdn.informers.KubeInformers.Core().V1().Services(),
-		sdn.ProxyConfig.ConfigSyncPeriod.Duration,
+		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 	)
 
 	if enableUnidling {
@@ -194,7 +194,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	endpointsConfig := pconfig.NewEndpointsConfig(
 		sdn.informers.KubeInformers.Core().V1().Endpoints(),
-		sdn.ProxyConfig.ConfigSyncPeriod.Duration,
+		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 	)
 	// customized handling registration that inserts a filter if needed
 	if err := sdn.OsdnProxy.Start(proxier, waitChan); err != nil {
