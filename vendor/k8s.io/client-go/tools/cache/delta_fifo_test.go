@@ -105,7 +105,7 @@ func TestDeltaFIFO_replaceWithDeleteDeltaIn(t *testing.T) {
 	actualDeltas := Pop(f)
 	expectedDeltas := Deltas{
 		Delta{Type: Deleted, Object: oldObj},
-		Delta{Type: Sync, Object: newObj},
+		Delta{Type: Replaced, Object: newObj},
 	}
 	if !reflect.DeepEqual(expectedDeltas, actualDeltas) {
 		t.Errorf("expected %#v, got %#v", expectedDeltas, actualDeltas)
@@ -284,6 +284,24 @@ func TestDeltaFIFO_ResyncNonExisting(t *testing.T) {
 	}
 }
 
+func TestDeltaFIFO_Resync(t *testing.T) {
+	f := NewDeltaFIFO(
+		testFifoObjectKeyFunc,
+		keyLookupFunc(func() []testFifoObject {
+			return []testFifoObject{mkFifoObj("foo", 5)}
+		}),
+	)
+	f.Resync()
+
+	deltas := f.items["foo"]
+	if len(deltas) != 1 {
+		t.Fatalf("unexpected deltas length: %v", deltas)
+	}
+	if deltas[0].Type != Sync {
+		t.Errorf("unexpected delta: %v", deltas[0])
+	}
+}
+
 func TestDeltaFIFO_DeleteExistingNonPropagated(t *testing.T) {
 	f := NewDeltaFIFO(
 		testFifoObjectKeyFunc,
@@ -315,7 +333,7 @@ func TestDeltaFIFO_ReplaceMakesDeletions(t *testing.T) {
 
 	expectedList := []Deltas{
 		{{Deleted, mkFifoObj("baz", 10)}},
-		{{Sync, mkFifoObj("foo", 5)}},
+		{{Replaced, mkFifoObj("foo", 5)}},
 		// Since "bar" didn't have a delete event and wasn't in the Replace list
 		// it should get a tombstone key with the right Obj.
 		{{Deleted, DeletedFinalStateUnknown{Key: "bar", Obj: mkFifoObj("bar", 6)}}},
@@ -361,7 +379,7 @@ func TestDeltaFIFO_HasSyncedCorrectOnDeletion(t *testing.T) {
 	f.Replace([]interface{}{mkFifoObj("foo", 5)}, "0")
 
 	expectedList := []Deltas{
-		{{Sync, mkFifoObj("foo", 5)}},
+		{{Replaced, mkFifoObj("foo", 5)}},
 		// Since "bar" didn't have a delete event and wasn't in the Replace list
 		// it should get a tombstone key with the right Obj.
 		{{Deleted, DeletedFinalStateUnknown{Key: "bar", Obj: mkFifoObj("bar", 6)}}},

@@ -445,7 +445,7 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 			return KeyError{item, err}
 		}
 		keys.Insert(key)
-		if err := f.queueActionLocked(Sync, item); err != nil {
+		if err := f.queueActionLocked(Replaced, item); err != nil {
 			return fmt.Errorf("couldn't enqueue object: %v", err)
 		}
 	}
@@ -584,10 +584,10 @@ const (
 	Added   DeltaType = "Added"
 	Updated DeltaType = "Updated"
 	Deleted DeltaType = "Deleted"
-	// The other types are obvious. You'll get Sync deltas when:
-	//  * A watch expires/errors out and a new list/watch cycle is started.
-	//  * You've turned on periodic syncs.
-	// (Anything that trigger's DeltaFIFO's Replace() method.)
+	// Replaced is emitted when we encountered watch errors and had to do a
+	// relist. We don't know if the newly relisted object has changed.
+	Replaced DeltaType = "Replaced"
+	// Sync is for synthetic events during a periodic resync.
 	Sync DeltaType = "Sync"
 )
 

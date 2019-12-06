@@ -357,7 +357,7 @@ func newInformer(
 			// from oldest to newest
 			for _, d := range obj.(Deltas) {
 				switch d.Type {
-				case Sync, Added, Updated:
+				case Sync, Added, Updated, Replaced:
 					if old, exists, err := clientState.Get(d.Object); err == nil && exists {
 						if err := clientState.Update(d.Object); err != nil {
 							return err

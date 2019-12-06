@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/clock"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -452,10 +453,14 @@ func (s *sharedIndexInformer) HandleDeltas(obj interface{}) error {
 	// from oldest to newest
 	for _, d := range obj.(Deltas) {
 		switch d.Type {
-		case Sync, Added, Updated:
+		case Sync, Added, Updated, Replaced:
 			isSync := d.Type == Sync
 			s.cacheMutationDetector.AddObject(d.Object)
 			if old, exists, err := s.indexer.Get(d.Object); err == nil && exists {
+				// If the delta is from a relist, and the RV hasn't changed, elide it.
+				if d.Type == Replaced && isObjectSame(old, d.Object) {
+					continue
+				}
 				if err := s.indexer.Update(d.Object); err != nil {
 					return err
 				}
@@ -698,4 +703,37 @@ func (p *processorListener) setResyncPeriod(resyncPeriod time.Duration) {
 	defer p.resyncLock.Unlock()
 
 	p.resyncPeriod = resyncPeriod
+}
+
+// if oldObj and newObj have same ResourceVersion and UID
+func isObjectSame(oldObj, newObj interface{}) bool {
+	oldRO, ok := oldObj.(runtime.Object)
+	if !ok {
+		return false
+	}
+
+	newRO, ok := newObj.(runtime.Object)
+	if !ok {
+		return false
+	}
+
+	oldRV, err := meta.NewAccessor().ResourceVersion(oldRO)
+	if err != nil {
+		return false
+	}
+	oldUID, err := meta.NewAccessor().UID(oldRO)
+	if err != nil {
+		return false
+	}
+
+	newRV, err := meta.NewAccessor().ResourceVersion(newRO)
+	if err != nil {
+		return false
+	}
+	newUID, err := meta.NewAccessor().UID(newRO)
+	if err != nil {
+		return false
+	}
+
+	return oldRV == newRV && oldUID == newUID
 }
