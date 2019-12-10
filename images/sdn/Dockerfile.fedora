@@ -9,6 +9,7 @@ FROM fedora:30
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node
 COPY --from=builder /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller
 COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
+COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
 RUN INSTALL_PKGS=" \
       openvswitch container-selinux socat ethtool nmap-ncat \

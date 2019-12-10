@@ -8,6 +8,7 @@ FROM registry.svc.ci.openshift.org/ocp/4.2:base
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node
 COPY --from=builder /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller
 COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
+COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
 RUN INSTALL_PKGS=" \
       openvswitch2.11 container-selinux socat ethtool nmap-ncat \
