@@ -2,4 +2,5 @@
 /sdn-cni-plugin
 /network-controller
 /kube-proxy
+/host-local
 

@@ -3,6 +3,7 @@ all: build
 
 GO_BUILD_PACKAGES = \
     ./cmd/... \
+    ./vendor/github.com/containernetworking/plugins/plugins/ipam/host-local \
     ./vendor/k8s.io/kubernetes/cmd/kube-proxy
 
 # Include the library makefile
