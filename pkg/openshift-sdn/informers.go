@@ -1,7 +1,6 @@
 package openshift_sdn
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -15,7 +14,6 @@ import (
 	kinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/proxy/apis"
 )
 
@@ -69,9 +67,6 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 
 	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
 
-	kubeInformers.Core().V1().Services().Informer().AddEventHandler(eventHandlingLogger{})
-	kubeInformers.Core().V1().Endpoints().Informer().AddEventHandler(eventHandlingLogger{})
-
 	sdn.informers = &informers{
 		KubeClient:    kubeClient,
 		NetworkClient: networkClient,
@@ -124,26 +119,4 @@ func defaultClientTransport(rt http.RoundTripper) http.RoundTripper {
 func applyClientConnectionOverrides(kubeConfig *rest.Config) {
 	kubeConfig.QPS = 10.0
 	kubeConfig.Burst = 20
-}
-
-type eventHandlingLogger struct{}
-
-func describe(obj interface{}) string {
-	if svc, ok := obj.(*v1.Service); ok {
-		return fmt.Sprintf("%+v", svc)
-	} else if ep, ok := obj.(*v1.Endpoints); ok {
-		return fmt.Sprintf("%+v", ep)
-	} else {
-		return fmt.Sprintf("%T", obj)
-	}
-}
-
-func (eventHandlingLogger) OnAdd(obj interface{}) {
-	klog.Infof("ADD %s", describe(obj))
-}
-func (eventHandlingLogger) OnUpdate(oldObj, newObj interface{}) {
-	klog.Infof("UPDATE %s -> %s", describe(oldObj), describe(newObj))
-}
-func (eventHandlingLogger) OnDelete(obj interface{}) {
-	klog.Infof("DELETE %s", describe(obj))
 }
