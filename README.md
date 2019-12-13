@@ -9,6 +9,14 @@ Operator](https://github.com/openshift/cluster-network-operator), and
 certain components of it (such as the Deployment and DaemonSet
 objects) are found there.
 
+This module defines two images: the [sdn](./images/sdn) image, which
+contains OpenShift SDN (both controller and node components) and the
+[kube-proxy](./images/kube-proxy) image, which is deployed by the
+Network Operator for third-party network plugins that need it.
+(Kube-proxy is built from here rather than from the origin repo so
+that we only have to maintain kube-proxy bugfix/security backports in
+one place.)
+
 ## OpenShift SDN Types
 
 For historical reasons, OpenShift SDN's types are defined in the
@@ -24,8 +32,7 @@ Network Operator creates the CRD definitions.
 
 ## The OpenShift SDN Controller
 
-The [sdn-controller image](./images/sdn-controller) contains the
-[network controller](./cmd/network-controller) binary, which is run on
+The [network controller](./cmd/network-controller) is run on
 the masters to handle cluster-level processing:
 
   - Creating `NetNamespace` objects corresponding to `Namespace`s
@@ -40,16 +47,14 @@ Operator.
 
 ## OpenShift SDN Nodes
 
-The [node image](./images/node) contains the [`openshift-sdn`
-daemon](./cmd/openshift-sdn), which runs on every node, as well as the
-[`openshift-sdn` CNI plugin](./cmd/sdn-cni-plugin), which is a small
-shim that just talks to the daemon.
+The [`openshift-sdn` daemon](./cmd/openshift-sdn) runs on every node,
+reads the `ClusterNetwork` object and the `HostSubnet` object for the
+node it is running on, and uses that information to configure the node
+as part of the cluster. This includes:
 
-The daemon reads the `ClusterNetwork` object and the `HostSubnet`
-object for the node it is running on, and uses that information to
-configure the node as part of the cluster. This includes:
-
-  - Providing networking to Pods, as requested by the CNI plugin.
+  - Providing networking to Pods, as requested by the [`openshift-sdn`
+    CNI plugin](./cmd/sdn-cni-plugin) (which is a small shim that just
+    talks to the daemon).
 
   - Setting up the OVS bridge, and managing OVS flows as needed for
     Pods, Services, NetworkPolicy, and EgressNetworkPolicy; and adding
