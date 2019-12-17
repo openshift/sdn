@@ -21,8 +21,6 @@ include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machine
 # $4 - context directory for image build
 # It will generate target "image-$(1)" for builing the image and binding it as a prerequisite to target "images".
 $(call build-image,sdn,origin-sdn,./images/sdn/Dockerfile,.)
-$(call build-image,node,origin-node,./images/node/Dockerfile,.)
-$(call build-image,sdn-controller,origin-sdn-controller,./images/sdn-controller/Dockerfile,.)
 $(call build-image,kube-proxy,origin-kube-proxy,./images/kube-proxy/Dockerfile,.)
 
 # The "real" Dockerfiles depend on OVS from the Fast Datapath channel, which requires
