@@ -57,6 +57,14 @@ func (n *NodeIPTables) Setup() error {
 	return nil
 }
 
+// FinishSetup performs bootstrap action that must be made after kube-proxy
+// initialization
+func (n *NodeIPTables) FinishSetup() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.syncIPTableChains(n.getNodeIPTablesPreChains())
+}
+
 // syncLoop periodically calls syncIPTableRules().
 // This is expected to run as a go routine or as the main loop. It does not return.
 func (n *NodeIPTables) syncLoop() {
@@ -95,19 +103,7 @@ func (n *NodeIPTables) addChainRules(chain Chain) (bool, error) {
 	return allExisted, nil
 }
 
-// syncIPTableRules syncs the cluster network cidr iptables rules.
-// Called from SyncLoop() or firewalld reload()
-func (n *NodeIPTables) syncIPTableRules() error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	start := time.Now()
-	defer func() {
-		klog.V(4).Infof("syncIPTableRules took %v", time.Since(start))
-	}()
-	klog.V(3).Infof("Syncing openshift iptables rules")
-
-	chains := n.getNodeIPTablesChains()
+func (n *NodeIPTables) syncIPTableChains(chains []Chain) error {
 	for i := len(chains) - 1; i >= 0; i-- {
 		chain := chains[i]
 		// Create chain if it does not already exist
@@ -144,6 +140,25 @@ func (n *NodeIPTables) syncIPTableRules() error {
 			}
 		}
 	}
+	return nil
+}
+
+// syncIPTableRules syncs the cluster network cidr iptables rules.
+// Called from SyncLoop() or firewalld reload()
+func (n *NodeIPTables) syncIPTableRules() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	start := time.Now()
+	defer func() {
+		klog.V(4).Infof("syncIPTableRules took %v", time.Since(start))
+	}()
+	klog.V(3).Infof("Syncing openshift iptables rules")
+
+	err := n.syncIPTableChains(n.getNodeIPTablesPostChains())
+	if err != nil {
+		return err
+	}
 
 	for egressIP, mark := range n.egressIPs {
 		if err := n.ensureEgressIPRules(egressIP, mark); err != nil {
@@ -154,8 +169,28 @@ func (n *NodeIPTables) syncIPTableRules() error {
 	return nil
 }
 
-func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
+// getNodeIPTablesPreChains returns the chains that must be added before
+// kube-proxy's chains
+func (n *NodeIPTables) getNodeIPTablesPreChains() []Chain {
+	var chainArray []Chain
+	chainArray = append(chainArray,
+		Chain{
+			table:    "nat",
+			name:     "OPENSHIFT-PREROUTING",
+			srcChain: "PREROUTING",
+			srcRule:  []string{"-m", "comment", "--comment", "rules for prerouting OpenShift traffic"},
+			rules: [][]string{
+				{"-m", "mark", "--mark", "0x1/0x1", "-m", "comment", "--comment", "KUBE-MARK-MASQ pass", "-j", "RETURN"},
+				{"-m", "mark", "!", "--mark", "0x0", "-m", "comment", "--comment", "egress ip mark skip ", "-j", "ACCEPT"},
+			},
+		},
+	)
+	return chainArray
+}
 
+// getNodeIPTablesPostChains returns the chains that must be added after
+// kube-proxy's chains
+func (n *NodeIPTables) getNodeIPTablesPostChains() []Chain {
 	var chainArray []Chain
 
 	chainArray = append(chainArray,

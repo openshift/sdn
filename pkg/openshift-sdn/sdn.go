@@ -39,6 +39,12 @@ func (sdn *OpenShiftSDN) runSDN() error {
 	return sdn.OsdnNode.Start()
 }
 
+// finishInit runs the steps of the sdn that must be done after kube-proxy
+// is initialized
+func (sdn *OpenShiftSDN) finishInit() error {
+	return sdn.OsdnNode.FinishInit()
+}
+
 func (sdn *OpenShiftSDN) writeConfigFile() error {
 	// Make an event that openshift-sdn started
 	sdn.sdnRecorder.Eventf(&kclientv1.ObjectReference{Kind: "Node", Name: sdn.nodeName}, kclientv1.EventTypeNormal, "Starting", "openshift-sdn done initializing node networking.")

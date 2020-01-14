@@ -170,6 +170,11 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 
 	klog.V(2).Infof("openshift-sdn network plugin waiting for proxy startup to complete")
 	<-proxyInitChan
+	klog.V(2).Infof("openshift-sdn proxy startup complete")
+	err = sdn.finishInit()
+	if err != nil {
+		return err
+	}
 	klog.V(2).Infof("openshift-sdn network plugin registering startup")
 	if err := sdn.writeConfigFile(); err != nil {
 		klog.Fatal(err)

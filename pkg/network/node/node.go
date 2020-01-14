@@ -94,6 +94,7 @@ type OsdnNode struct {
 	useConnTrack       bool
 	iptablesSyncPeriod time.Duration
 	masqueradeBit      uint32
+	nodeIPTables       *NodeIPTables
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
@@ -393,9 +394,9 @@ func (node *OsdnNode) Start() error {
 	for _, cn := range node.networkInfo.ClusterNetworks {
 		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
-	nodeIPTables := newNodeIPTables(node.clusterCIDRs, node.iptablesSyncPeriod, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	node.nodeIPTables = newNodeIPTables(node.clusterCIDRs, node.iptablesSyncPeriod, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
 
-	if err = nodeIPTables.Setup(); err != nil {
+	if err = node.nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
 	}
 
@@ -414,7 +415,7 @@ func (node *OsdnNode) Start() error {
 		if err := node.SetupEgressNetworkPolicy(); err != nil {
 			return err
 		}
-		if err := node.egressIP.Start(node.networkInformers, nodeIPTables); err != nil {
+		if err := node.egressIP.Start(node.networkInformers, node.nodeIPTables); err != nil {
 			return err
 		}
 	}
@@ -458,6 +459,10 @@ func (node *OsdnNode) Start() error {
 	}, time.Minute*2)
 
 	return nil
+}
+
+func (node *OsdnNode) FinishInit() error {
+	return node.nodeIPTables.FinishSetup()
 }
 
 // reattachPods takes an array containing the information about pods that had been
