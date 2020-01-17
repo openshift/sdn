@@ -20,6 +20,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/reference"
+	"github.com/docker/distribution/registry/api/errcode"
 	registryclient "github.com/docker/distribution/registry/client"
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/auth/challenge"
@@ -369,8 +370,20 @@ func isTemporaryHTTPError(err error) (time.Duration, bool) {
 	switch t := err.(type) {
 	case net.Error:
 		return time.Second, t.Temporary() || t.Timeout()
+	case errcode.ErrorCoder:
+		// note: we explicitly do not check errcode.ErrorCodeUnknown because that is used in
+		// a wide range of scenarios to convey "generic error", not "retryable error"
+		switch t.ErrorCode() {
+		case errcode.ErrorCodeUnavailable:
+			return 5 * time.Second, true
+		case errcode.ErrorCodeTooManyRequests:
+			return 2 * time.Second, true
+		}
 	case *registryclient.UnexpectedHTTPResponseError:
-		if t.StatusCode == http.StatusTooManyRequests {
+		switch t.StatusCode {
+		case http.StatusInternalServerError, http.StatusGatewayTimeout, http.StatusServiceUnavailable, http.StatusBadGateway:
+			return 5 * time.Second, true
+		case http.StatusTooManyRequests:
 			return 2 * time.Second, true
 		}
 	}
@@ -572,6 +585,20 @@ func (m manifestServiceVerifier) Get(ctx context.Context, dgst digest.Digest, op
 		}
 	}
 	return manifest, nil
+}
+
+// Put ensures the manifest is hashable to the returned digest, or returns no digest and an error.
+func (m manifestServiceVerifier) Put(ctx context.Context, manifest distribution.Manifest, options ...distribution.ManifestServiceOption) (digest.Digest, error) {
+	dgst, err := m.ManifestService.Put(ctx, manifest, options...)
+	if err != nil {
+		return "", err
+	}
+	if len(dgst) > 0 {
+		if err := VerifyManifestIntegrity(manifest, dgst); err != nil {
+			return "", err
+		}
+	}
+	return dgst, nil
 }
 
 // VerifyManifestIntegrity checks the provided manifest against the specified digest and returns an error

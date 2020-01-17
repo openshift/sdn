@@ -1,5 +1,5 @@
-hash: fe2a7c96379eea12b4d795eb2fbf020546bc105c7ea525276b4e3f676b9b27b2
-updated: 2020-01-22T14:28:36.466487844+01:00
+hash: d84bcdf85f9a63348ccb7514cfea8f28d613f65c21cfd7358440740f651355cf
+updated: 2020-01-22T14:32:41.815397621+01:00
 imports:
 - name: github.com/Azure/go-ansiterm
   version: d6e3b3328b783f23731bc4d058875b0371ff8109
@@ -30,16 +30,25 @@ imports:
   - pkg/ns
   - pkg/utils/hwaddr
 - name: github.com/coreos/etcd
-  version: 27fc7e2296f506182f58ce846e48f36b34fe6842
+  version: 94745a4eed0425653b3b4275a208d38babceeaec
   subpackages:
   - auth/authpb
   - clientv3
+  - clientv3/balancer
+  - clientv3/balancer/connectivity
+  - clientv3/balancer/picker
+  - clientv3/balancer/resolver/endpoint
+  - clientv3/credentials
   - etcdserver/api/v3rpc/rpctypes
   - etcdserver/etcdserverpb
   - mvcc/mvccpb
+  - pkg/logutil
+  - pkg/systemd
   - pkg/tlsutil
   - pkg/transport
   - pkg/types
+  - raft
+  - raft/raftpb
 - name: github.com/coreos/go-iptables
   version: 259c8e6a4275d497442c721fa52204d7a58bde8b
   subpackages:
@@ -48,6 +57,11 @@ imports:
   version: e64a0ec8b42a61e2a9801dc1d0abe539dea79197
   subpackages:
   - daemon
+  - journal
+- name: github.com/coreos/pkg
+  version: 97fdf19511ea361ae1c100dd393cc47f8dcfa1e1
+  subpackages:
+  - capnslog
 - name: github.com/davecgh/go-spew
   version: 8991bc29aa16c548c550c7ff78260e27b9ab7c73
   subpackages:
@@ -114,6 +128,7 @@ imports:
   version: b5d812f8a3706043e23a9cd5babf2e5423744d30
   subpackages:
   - proto
+  - protoc-gen-go/descriptor
   - ptypes
   - ptypes/any
   - ptypes/duration
@@ -224,13 +239,13 @@ imports:
   subpackages:
   - specs-go
 - name: github.com/openshift/api
-  version: 169848dd81372b8176b925c10b37a05424db5f2f
+  version: 2987a591a72cee08898c93dcc09816783d39a5bc
   subpackages:
   - config/v1
   - network/v1
   - unidling/v1alpha1
 - name: github.com/openshift/client-go
-  version: 6afefc9bb37281f45d12d624156e39e363eaf4fd
+  version: f6563a70e19a12b2f240eaf4e716ef75baf7003e
   subpackages:
   - network/clientset/versioned
   - network/clientset/versioned/scheme
@@ -241,7 +256,7 @@ imports:
   - network/informers/externalversions/network/v1
   - network/listers/network/v1
 - name: github.com/openshift/library-go
-  version: 76b67dd70a86d147ea3e7677aa5f9682ff94770f
+  version: e8b3a065ded2917960eb402ccba30d90433c17f3
   subpackages:
   - pkg/config/leaderelection
   - pkg/network/networkapihelpers
@@ -306,6 +321,18 @@ imports:
   - trace
   - trace/internal
   - trace/tracestate
+- name: go.uber.org/atomic
+  version: 8dc6146f7569370a472715e178d8ae31172ee6da
+- name: go.uber.org/multierr
+  version: ddea229ff1dff9e6fe8a6c0344ac73b09e81fce5
+- name: go.uber.org/zap
+  version: 67bc79d13d155c02fd008f721863ff8cc5f30659
+  subpackages:
+  - buffer
+  - internal/bufferpool
+  - internal/color
+  - internal/exit
+  - zapcore
 - name: golang.org/x/crypto
   version: e84da0312774c21d64ee2317962ef669b27ffb41
   subpackages:
@@ -378,6 +405,7 @@ imports:
 - name: google.golang.org/genproto
   version: e7d98fc518a78c9f8b5ee77be7b0b317475d89e1
   subpackages:
+  - googleapis/api/annotations
   - googleapis/rpc/status
 - name: google.golang.org/grpc
   version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
@@ -391,7 +419,6 @@ imports:
   - encoding
   - encoding/proto
   - grpclog
-  - health/grpc_health_v1
   - internal
   - internal/backoff
   - internal/channelz
