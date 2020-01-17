@@ -25,11 +25,11 @@ import:
 
 # openshift second
 - package: github.com/openshift/api
-  version: prebase-1.16
+  version: release-4.3
 - package: github.com/openshift/client-go
-  version: prebase-1.16
+  version: release-4.3
 - package: github.com/openshift/library-go
-  version: prebase-1.16
+  version: release-4.3
 
 # ours: shared with kube, but forced by openshift
 # master: co-exist with klog
@@ -47,3 +47,6 @@ import:
 # used to be ~v1 to keep up with fixes.  It didn't build past v1.0.8.
 - package: github.com/miekg/dns
   version: v1.0.8
+# something is trying to pull in the wrong version of this
+- package: github.com/Microsoft/go-winio
+  version: fc70bd9a86b5562b3b5eb1040e803febee1e90a1

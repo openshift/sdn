@@ -18,6 +18,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/errcode"
+	registryclient "github.com/docker/distribution/registry/client"
 	"github.com/opencontainers/go-digest"
 	"golang.org/x/net/context"
 )
@@ -320,7 +321,155 @@ func TestRetryFailure(t *testing.T) {
 		t.Fatalf("unexpected: %v %v %#v", m, err, r)
 	}
 
-	// retry four times
+	// verify docker known errors
+	repo = &mockRepository{
+		getErr: temporaryError{},
+		blobs: &mockBlobStore{
+			serveErr: errcode.ErrorCodeTooManyRequests.WithDetail(struct{}{}),
+			statErr:  errcode.ErrorCodeUnavailable.WithDetail(struct{}{}),
+			// not retriable
+			openErr: errcode.ErrorCodeUnknown.WithDetail(struct{}{}),
+		},
+	}
+	r = NewLimitedRetryRepository(repo, 4, unlimited).(*retryRepository)
+	sleeps = 0
+	r.sleepFn = sleepFn
+	if m, err = r.Manifests(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.retries = 1
+	if _, err := m.Get(ctx, digest.Digest("foo")); err != repo.getErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if m, err := m.Exists(ctx, "foo"); m || err != repo.getErr {
+		t.Fatalf("unexpected: %v %v %#v", m, err, r)
+	}
+	if sleeps != 3 {
+		t.Fatal(sleeps)
+	}
+
+	sleeps = 0
+	r.retries = 1
+	b := r.Blobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Stat(ctx, digest.Digest("x")); err != repo.blobs.statErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if err := b.ServeBlob(ctx, nil, nil, digest.Digest("foo")); err != repo.blobs.serveErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 4
+	if _, err := b.Open(ctx, digest.Digest("foo")); err != repo.blobs.openErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	// Open did not retry
+	if sleeps != 3 {
+		t.Fatal(sleeps)
+	}
+
+	// verify unknown client errors
+	repo = &mockRepository{
+		getErr: temporaryError{},
+		blobs: &mockBlobStore{
+			serveErr: &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusTooManyRequests},
+			statErr:  &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusServiceUnavailable},
+			openErr:  &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusInternalServerError},
+		},
+	}
+	r = NewLimitedRetryRepository(repo, 4, unlimited).(*retryRepository)
+	sleeps = 0
+	r.sleepFn = sleepFn
+	if m, err = r.Manifests(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.retries = 1
+	if _, err := m.Get(ctx, digest.Digest("foo")); err != repo.getErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if m, err := m.Exists(ctx, "foo"); m || err != repo.getErr {
+		t.Fatalf("unexpected: %v %v %#v", m, err, r)
+	}
+	if sleeps != 3 {
+		t.Fatal(sleeps)
+	}
+
+	sleeps = 0
+	r.retries = 1
+	b = r.Blobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Stat(ctx, digest.Digest("x")); err != repo.blobs.statErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if err := b.ServeBlob(ctx, nil, nil, digest.Digest("foo")); err != repo.blobs.serveErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 4
+	if _, err := b.Open(ctx, digest.Digest("foo")); err != repo.blobs.openErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	// Open did not retry
+	if sleeps != 7 {
+		t.Fatal(sleeps)
+	}
+
+	// verify more unknown client errors
+	repo = &mockRepository{
+		getErr: temporaryError{},
+		blobs: &mockBlobStore{
+			serveErr: &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusBadGateway},
+			statErr:  &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusGatewayTimeout},
+			openErr:  &registryclient.UnexpectedHTTPResponseError{StatusCode: http.StatusInternalServerError},
+		},
+	}
+	r = NewLimitedRetryRepository(repo, 4, unlimited).(*retryRepository)
+	sleeps = 0
+	r.sleepFn = sleepFn
+	if m, err = r.Manifests(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.retries = 1
+	if _, err := m.Get(ctx, digest.Digest("foo")); err != repo.getErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if m, err := m.Exists(ctx, "foo"); m || err != repo.getErr {
+		t.Fatalf("unexpected: %v %v %#v", m, err, r)
+	}
+	if sleeps != 3 {
+		t.Fatal(sleeps)
+	}
+
+	sleeps = 0
+	r.retries = 1
+	b = r.Blobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Stat(ctx, digest.Digest("x")); err != repo.blobs.statErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 2
+	if err := b.ServeBlob(ctx, nil, nil, digest.Digest("foo")); err != repo.blobs.serveErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	r.retries = 4
+	if _, err := b.Open(ctx, digest.Digest("foo")); err != repo.blobs.openErr {
+		t.Fatalf("unexpected: %v %#v", err, r)
+	}
+	// Open did not retry
+	if sleeps != 7 {
+		t.Fatal(sleeps)
+	}
+
+	// retry with temporary errors
 	repo = &mockRepository{
 		getErr: temporaryError{},
 		blobs: &mockBlobStore{
@@ -335,7 +484,7 @@ func TestRetryFailure(t *testing.T) {
 	if m, err = r.Manifests(ctx); err != nil {
 		t.Fatal(err)
 	}
-	r.retries = 2
+	r.retries = 1
 	if _, err := m.Get(ctx, digest.Digest("foo")); err != repo.getErr {
 		t.Fatalf("unexpected: %v %#v", err, r)
 	}
@@ -343,25 +492,8 @@ func TestRetryFailure(t *testing.T) {
 	if m, err := m.Exists(ctx, "foo"); m || err != repo.getErr {
 		t.Fatalf("unexpected: %v %v %#v", m, err, r)
 	}
-	if sleeps != 4 {
+	if sleeps != 3 {
 		t.Fatal(sleeps)
-	}
-
-	r.retries = 2
-	b := r.Blobs(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.Stat(ctx, digest.Digest("x")); err != repo.blobs.statErr {
-		t.Fatalf("unexpected: %v %#v", err, r)
-	}
-	r.retries = 2
-	if err := b.ServeBlob(ctx, nil, nil, digest.Digest("foo")); err != repo.blobs.serveErr {
-		t.Fatalf("unexpected: %v %#v", err, r)
-	}
-	r.retries = 2
-	if _, err := b.Open(ctx, digest.Digest("foo")); err != repo.blobs.openErr {
-		t.Fatalf("unexpected: %v %#v", err, r)
 	}
 }
 
@@ -415,6 +547,64 @@ func Test_verifyManifest_Get(t *testing.T) {
 	}
 }
 
+func Test_verifyManifest_Put(t *testing.T) {
+	tests := []struct {
+		name     string
+		dgst     digest.Digest
+		err      error
+		manifest distribution.Manifest
+		options  []distribution.ManifestServiceOption
+		want     digest.Digest
+		wantErr  string
+	}{
+		{
+			dgst:     payload1Digest,
+			manifest: &fakeManifest{payload: []byte(payload1)},
+			want:     payload1Digest,
+		},
+		{
+			dgst:     payload2Digest,
+			manifest: &fakeManifest{payload: []byte(payload2)},
+			want:     payload2Digest,
+		},
+		{
+			dgst:     payload1Digest,
+			manifest: &fakeManifest{payload: []byte(payload2)},
+			wantErr:  "the manifest retrieved with digest sha256:59685d14054198fee6005106a66462a924cabe21f4b0c7c1fdf4da95ccee52bd does not match the digest calculated from the content sha256:b79e87ded1ea5293efe92bdb3caa9b7212cfa7c98aafb7c1c568d11d43519968",
+		},
+		{
+			err:      fmt.Errorf("put error"),
+			manifest: &fakeManifest{payload: []byte(payload2)},
+			wantErr:  "put error",
+		},
+		{
+			manifest: &fakeManifest{payload: []byte(payload2)},
+		},
+		{
+			manifest: &fakeManifest{payload: []byte(payload1), err: fmt.Errorf("unknown")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &fakeManifestService{err: tt.err, manifest: tt.manifest, digest: tt.dgst}
+			m := manifestServiceVerifier{
+				ManifestService: ms,
+			}
+			ctx := context.Background()
+			got, err := m.Put(ctx, tt.manifest, tt.options...)
+			if len(tt.wantErr) > 0 && err != nil && !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("verifyManifest.Get() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if (err != nil) != (len(tt.wantErr) > 0) {
+				t.Fatalf("verifyManifest.Get() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("verifyManifest.Get() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 const (
 	payload1 = `{"some":"content"}`
 	payload2 = `{"some":"content"} `
@@ -440,6 +630,7 @@ func (m *fakeManifest) Payload() (mediaType string, payload []byte, err error) {
 }
 
 type fakeManifestService struct {
+	digest   digest.Digest
 	manifest distribution.Manifest
 	err      error
 }
@@ -453,7 +644,7 @@ func (s *fakeManifestService) Get(ctx context.Context, dgst digest.Digest, optio
 }
 
 func (s *fakeManifestService) Put(ctx context.Context, manifest distribution.Manifest, options ...distribution.ManifestServiceOption) (digest.Digest, error) {
-	panic("not implemented")
+	return s.digest, s.err
 }
 
 func (s *fakeManifestService) Delete(ctx context.Context, dgst digest.Digest) error {
