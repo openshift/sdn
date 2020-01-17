@@ -47,20 +47,23 @@ func TestObserveFeatureFlags(t *testing.T) {
 			name:        "default",
 			configValue: configv1.Default,
 			expectedResult: []string{
-				"ExperimentalCriticalPodAnnotation=true",
 				"RotateKubeletServerCertificate=true",
 				"SupportPodPidsLimit=true",
-				"LocalStorageCapacityIsolation=false",
+				"NodeDisruptionExclusion=true",
+				"ServiceNodeExclusion=true",
+				"SCTPSupport=true",
+				"LegacyNodeRoleBehavior=false",
 			},
 		},
 		{
 			name:        "techpreview",
 			configValue: configv1.TechPreviewNoUpgrade,
 			expectedResult: []string{
-				"ExperimentalCriticalPodAnnotation=true",
 				"RotateKubeletServerCertificate=true",
 				"SupportPodPidsLimit=true",
-				"LocalStorageCapacityIsolation=false",
+				"NodeDisruptionExclusion=true",
+				"ServiceNodeExclusion=true",
+				"LegacyNodeRoleBehavior=false",
 			},
 		},
 		{
@@ -127,7 +130,7 @@ func TestObserveFeatureFlags(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if !reflect.DeepEqual(tc.expectedResult, actual) {
-				t.Errorf("%v", actual)
+				t.Errorf("Unexpected features gates\n  got:      %v\n  expected: %v", actual, tc.expectedResult)
 			}
 		})
 	}
