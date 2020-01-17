@@ -246,9 +246,7 @@ func (m *podManager) UpdateLocalMulticastRules(vnid uint32) {
 // setup/teardown logic
 func (m *podManager) processCNIRequests() {
 	for request := range m.requests {
-		klog.V(5).Infof("Processing pod network request %v", request)
 		result := m.processRequest(request)
-		klog.V(5).Infof("Processed pod network request %v, result %s err %v", request, string(result.Response), result.Err)
 		request.Result <- result
 	}
 	panic("stopped processing CNI pod requests!")
@@ -273,6 +271,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 			}
 		}
 		if err != nil {
+			klog.Warningf("CNI_ADD %s failed: %v", pk, err)
 			PodOperationsErrors.WithLabelValues(PodOperationSetup).Inc()
 			result.Err = err
 		}
@@ -282,6 +281,8 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 			if runningPod, exists := m.runningPods[pk]; exists {
 				runningPod.vnid = vnid
 			}
+		} else {
+			klog.Warningf("CNI_UPDATE %s failed: %v", pk, err)
 		}
 		result.Err = err
 	case cniserver.CNI_DEL:
@@ -293,6 +294,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		}
 		result.Err = m.podHandler.teardown(request)
 		if result.Err != nil {
+			klog.Warningf("CNI_DEL %s failed: %v", pk, result.Err)
 			PodOperationsErrors.WithLabelValues(PodOperationTeardown).Inc()
 		}
 	default:
@@ -498,6 +500,7 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 
 	m.policy.EnsureVNIDRules(vnid)
 	success = true
+	klog.Infof("CNI_ADD %s/%s got IP %s, ofport %d", req.PodNamespace, req.PodName, podIP, ofport)
 	return ipamResult, &runningPod{vnid: vnid, ofport: ofport}, nil
 }
 
@@ -511,6 +514,7 @@ func (m *podManager) update(req *cniserver.PodRequest) (uint32, error) {
 	if err := m.ovs.UpdatePod(req.SandboxID, vnid); err != nil {
 		return 0, err
 	}
+	klog.Infof("CNI_UPDATE %s/%s", req.PodNamespace, req.PodName)
 	return vnid, nil
 }
 
@@ -528,5 +532,10 @@ func (m *podManager) teardown(req *cniserver.PodRequest) error {
 		errList = append(errList, err)
 	}
 
-	return kerrors.NewAggregate(errList)
+	if len(errList) > 0 {
+		return kerrors.NewAggregate(errList)
+	}
+
+	klog.Infof("CNI_DEL %s/%s", req.PodNamespace, req.PodName)
+	return nil
 }
