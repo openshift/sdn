@@ -6,7 +6,8 @@ import:
 - package: k8s.io/apimachinery
   version: kubernetes-1.16.0
 - package: k8s.io/client-go
-  version: kubernetes-1.16.0
+  repo:    https://github.com/openshift/kubernetes-client-go.git
+  version: sdn-4.4-kubernetes-1.16.0
 - package: k8s.io/component-base
   version: kubernetes-1.16.0
 - package: k8s.io/kube-proxy

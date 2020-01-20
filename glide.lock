@@ -1,5 +1,5 @@
-hash: a6a84dab33651ede7f36d617c693dde56f6e67b82e02a637f45dc01c48bb965a
-updated: 2020-01-22T11:37:15.941915412+01:00
+hash: f84f1ebc6db96201c9ee834f3c3edd2434c699f46fb258f07db8c2d66c0ed8d9
+updated: 2020-01-22T12:03:32.478459366+01:00
 imports:
 - name: github.com/Azure/go-ansiterm
   version: d6e3b3328b783f23731bc4d058875b0371ff8109
@@ -633,7 +633,8 @@ imports:
   - pkg/printers
   - pkg/resource
 - name: k8s.io/client-go
-  version: 1fbdaa4c8d908275eee958429b1cafc2591a2c5d
+  version: f2763c9d7523f6a0141ef18a895ee6096a755782
+  repo: https://github.com/openshift/kubernetes-client-go.git
   subpackages:
   - discovery
   - discovery/cached/disk
