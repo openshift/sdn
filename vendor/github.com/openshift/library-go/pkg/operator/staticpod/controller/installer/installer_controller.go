@@ -540,7 +540,7 @@ func (c *InstallerController) newNodeStateForInstallInProgress(currNodeState *op
 			// stop early, don't wait for ready static pod because a new revision is waiting
 			ret.LastFailedRevision = currNodeState.TargetRevision
 			ret.TargetRevision = 0
-			ret.LastFailedRevisionErrors = []string{"static pod of revision has been installed, but is not ready while new revision % is pending"}
+			ret.LastFailedRevisionErrors = []string{fmt.Sprintf("static pod of revision has been installed, but is not ready while new revision %d is pending", currNodeState.TargetRevision)}
 			return ret, false, "new revision pending", nil
 		}
 
@@ -600,7 +600,7 @@ func (c *InstallerController) newNodeStateForInstallInProgress(currNodeState *op
 		ret.LastFailedRevision = currNodeState.TargetRevision
 		ret.TargetRevision = 0
 		if len(errors) == 0 {
-			errors = append(errors, "no detailed termination message, see `oc get -n %q pods/%q -oyaml`", installerPod.Namespace, installerPod.Name)
+			errors = append(errors, fmt.Sprintf("no detailed termination message, see `oc get -n %q pods/%q -oyaml`", installerPod.Namespace, installerPod.Name))
 		}
 		ret.LastFailedRevisionErrors = errors
 		return ret, false, "installer pod failed", nil

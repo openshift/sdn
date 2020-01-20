@@ -1,5 +1,5 @@
-hash: 0ab8da287bd54777c925abb2db45ef62e873e7cfff5d6d750714a078288ac3b5
-updated: 2019-07-26T11:36:52.816274936+02:00
+hash: 370ae11c6c0b2aaecbc50487241a48405ebf146301a775f46bd2d2bb1582b0a5
+updated: 2020-01-20T13:39:04.412614369+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
@@ -251,13 +251,13 @@ imports:
   subpackages:
   - specs-go
 - name: github.com/openshift/api
-  version: b7d4eb0fa1e0c1e03f97c97c08d0ef1f025c0838
+  version: d4a64ec2cbd86f11ea74dfdcf6520d5833d0c6cd
   subpackages:
   - config/v1
   - network/v1
   - unidling/v1alpha1
 - name: github.com/openshift/client-go
-  version: a85ea6a6b3a5d2dbe41582ee35695dd4683e1f02
+  version: 5a5508328169b8a6992ea4ef711add89ddce3c6d
   subpackages:
   - network/clientset/versioned
   - network/clientset/versioned/scheme
@@ -268,7 +268,7 @@ imports:
   - network/informers/externalversions/network/v1
   - network/listers/network/v1
 - name: github.com/openshift/library-go
-  version: 523621232378681359817c52fe07670ce93b83b9
+  version: 61f035b9264717e7eea25dfe9db1cc2cb69d7530
   subpackages:
   - pkg/config/leaderelection
   - pkg/network/networkapihelpers
@@ -847,8 +847,6 @@ imports:
   version: 51747d6e00da1fc578d5a333a93bb2abcbce7a95
 - name: k8s.io/klog
   version: 8139d8cb77af419532b33dfa7dd09fbc5f1d344f
-  subpackages:
-  - glog
 - name: k8s.io/kube-aggregator
   version: da8327669ac57b6e6a06676eeb7de19c9780f76d
 - name: k8s.io/kube-controller-manager

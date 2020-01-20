@@ -68,11 +68,11 @@ import:
 
 # openshift second
 - package: github.com/openshift/api
-  version: master
+  version: release-4.2
 - package: github.com/openshift/client-go
-  version: master
+  version: release-4.2
 - package: github.com/openshift/library-go
-  version: master
+  version: release-4.2
 
 # forks third
 # master
@@ -125,7 +125,7 @@ import:
   version: v1.0.8
 # etcd pins a very old version that has contention issues
 - package: github.com/google/btree
-  version: master
+  version: 20236160a414454a9c64b6c8829381c6f4bddcaa
 
 # why do we have this?
 - package: google.golang.org/appengine
@@ -140,6 +140,7 @@ import:
 
 # force glide to pull this in
 - package: github.com/google/uuid
+  version: 8c31c18f31ede9fc8eae72290a7e7a8064e9b3e3
 
 # due to https://github.com/Masterminds/glide/issues/881 manually show where
 # to get gonum.org/v1/gonum from
@@ -152,6 +153,7 @@ import:
 # https://github.com/kubernetes/kubernetes/pull/72138
 - package: bitbucket.org/ww/goautoneg
   repo: https://github.com/munnerz/goautoneg.git
+  version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
 
 # version that works with runc
 - package: golang.org/x/sys
@@ -160,3 +162,9 @@ import:
 # version from openshift.  may need later fitting
 - package: github.com/coreos/go-systemd
   version: 39ca1b05acc7ad1220e09f133283b8859a8b71ab
+
+# lock some versions down to what they were in earlier 4.2 releases
+- package: github.com/containernetworking/cni
+  version: a7885cb6f8ab03fba07852ded351e4f5e7a112bf
+- package: github.com/spf13/pflag
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
