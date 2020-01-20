@@ -10,7 +10,8 @@ import:
 - package: k8s.io/apiserver
   version: kubernetes-1.14.0
 - package: k8s.io/client-go
-  version: kubernetes-1.14.0
+  version: sdn-4.2-kubernetes-1.14.0
+  repo:    https://github.com/openshift/kubernetes-client-go.git
 - package: k8s.io/cli-runtime
   version: kubernetes-1.14.0
 - package: k8s.io/cloud-provider

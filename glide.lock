@@ -1,5 +1,5 @@
-hash: 370ae11c6c0b2aaecbc50487241a48405ebf146301a775f46bd2d2bb1582b0a5
-updated: 2020-01-20T13:39:04.412614369+01:00
+hash: bcfe5e7870d42ea2d5b3d7b7c4b384ec0b42ad978d70a1c8f69987de6b2e469b
+updated: 2020-01-22T14:53:35.974683953+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 2ae31c8b6b30d2f4c8100c20d527b571e9c433bb
@@ -655,7 +655,8 @@ imports:
   - pkg/printers
   - pkg/resource
 - name: k8s.io/client-go
-  version: 6ee68ca5fd8355d024d02f9db0b3b667e8357a0f
+  version: deeef3880f0a4c5f5ca8b2f00479fb80fc80c2a1
+  repo: https://github.com/openshift/kubernetes-client-go.git
   subpackages:
   - discovery
   - discovery/cached/disk
