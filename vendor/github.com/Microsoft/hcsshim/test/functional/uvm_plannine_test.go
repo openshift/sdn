@@ -5,15 +5,13 @@
 package functional
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
-	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
+	"github.com/Microsoft/hcsshim/test/functional/utilities"
 )
 
 // TestPlan9 tests adding/removing Plan9 shares to/from a v2 Linux utility VM
@@ -21,24 +19,21 @@ import (
 func TestPlan9(t *testing.T) {
 	testutilities.RequiresBuild(t, osversion.RS5)
 
-	vm := testutilities.CreateLCOWUVM(context.Background(), t, t.Name())
-	defer vm.Close()
+	uvm := testutilities.CreateLCOWUVM(t, t.Name())
+	defer uvm.Close()
 
 	dir := testutilities.CreateTempDir(t)
 	defer os.RemoveAll(dir)
 	var iterations uint32 = 64
-	var shares []*uvm.Plan9Share
 	for i := 0; i < int(iterations); i++ {
-		share, err := vm.AddPlan9(context.Background(), dir, fmt.Sprintf("/tmp/%s", filepath.Base(dir)), false, false, nil)
-		if err != nil {
+		if err := uvm.AddPlan9(dir, fmt.Sprintf("/tmp/%s", filepath.Base(dir)), false); err != nil {
 			t.Fatalf("AddPlan9 failed: %s", err)
 		}
-		shares = append(shares, share)
 	}
 
 	// Remove them all
-	for _, share := range shares {
-		if err := vm.RemovePlan9(context.Background(), share); err != nil {
+	for i := 0; i < int(iterations); i++ {
+		if err := uvm.RemovePlan9(dir); err != nil {
 			t.Fatalf("RemovePlan9 failed: %s", err)
 		}
 	}

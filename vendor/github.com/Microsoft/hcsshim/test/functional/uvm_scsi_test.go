@@ -3,21 +3,14 @@
 package functional
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
-	"github.com/Microsoft/hcsshim/internal/wclayer"
-
-	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
-	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
+	"github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,10 +19,10 @@ import (
 // negative testing so that a disk can't be attached twice.
 func TestSCSIAddRemoveLCOW(t *testing.T) {
 	testutilities.RequiresBuild(t, osversion.RS5)
-	u := testutilities.CreateLCOWUVM(context.Background(), t, t.Name())
+	u := testutilities.CreateLCOWUVM(t, t.Name())
 	defer u.Close()
 
-	testSCSIAddRemove(t, u, `/run/gcs/c/0/scsi`, "linux", []string{})
+	testSCSIAddRemove(t, u, `/`, "linux", []string{})
 
 }
 
@@ -38,7 +31,7 @@ func TestSCSIAddRemoveLCOW(t *testing.T) {
 // negative testing so that a disk can't be attached twice.
 func TestSCSIAddRemoveWCOW(t *testing.T) {
 	testutilities.RequiresBuild(t, osversion.RS5)
-	u, layers, uvmScratchDir := testutilities.CreateWCOWUVM(context.Background(), t, t.Name(), "microsoft/nanoserver")
+	u, layers, uvmScratchDir := testutilities.CreateWCOWUVM(t, t.Name(), "microsoft/nanoserver")
 	defer os.RemoveAll(uvmScratchDir)
 	defer u.Close()
 
@@ -58,7 +51,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 		if operatingSystem == "windows" {
 			tempDir = testutilities.CreateWCOWBlankRWLayer(t, wcowImageLayerFolders)
 		} else {
-			tempDir = testutilities.CreateLCOWBlankRWLayer(context.Background(), t)
+			tempDir = testutilities.CreateLCOWBlankRWLayer(t, u.ID())
 		}
 		defer os.RemoveAll(tempDir)
 		disks[i] = filepath.Join(tempDir, `sandbox.vhdx`)
@@ -67,7 +60,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Add each of the disks to the utility VM. Attach-only, no container path
 	logrus.Debugln("First - adding in attach-only")
 	for i := 0; i < numDisks; i++ {
-		_, _, err := u.AddSCSI(context.Background(), disks[i], "", false)
+		_, _, err := u.AddSCSI(disks[i], "", false)
 		if err != nil {
 			t.Fatalf("failed to add scsi disk %d %s: %s", i, disks[i], err)
 		}
@@ -76,7 +69,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Try to re-add. These should all fail.
 	logrus.Debugln("Next - trying to re-add")
 	for i := 0; i < numDisks; i++ {
-		_, _, err := u.AddSCSI(context.Background(), disks[i], "", false)
+		_, _, err := u.AddSCSI(disks[i], "", false)
 		if err == nil {
 			t.Fatalf("should not be able to re-add the same SCSI disk!")
 		}
@@ -88,7 +81,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Remove them all
 	logrus.Debugln("Removing them all")
 	for i := 0; i < numDisks; i++ {
-		if err := u.RemoveSCSI(context.Background(), disks[i]); err != nil {
+		if err := u.RemoveSCSI(disks[i]); err != nil {
 			t.Fatalf("expected success: %s", err)
 		}
 	}
@@ -96,7 +89,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Now re-add but providing a container path
 	logrus.Debugln("Next - re-adding with a container path")
 	for i := 0; i < numDisks; i++ {
-		_, _, err := u.AddSCSI(context.Background(), disks[i], fmt.Sprintf(`%s%d`, pathPrefix, i), false)
+		_, _, err := u.AddSCSI(disks[i], fmt.Sprintf(`%s%d`, pathPrefix, i), false)
 		if err != nil {
 			t.Fatalf("failed to add scsi disk %d %s: %s", i, disks[i], err)
 		}
@@ -105,7 +98,7 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Try to re-add. These should all fail.
 	logrus.Debugln("Next - trying to re-add")
 	for i := 0; i < numDisks; i++ {
-		_, _, err := u.AddSCSI(context.Background(), disks[i], fmt.Sprintf(`%s%d`, pathPrefix, i), false)
+		_, _, err := u.AddSCSI(disks[i], fmt.Sprintf(`%s%d`, pathPrefix, i), false)
 		if err == nil {
 			t.Fatalf("should not be able to re-add the same SCSI disk!")
 		}
@@ -117,111 +110,10 @@ func testSCSIAddRemove(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operat
 	// Remove them all
 	logrus.Debugln("Next - Removing them")
 	for i := 0; i < numDisks; i++ {
-		if err := u.RemoveSCSI(context.Background(), disks[i]); err != nil {
+		if err := u.RemoveSCSI(disks[i]); err != nil {
 			t.Fatalf("expected success: %s", err)
 		}
 	}
 
 	// TODO: Could extend to validate can't add a 64th disk (windows). 65th (linux).
-}
-
-func TestParallelScsiOps(t *testing.T) {
-	testutilities.RequiresBuild(t, osversion.RS5)
-	u := testutilities.CreateLCOWUVM(context.Background(), t, t.Name())
-	defer u.Close()
-
-	// Create a sandbox to use
-	tempDir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatalf("failed to create tmpdir for test: %v", err)
-	}
-	if err := lcow.CreateScratch(context.Background(), u, filepath.Join(tempDir, "sandbox.vhdx"), lcow.DefaultScratchSizeGB, ""); err != nil {
-		t.Fatalf("failed to create EXT4 scratch for LCOW test cases: %s", err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to remove sandbox tmpdir: %v", err)
-		}
-	}()
-	copySandbox := func(dir string, workerId, iteration int) (string, error) {
-		orig, err := os.Open(filepath.Join(dir, "sandbox.vhdx"))
-		if err != nil {
-			return "", err
-		}
-		defer orig.Close()
-		path := filepath.Join(dir, fmt.Sprintf("%d-%d-sandbox.vhdx", workerId, iteration))
-		new, err := os.Create(path)
-		if err != nil {
-			return "", err
-		}
-		defer new.Close()
-
-		_, err = io.Copy(new, orig)
-		if err != nil {
-			return "", err
-		}
-		return path, nil
-	}
-
-	// Note: maxWorkers cannot be > 64 for this code to work
-	maxWorkers := 16
-	opsChan := make(chan int, maxWorkers)
-	opsWg := sync.WaitGroup{}
-	opsWg.Add(maxWorkers)
-	for i := 0; i < maxWorkers; i++ {
-		go func(scsiIndex int) {
-			for {
-				iteration, ok := <-opsChan
-				if !ok {
-					break
-				}
-				// Copy the goal sandbox.vhdx to a new path so we don't get the cached location
-				path, err := copySandbox(tempDir, scsiIndex, iteration)
-				if err != nil {
-					t.Errorf("failed to copy sandbox for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					continue
-				}
-				err = wclayer.GrantVmAccess(u.ID(), path)
-				if err != nil {
-					os.Remove(path)
-					t.Errorf("failed to grantvmaccess for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					continue
-				}
-				_, _, err = u.AddSCSI(context.Background(), path, "", false)
-				if err != nil {
-					os.Remove(path)
-					t.Errorf("failed to AddSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					continue
-				}
-				err = u.RemoveSCSI(context.Background(), path)
-				if err != nil {
-					t.Errorf("failed to RemoveSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					// This worker cant continue because the index is dead. We have to stop
-					break
-				}
-				_, _, err = u.AddSCSI(context.Background(), path, fmt.Sprintf("/run/gcs/c/0/scsi/%d", iteration), false)
-				if err != nil {
-					os.Remove(path)
-					t.Errorf("failed to AddSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					continue
-				}
-				err = u.RemoveSCSI(context.Background(), path)
-				if err != nil {
-					t.Errorf("failed to RemoveSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
-					// This worker cant continue because the index is dead. We have to stop
-					break
-				}
-				os.Remove(path)
-			}
-			opsWg.Done()
-		}(i)
-	}
-
-	scsiOps := 1000
-	for i := 0; i < scsiOps; i++ {
-		opsChan <- i
-	}
-	close(opsChan)
-
-	opsWg.Wait()
 }

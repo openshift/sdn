@@ -1,12 +1,10 @@
 package uvmfolder
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,7 +13,7 @@ import (
 // Read-only-layers followed by an optional read-write layer. The RO layers are in reverse
 // order so that the upper-most RO layer is at the start, and the base OS layer is the
 // end.
-func LocateUVMFolder(ctx context.Context, layerFolders []string) (string, error) {
+func LocateUVMFolder(layerFolders []string) (string, error) {
 	var uvmFolder string
 	index := 0
 	for _, layerFolder := range layerFolders {
@@ -32,10 +30,6 @@ func LocateUVMFolder(ctx context.Context, layerFolders []string) (string, error)
 	if uvmFolder == "" {
 		return "", fmt.Errorf("utility VM folder could not be found in layers")
 	}
-	log.G(ctx).WithFields(logrus.Fields{
-		"index":  index + 1,
-		"count":  len(layerFolders),
-		"folder": uvmFolder,
-	}).Debug("hcsshim::LocateUVMFolder: found")
+	logrus.Debugf("hcsshim::LocateUVMFolder At %d of %d: %s", index+1, len(layerFolders), uvmFolder)
 	return uvmFolder, nil
 }

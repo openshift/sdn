@@ -6,22 +6,6 @@ import (
 	"encoding/json"
 )
 
-func CreateSubnet(AddressPrefix string, NextHop string, DestPrefix string) *Subnet {
-	return &Subnet{
-		IpAddressPrefix: AddressPrefix,
-		Routes: []Route{
-			{
-				NextHop:           NextHop,
-				DestinationPrefix: DestPrefix,
-			},
-		},
-	}
-}
-
-func GetDefaultSubnet() *Subnet {
-	return CreateSubnet("192.168.100.0/24", "192.168.100.1", "0.0.0.0/0")
-}
-
 func cleanup(networkName string) {
 	// Delete test network (if exists)
 	testNetwork, err := GetNetworkByName(networkName)
@@ -36,17 +20,8 @@ func cleanup(networkName string) {
 	}
 }
 
-func HcnGenerateNATNetwork(subnet *Subnet) *HostComputeNetwork {
-	ipams := []Ipam{}
-	if subnet != nil {
-		ipam := Ipam{
-			Type: "Static",
-			Subnets: []Subnet{
-				*subnet,
-			},
-		}
-		ipams = append(ipams, ipam)
-	}
+func HcnCreateTestNATNetwork() (*HostComputeNetwork, error) {
+	cleanup(NatTestNetworkName)
 	network := &HostComputeNetwork{
 		Type: "NAT",
 		Name: NatTestNetworkName,
@@ -58,28 +33,33 @@ func HcnGenerateNATNetwork(subnet *Subnet) *HostComputeNetwork {
 				},
 			},
 		},
-		Ipams: ipams,
+		Ipams: []Ipam{
+			{
+				Type: "Static",
+				Subnets: []Subnet{
+					{
+						IpAddressPrefix: "192.168.100.0/24",
+						Routes: []Route{
+							{
+								NextHop:           "192.168.100.1",
+								DestinationPrefix: "0.0.0.0",
+							},
+						},
+					},
+				},
+			},
+		},
 		SchemaVersion: SchemaVersion{
 			Major: 2,
 			Minor: 0,
 		},
 	}
-	return network
-}
 
-func HcnCreateTestNATNetworkWithSubnet(subnet *Subnet) (*HostComputeNetwork, error) {
-	cleanup(NatTestNetworkName)
-	network := HcnGenerateNATNetwork(subnet)
 	return network.Create()
-}
-
-func HcnCreateTestNATNetwork() (*HostComputeNetwork, error) {
-	return HcnCreateTestNATNetworkWithSubnet(GetDefaultSubnet())
 }
 
 func CreateTestOverlayNetwork() (*HostComputeNetwork, error) {
 	cleanup(OverlayTestNetworkName)
-	subnet := GetDefaultSubnet()
 	network := &HostComputeNetwork{
 		Type: "Overlay",
 		Name: OverlayTestNetworkName,
@@ -95,11 +75,18 @@ func CreateTestOverlayNetwork() (*HostComputeNetwork, error) {
 			{
 				Type: "Static",
 				Subnets: []Subnet{
-					*subnet,
+					{
+						IpAddressPrefix: "192.168.100.0/24",
+						Routes: []Route{
+							{
+								NextHop:           "192.168.100.1",
+								DestinationPrefix: "0.0.0.0/0",
+							},
+						},
+					},
 				},
 			},
 		},
-		Flags: EnableNonPersistent,
 		SchemaVersion: SchemaVersion{
 			Major: 2,
 			Minor: 0,
@@ -260,19 +247,6 @@ func HcnCreateTestRemoteSubnetRoute() (*PolicyNetworkRequest, error) {
 
 	networkRequest := PolicyNetworkRequest{
 		Policies: []NetworkPolicy{rsrPolicy},
-	}
-
-	return &networkRequest, nil
-}
-
-func HcnCreateTestHostRoute() (*PolicyNetworkRequest, error) {
-	hostRoutePolicy := NetworkPolicy{
-		Type:     HostRoute,
-		Settings: []byte("{}"),
-	}
-
-	networkRequest := PolicyNetworkRequest{
-		Policies: []NetworkPolicy{hostRoutePolicy},
 	}
 
 	return &networkRequest, nil

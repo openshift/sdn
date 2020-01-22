@@ -1,5 +1,5 @@
 hash: 18dd0723044653b00d84e1ef3dd36307ef657eab3489bef683c93913ba59d4f4
-updated: 2019-09-27T06:51:48.447321479-04:00
+updated: 2020-01-22T11:18:06.039626887+01:00
 imports:
 - name: github.com/Azure/go-ansiterm
   version: d6e3b3328b783f23731bc4d058875b0371ff8109
@@ -14,7 +14,7 @@ imports:
 - name: github.com/certifi/gocertifi
   version: ee1a9a0726d2ae45f54118cac878c990d4016ded
 - name: github.com/containernetworking/cni
-  version: a2da8f8d7fd8e6dc25f336408a8ac86f050fbd88
+  version: a7885cb6f8ab03fba07852ded351e4f5e7a112bf
   subpackages:
   - pkg/invoke
   - pkg/skel
@@ -95,7 +95,7 @@ imports:
 - name: github.com/go-openapi/swag
   version: 1d0bd113de87027671077d3c71eb3ac5d7dbba72
 - name: github.com/godbus/dbus
-  version: 5ae69d1623c4c46049fbe4f8ef2d3af85fa766a7
+  version: c7fdd8b5cd55e87b4e1f4e372cdb1db61dd6c66f
 - name: github.com/gogo/protobuf
   version: 65acae22fc9d1fe290b33faa2bd64cdc20a463a0
   subpackages:
@@ -139,7 +139,7 @@ imports:
   - compiler
   - extensions
 - name: github.com/gorilla/mux
-  version: 884b5ffcbd3a11b730f0b75f5c86ac408753c34d
+  version: 08e7f807d38d6a870193019bb439056118661505
 - name: github.com/gregjones/httpcache
   version: 787624de3eb7bd915c329cba748687a3b22666a6
   subpackages:
@@ -159,7 +159,7 @@ imports:
 - name: github.com/konsorten/go-windows-terminal-sequences
   version: 5c8c8bd35d3832f5d134ae1e1e375b69a4d25242
 - name: github.com/lithammer/dedent
-  version: bacd562a68752afbd2c992df855db07be0db9bde
+  version: 8478954c3bc893cf36c5ee7c822266b993a3b3ee
 - name: github.com/mailru/easyjson
   version: d5b7844b561a7bc640052f1b935f7b800330d7e0
   subpackages:
@@ -173,31 +173,27 @@ imports:
   subpackages:
   - pbutil
 - name: github.com/Microsoft/go-winio
-  version: fc70bd9a86b5562b3b5eb1040e803febee1e90a1
-  subpackages:
-  - pkg/guid
+  version: 97e4973ce50b2ff5f09635a57e2b88a037aae829
 - name: github.com/Microsoft/hcsshim
-  version: 82c7525d98c8990d0ceb533322bc9c72fbddaf70
+  version: 69ac8d3f7fc10a0623f3a2655958a1a5bb71f58f
   subpackages:
   - hcn
   - internal/cni
-  - internal/cow
+  - internal/guestrequest
+  - internal/guid
   - internal/hcs
   - internal/hcserror
   - internal/hns
   - internal/interop
-  - internal/log
   - internal/logfields
   - internal/longpath
   - internal/mergemaps
-  - internal/oc
   - internal/regstate
   - internal/runhcs
   - internal/safefile
   - internal/schema1
   - internal/schema2
   - internal/timeout
-  - internal/vmcompute
   - internal/wclayer
 - name: github.com/miekg/dns
   version: 5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1
@@ -214,13 +210,13 @@ imports:
 - name: github.com/opencontainers/go-digest
   version: 279bed98673dd5bef374d3b6e4b09e2af76183bf
 - name: github.com/opencontainers/runc
-  version: 84373aaa560b3f14cfda210b2f34ca14fd4b1fce
+  version: b133feaeeb2e69ba94aa95eac3a455a143435ea9
   subpackages:
   - libcontainer/cgroups
   - libcontainer/configs
   - libcontainer/utils
 - name: github.com/opencontainers/runtime-spec
-  version: 52e2591aa9f7211d64c49c4fed8691a183189284
+  version: 02137cd4e50b37a01665e1731fcd4ac2d2178230
   subpackages:
   - specs-go
 - name: github.com/openshift/api
@@ -292,20 +288,13 @@ imports:
 - name: github.com/spf13/cobra
   version: 67fc4837d267bc9bfd6e47f77783fcc3dffc68de
 - name: github.com/spf13/pflag
-  version: 2e9d26c8c37aae03e3f9d4e90b7116f5accb7cab
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
 - name: github.com/vishvananda/netlink
   version: 0e3b74dbe28f37fd911f9bca3565fdca33c03f29
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
   version: 54f0e4339ce73702a0607f49922aaa1e749b418d
-- name: go.opencensus.io
-  version: df6e2001952312404b06f5f6f03fcb4aec1648e5
-  subpackages:
-  - internal
-  - trace
-  - trace/internal
-  - trace/tracestate
 - name: golang.org/x/crypto
   version: e84da0312774c21d64ee2317962ef669b27ffb41
   subpackages:
@@ -793,7 +782,7 @@ imports:
   - util/retry
   - util/testing
 - name: k8s.io/cloud-provider
-  version: a9c1f33e9fb973aced01c110c71f09cd9007f949
+  version: c892ea32361a3655e7bd8c06f2d02dd8ce73dd78
 - name: k8s.io/component-base
   version: 547f6c5d70902c6683e93ad96f84adc6b943aedf
   subpackages:

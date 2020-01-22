@@ -7,17 +7,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/internal/cni"
+	"github.com/Microsoft/hcsshim/internal/guid"
 )
-
-func newGUID(t *testing.T) guid.GUID {
-	g, err := guid.NewV4()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return g
-}
 
 func TestNewNamespace(t *testing.T) {
 	_ = NewNamespace(NamespaceTypeHost)
@@ -394,7 +386,7 @@ func TestSyncNamespaceGuest(t *testing.T) {
 	}
 
 	// Create registry state
-	pnc := cni.NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
+	pnc := cni.NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
 	err = pnc.Store()
 	if err != nil {
 		pnc.Remove()
@@ -434,7 +426,7 @@ func TestSyncNamespaceGuestDefault(t *testing.T) {
 	}
 
 	// Create registry state
-	pnc := cni.NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
+	pnc := cni.NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
 	err = pnc.Store()
 	if err != nil {
 		pnc.Remove()

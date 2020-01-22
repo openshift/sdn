@@ -2,9 +2,8 @@ package hcn
 
 import (
 	"encoding/json"
-	"errors"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/guid"
 	"github.com/Microsoft/hcsshim/internal/interop"
 	"github.com/sirupsen/logrus"
 )
@@ -63,15 +62,6 @@ const (
 	Overlay     NetworkType = "Overlay"
 )
 
-// NetworkFlags are various network flags.
-type NetworkFlags uint32
-
-// NetworkFlags const
-const (
-	None                NetworkFlags = 0
-	EnableNonPersistent NetworkFlags = 8
-)
-
 // HostComputeNetwork represents a network
 type HostComputeNetwork struct {
 	Id            string          `json:"ID,omitempty"`
@@ -81,7 +71,7 @@ type HostComputeNetwork struct {
 	MacPool       MacPool         `json:",omitempty"`
 	Dns           Dns             `json:",omitempty"`
 	Ipams         []Ipam          `json:",omitempty"`
-	Flags         NetworkFlags    `json:",omitempty"` // 0: None
+	Flags         uint32          `json:",omitempty"` // 0: None
 	SchemaVersion SchemaVersion   `json:",omitempty"`
 }
 
@@ -133,12 +123,6 @@ func getNetwork(networkGuid guid.GUID, query string) (*HostComputeNetwork, error
 	}
 	// Convert output to HostComputeNetwork
 	var outputNetwork HostComputeNetwork
-
-	// If HNS sets the network type to NAT (i.e. '0' in HNS.Schema.Network.NetworkMode),
-	// the value will be omitted from the JSON blob. We therefore need to initialize NAT here before
-	// unmarshaling the JSON blob.
-	outputNetwork.Type = NAT
-
 	if err := json.Unmarshal([]byte(properties), &outputNetwork); err != nil {
 		return nil, err
 	}
@@ -203,12 +187,6 @@ func createNetwork(settings string) (*HostComputeNetwork, error) {
 	}
 	// Convert output to HostComputeNetwork
 	var outputNetwork HostComputeNetwork
-
-	// If HNS sets the network type to NAT (i.e. '0' in HNS.Schema.Network.NetworkMode),
-	// the value will be omitted from the JSON blob. We therefore need to initialize NAT here before
-	// unmarshaling the JSON blob.
-	outputNetwork.Type = NAT
-
 	if err := json.Unmarshal([]byte(properties), &outputNetwork); err != nil {
 		return nil, err
 	}
@@ -216,10 +194,7 @@ func createNetwork(settings string) (*HostComputeNetwork, error) {
 }
 
 func modifyNetwork(networkId string, settings string) (*HostComputeNetwork, error) {
-	networkGuid, err := guid.FromString(networkId)
-	if err != nil {
-		return nil, errInvalidNetworkID
-	}
+	networkGuid := guid.FromString(networkId)
 	// Open Network
 	var (
 		networkHandle    hcnNetwork
@@ -253,12 +228,6 @@ func modifyNetwork(networkId string, settings string) (*HostComputeNetwork, erro
 	}
 	// Convert output to HostComputeNetwork
 	var outputNetwork HostComputeNetwork
-
-	// If HNS sets the network type to NAT (i.e. '0' in HNS.Schema.Network.NetworkMode),
-	// the value will be omitted from the JSON blob. We therefore need to initialize NAT here before
-	// unmarshaling the JSON blob.
-	outputNetwork.Type = NAT
-
 	if err := json.Unmarshal([]byte(properties), &outputNetwork); err != nil {
 		return nil, err
 	}
@@ -266,10 +235,7 @@ func modifyNetwork(networkId string, settings string) (*HostComputeNetwork, erro
 }
 
 func deleteNetwork(networkId string) error {
-	networkGuid, err := guid.FromString(networkId)
-	if err != nil {
-		return errInvalidNetworkID
-	}
+	networkGuid := guid.FromString(networkId)
 	var resultBuffer *uint16
 	hr := hcnDeleteNetwork(&networkGuid, &resultBuffer)
 	if err := checkForErrors("hcnDeleteNetwork", hr, resultBuffer); err != nil {
@@ -345,24 +311,6 @@ func GetNetworkByName(networkName string) (*HostComputeNetwork, error) {
 // Create Network.
 func (network *HostComputeNetwork) Create() (*HostComputeNetwork, error) {
 	logrus.Debugf("hcn::HostComputeNetwork::Create id=%s", network.Id)
-	for _, ipam := range network.Ipams {
-		for _, subnet := range ipam.Subnets {
-			if subnet.IpAddressPrefix != "" {
-				hasDefault := false
-				for _, route := range subnet.Routes {
-					if route.NextHop == "" {
-						return nil, errors.New("network create error, subnet has address prefix but no gateway specified")
-					}
-					if route.DestinationPrefix == "0.0.0.0/0" || route.DestinationPrefix == "::/0" {
-						hasDefault = true
-					}
-				}
-				if !hasDefault {
-					return nil, errors.New("network create error, no default gateway")
-				}
-			}
-		}
-	}
 
 	jsonString, err := json.Marshal(network)
 	if err != nil {

@@ -3,17 +3,9 @@ package cni
 import (
 	"testing"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/guid"
 	"github.com/Microsoft/hcsshim/internal/regstate"
 )
-
-func newGUID(t *testing.T) guid.GUID {
-	g, err := guid.NewV4()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return g
-}
 
 func Test_LoadPersistedNamespaceConfig_NoConfig(t *testing.T) {
 	pnc, err := LoadPersistedNamespaceConfig(t.Name())
@@ -30,8 +22,9 @@ func Test_LoadPersistedNamespaceConfig_NoConfig(t *testing.T) {
 }
 
 func Test_LoadPersistedNamespaceConfig_WithConfig(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Store(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Store()
+	if err != nil {
 		pnc.Remove()
 		t.Fatalf("store failed with: %v", err)
 	}
@@ -60,8 +53,9 @@ func Test_LoadPersistedNamespaceConfig_WithConfig(t *testing.T) {
 }
 
 func Test_PersistedNamespaceConfig_StoreNew(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Store(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Store()
+	if err != nil {
 		pnc.Remove()
 		t.Fatalf("store failed with: %v", err)
 	}
@@ -69,16 +63,18 @@ func Test_PersistedNamespaceConfig_StoreNew(t *testing.T) {
 }
 
 func Test_PersistedNamespaceConfig_StoreUpdate(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Store(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Store()
+	if err != nil {
 		pnc.Remove()
 		t.Fatalf("store failed with: %v", err)
 	}
 	defer pnc.Remove()
 
 	pnc.ContainerID = "test-container2"
-	pnc.HostUniqueID = newGUID(t)
-	if err := pnc.Store(); err != nil {
+	pnc.HostUniqueID = guid.New()
+	err = pnc.Store()
+	if err != nil {
 		pnc.Remove()
 		t.Fatalf("store update failed with: %v", err)
 	}
@@ -97,25 +93,29 @@ func Test_PersistedNamespaceConfig_StoreUpdate(t *testing.T) {
 }
 
 func Test_PersistedNamespaceConfig_RemoveNotStored(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Remove(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Remove()
+	if err != nil {
 		t.Fatalf("remove on not stored should not fail: %v", err)
 	}
 }
 
 func Test_PersistedNamespaceConfig_RemoveStoredKey(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Store(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Store()
+	if err != nil {
 		t.Fatalf("store failed with: %v", err)
 	}
-	if err := pnc.Remove(); err != nil {
+	err = pnc.Remove()
+	if err != nil {
 		t.Fatalf("remove on stored key should not fail: %v", err)
 	}
 }
 
 func Test_PersistedNamespaceConfig_RemovedOtherKey(t *testing.T) {
-	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", newGUID(t))
-	if err := pnc.Store(); err != nil {
+	pnc := NewPersistedNamespaceConfig(t.Name(), "test-container", guid.New())
+	err := pnc.Store()
+	if err != nil {
 		t.Fatalf("store failed with: %v", err)
 	}
 
@@ -124,12 +124,14 @@ func Test_PersistedNamespaceConfig_RemovedOtherKey(t *testing.T) {
 		t.Fatal("should of found stored config")
 	}
 
-	if err := pnc.Remove(); err != nil {
+	err = pnc.Remove()
+	if err != nil {
 		t.Fatalf("remove on stored key should not fail: %v", err)
 	}
 
 	// Now remove the other key that has the invalid memory state
-	if err := pnc2.Remove(); err != nil {
+	err = pnc2.Remove()
+	if err != nil {
 		t.Fatalf("remove on in-memory already removed should not fail: %v", err)
 	}
 }

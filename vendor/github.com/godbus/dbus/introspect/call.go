@@ -2,9 +2,8 @@ package introspect
 
 import (
 	"encoding/xml"
+	"github.com/godbus/dbus"
 	"strings"
-
-	"github.com/godbus/dbus/v5"
 )
 
 // Call calls org.freedesktop.Introspectable.Introspect on a remote object
