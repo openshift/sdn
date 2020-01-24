@@ -1,16 +1,16 @@
 package main
 
 import (
-	gcontext "context"
+	"os"
+	"path/filepath"
 
 	"github.com/Microsoft/hcsshim/internal/appargs"
 	"github.com/Microsoft/hcsshim/internal/lcow"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
+	gcsclient "github.com/Microsoft/opengcs/client"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
-	"go.opencensus.io/trace"
 )
 
 var createScratchCommand = cli.Command{
@@ -22,53 +22,48 @@ var createScratchCommand = cli.Command{
 			Name:  "destpath",
 			Usage: "Required: describes the destination vhd path",
 		},
-		cli.UintFlag{
-			Name:  "sizeGB",
-			Value: 0,
-			Usage: "optional: The size in GB of the scratch file to create",
-		},
-		cli.StringFlag{
-			Name:  "cache-path",
-			Usage: "optional: The path to an existing scratch.vhdx to copy instead of create.",
-		},
 	},
 	Before: appargs.Validate(),
-	Action: func(context *cli.Context) (err error) {
-		ctx, span := trace.StartSpan(gcontext.Background(), "create-scratch")
-		defer span.End()
-		defer func() { oc.SetSpanStatus(span, err) }()
-
+	Action: func(context *cli.Context) error {
 		dest := context.String("destpath")
 		if dest == "" {
 			return errors.New("'destpath' is required")
 		}
 
+		// If we only have v1 lcow support do it the old way.
 		if osversion.Get().Build < osversion.RS5 {
-			return errors.New("LCOW is not supported pre-RS5")
-		}
+			cfg := gcsclient.Config{
+				Options: gcsclient.Options{
+					KirdPath:   filepath.Join(os.Getenv("ProgramFiles"), "Linux Containers"),
+					KernelFile: "kernel",
+					InitrdFile: uvm.InitrdFile,
+				},
+				Name:              "createscratch-uvm",
+				UvmTimeoutSeconds: 5 * 60, // 5 Min
+			}
 
-		opts := uvm.NewDefaultOptionsLCOW("createscratch-uvm", context.GlobalString("owner"))
+			if err := cfg.StartUtilityVM(); err != nil {
+				return errors.Wrapf(err, "failed to start '%s'", cfg.Name)
+			}
+			defer cfg.Uvm.Terminate()
 
-		// 256MB with boot from vhd supported.
-		opts.MemorySizeInMB = 256
-		opts.VPMemDeviceCount = 1
+			if err := cfg.CreateExt4Vhdx(dest, lcow.DefaultScratchSizeGB, ""); err != nil {
+				return errors.Wrapf(err, "failed to create ext4vhdx for '%s'", cfg.Name)
+			}
+		} else {
+			opts := uvm.NewDefaultOptionsLCOW("createscratch-uvm", context.GlobalString("owner"))
+			convertUVM, err := uvm.CreateLCOW(opts)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create '%s'", opts.ID)
+			}
+			defer convertUVM.Close()
+			if err := convertUVM.Start(); err != nil {
+				return errors.Wrapf(err, "failed to start '%s'", opts.ID)
+			}
 
-		sizeGB := uint32(context.Uint("sizeGB"))
-		if sizeGB == 0 {
-			sizeGB = lcow.DefaultScratchSizeGB
-		}
-
-		convertUVM, err := uvm.CreateLCOW(ctx, opts)
-		if err != nil {
-			return errors.Wrapf(err, "failed to create '%s'", opts.ID)
-		}
-		defer convertUVM.Close()
-		if err := convertUVM.Start(ctx); err != nil {
-			return errors.Wrapf(err, "failed to start '%s'", opts.ID)
-		}
-
-		if err := lcow.CreateScratch(ctx, convertUVM, dest, sizeGB, context.String("cache-path")); err != nil {
-			return errors.Wrapf(err, "failed to create ext4vhdx for '%s'", opts.ID)
+			if err := lcow.CreateScratch(convertUVM, dest, lcow.DefaultScratchSizeGB, "", ""); err != nil {
+				return errors.Wrapf(err, "failed to create ext4vhdx for '%s'", opts.ID)
+			}
 		}
 
 		return nil

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/guid"
 )
 
 //go:generate go run ../mksyscall_windows.go -output zsyscall_windows.go hcn.go
@@ -141,15 +141,6 @@ func RemoteSubnetSupported() error {
 		return nil
 	}
 	return platformDoesNotSupportError("Remote Subnet")
-}
-
-// HostRouteSupported returns an error if the HCN version does not support Host Route policies.
-func HostRouteSupported() error {
-	supported := GetSupportedFeatures()
-	if supported.HostRoute {
-		return nil
-	}
-	return platformDoesNotSupportError("Host Route")
 }
 
 // DSRSupported returns an error if the HCN version does not support Direct Server Return.

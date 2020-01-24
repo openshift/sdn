@@ -1,5 +1,5 @@
-hash: 3c6dda3ef87d64a44acff1edebbd479cc820a6bee41c047c98ef43c1f8133f1c
-updated: 2019-09-23T11:31:56.208961+02:00
+hash: 91584f0baddd4298ec2658d88517bf49d382310423e5365bf4075dcdf116a8fb
+updated: 2019-11-25T14:26:07.949552+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 75cd24fc2f2c2a2088577d12123ddee5f54e0675
@@ -109,13 +109,13 @@ imports:
 - name: github.com/docker/go-metrics
   version: b619b3592b65de4f087d9f16863a7e6ff905973c
 - name: github.com/docker/go-units
-  version: 9e638d38cf6977a37a8ea0078f3ee75a7cdb2dd1
+  version: 47565b4f722fb6ceae66b95f853feed578a4a51c
 - name: github.com/docker/libnetwork
   version: 7f13a5c99f4bb76a4122035d495984b6a09739bb
   subpackages:
   - ipamutils
 - name: github.com/docker/libtrust
-  version: 9cbd2a1374f46905c68a4eb3694a130610adc62a
+  version: aabc10ec26b754e797f9028f4589c5b7bd90dc20
 - name: github.com/emicklei/go-restful
   version: ff4f55a206334ef123e4f79bbf348980da81ca46
   subpackages:
@@ -127,7 +127,7 @@ imports:
 - name: github.com/getsentry/raven-go
   version: c977f96e109525a5d8fa10a19165341f601f38b0
 - name: github.com/ghodss/yaml
-  version: c7ce16629ff4cd059ed96ed06419dd3856fd3577
+  version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 - name: github.com/go-openapi/jsonpointer
   version: 46af16f9f7b149af66e5d1bd010e3574dc06de98
 - name: github.com/go-openapi/jsonreference
@@ -210,7 +210,7 @@ imports:
   - compiler
   - extensions
 - name: github.com/gorilla/mux
-  version: 08e7f807d38d6a870193019bb439056118661505
+  version: f395758b854c4efa789b8c1e9b73479704c548cb
 - name: github.com/grpc-ecosystem/go-grpc-prometheus
   version: c225b8c3b01faf2899099b768856a9e916e5087b
 - name: github.com/hashicorp/golang-lru
@@ -227,6 +227,17 @@ imports:
   version: a0ff2567cfb70903282db057e799fd826784d41d
 - name: github.com/konsorten/go-windows-terminal-sequences
   version: 5c8c8bd35d3832f5d134ae1e1e375b69a4d25242
+- name: github.com/kubernetes-sigs/kube-storage-version-migrator
+  version: bdca3bf7d454105b7853d0d60b385877486a9dc6
+  repo: https://github.com/openshift/kubernetes-kube-storage-version-migrator.git
+  subpackages:
+  - pkg/apis/migration/v1alpha1
+  - pkg/clients/clientset
+  - pkg/clients/clientset/scheme
+  - pkg/clients/clientset/typed/migration/v1alpha1
+  - pkg/clients/informer/internalinterfaces
+  - pkg/clients/informer/migration/v1alpha1
+  - pkg/clients/lister/migration/v1alpha1
 - name: github.com/mailru/easyjson
   version: d5b7844b561a7bc640052f1b935f7b800330d7e0
   subpackages:
@@ -250,19 +261,19 @@ imports:
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
 - name: github.com/opencontainers/go-digest
-  version: a6d0ee40d4207ea02364bd3b9e8e77b9159ba1eb
+  version: 279bed98673dd5bef374d3b6e4b09e2af76183bf
 - name: github.com/opencontainers/image-spec
-  version: 372ad780f63454fbbbbcc7cf80e5b90245c13e13
+  version: d60099175f88c47cd379c4738d158884749ed235
   subpackages:
   - specs-go
   - specs-go/v1
 - name: github.com/opencontainers/runc
-  version: 4d6e6720a7c885c37b4cb083c0d372dda3425120
+  version: b133feaeeb2e69ba94aa95eac3a455a143435ea9
   subpackages:
   - libcontainer/system
   - libcontainer/user
 - name: github.com/openshift/api
-  version: 169848dd81372b8176b925c10b37a05424db5f2f
+  version: 371e06d3a8a73b95b67bf6d0b7fb6259c67a5e62
   subpackages:
   - apps
   - apps/v1
@@ -276,6 +287,8 @@ imports:
   - image/docker10
   - image/dockerpre012
   - image/v1
+  - imageregistry
+  - imageregistry/v1
   - kubecontrolplane
   - kubecontrolplane/v1
   - legacyconfig/v1
@@ -297,6 +310,8 @@ imports:
   - quota/v1
   - route
   - route/v1
+  - samples
+  - samples/v1
   - security
   - security/v1
   - servicecertsigner
@@ -306,10 +321,8 @@ imports:
   - unidling/v1alpha1
   - user
   - user/v1
-  - webconsole
-  - webconsole/v1
 - name: github.com/openshift/client-go
-  version: 6afefc9bb37281f45d12d624156e39e363eaf4fd
+  version: f6563a70e19a12b2f240eaf4e716ef75baf7003e
   subpackages:
   - apps/clientset/versioned/scheme
   - apps/clientset/versioned/typed/apps/v1
@@ -318,6 +331,8 @@ imports:
   - config/clientset/versioned/scheme
   - config/clientset/versioned/typed/config/v1
   - config/clientset/versioned/typed/config/v1/fake
+  - config/informers/externalversions
+  - config/informers/externalversions/config
   - config/informers/externalversions/config/v1
   - config/informers/externalversions/internalinterfaces
   - config/listers/config/v1
@@ -342,6 +357,10 @@ imports:
   version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: github.com/pkg/profile
   version: f6fe06335df110bcf1ed6d4e852b760bfc15beee
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
 - name: github.com/prometheus/client_golang
   version: 505eaef017263e299324067d40ca2c48f6a2cf50
   subpackages:
@@ -376,6 +395,11 @@ imports:
   version: 67fc4837d267bc9bfd6e47f77783fcc3dffc68de
 - name: github.com/spf13/pflag
   version: 298182f68c66c05229eb03ac171abe6e309ee79a
+- name: github.com/stretchr/testify
+  version: ffdc059bfe9ce6a4e144ba849dbedead332c6053
+  subpackages:
+  - assert
+  - require
 - name: go.uber.org/atomic
   version: 8dc6146f7569370a472715e178d8ae31172ee6da
 - name: go.uber.org/multierr

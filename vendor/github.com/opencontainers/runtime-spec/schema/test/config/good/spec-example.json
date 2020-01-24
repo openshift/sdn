@@ -194,15 +194,15 @@
         ],
         "uidMappings": [
             {
-                "containerID": 0,
                 "hostID": 1000,
+                "containerID": 0,
                 "size": 32000
             }
         ],
         "gidMappings": [
             {
-                "containerID": 0,
                 "hostID": 1000,
+                "containerID": 0,
                 "size": 32000
             }
         ],
@@ -232,10 +232,6 @@
                 {
                     "pageSize": "2MB",
                     "limit": 9223372036854772000
-                },
-                {
-                    "pageSize": "64KB",
-                    "limit": 1000000
                 }
             ],
             "oomScoreAdj": 100,

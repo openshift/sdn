@@ -1,63 +1,34 @@
 {
     "solaris": {
         "description": "Solaris platform-specific configurations",
+        "id": "https://opencontainers.org/schema/bundle/solaris",
         "type": "object",
         "properties": {
             "milestone": {
+                "id": "https://opencontainers.org/schema/bundle/solaris/milestone",
                 "type": "string"
             },
             "limitpriv": {
+                "id": "https://opencontainers.org/schema/bundle/solaris/limitpriv",
                 "type": "string"
             },
             "maxShmMemory": {
+                "id": "https://opencontainers.org/schema/bundle/solaris/maxShmMemory",
                 "type": "string"
             },
             "cappedCPU": {
-                "type": "object",
-                "properties": {
-                    "ncpus": {
-                        "type": "string"
-                    }
-                }
+                "id": "https://opencontainers.org/schema/bundle/solaris/cappedCPU",
+                "$ref": "defs.json#/definitions/mapStringString"
             },
             "cappedMemory": {
-                "type": "object",
-                "properties": {
-                    "physical": {
-                        "type": "string"
-                    },
-                    "swap": {
-                        "type": "string"
-                    }
-                }
+                "id": "https://opencontainers.org/schema/bundle/solaris/cappedMemory",
+                "$ref": "defs.json#/definitions/mapStringString"
             },
             "anet": {
+                "id": "https://opencontainers.org/schema/bundle/solaris/anet",
                 "type": "array",
                 "items": {
-                    "type": "object",
-                    "properties": {
-                        "linkname": {
-                            "type": "string"
-                        },
-                        "lowerLink": {
-                            "type": "string"
-                        },
-                        "allowedAddress": {
-                            "type": "string"
-                        },
-                        "configureAllowedAddress": {
-                            "type": "string"
-                        },
-                        "defrouter": {
-                            "type": "string"
-                        },
-                        "macAddress": {
-                            "type": "string"
-                        },
-                        "linkProtection": {
-                            "type": "string"
-                        }
-                    }
+                    "$ref": "defs.json#/definitions/mapStringString"
                 }
             }
         }

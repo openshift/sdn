@@ -1,7 +1,6 @@
 package uvm
 
 import (
-	"context"
 	"testing"
 )
 
@@ -11,7 +10,7 @@ func TestCreateBadBootFilesPath(t *testing.T) {
 	opts := NewDefaultOptionsLCOW(t.Name(), "")
 	opts.BootFilesPath = `c:\does\not\exist\I\hope`
 
-	_, err := CreateLCOW(context.Background(), opts)
+	_, err := CreateLCOW(opts)
 	if err == nil || err.Error() != `kernel: 'c:\does\not\exist\I\hope\kernel' not found` {
 		t.Fatal(err)
 	}
@@ -19,7 +18,7 @@ func TestCreateBadBootFilesPath(t *testing.T) {
 
 func TestCreateWCOWBadLayerFolders(t *testing.T) {
 	opts := NewDefaultOptionsWCOW(t.Name(), "")
-	_, err := CreateWCOW(context.Background(), opts)
+	_, err := CreateWCOW(opts)
 	if err == nil || (err != nil && err.Error() != `at least 2 LayerFolders must be supplied`) {
 		t.Fatal(err)
 	}

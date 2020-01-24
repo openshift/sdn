@@ -42,14 +42,6 @@
                 "SCMP_ACT_ALLOW"
             ]
         },
-        "SeccompFlag": {
-            "type": "string",
-            "enum": [
-                "SECCOMP_FILTER_FLAG_TSYNC",
-                "SECCOMP_FILTER_FLAG_LOG",
-                "SECCOMP_FILTER_FLAG_SPEC_ALLOW"
-            ]
-        },
         "SeccompOperators": {
             "type": "string",
             "enum": [
@@ -247,17 +239,6 @@
                 "name",
                 "priority"
             ]
-        },
-        "Rdma": {
-            "type": "object",
-            "properties": {
-                "hcaHandles": {
-                    "$ref": "defs.json#/definitions/uint32"
-                },
-                "hcaObjects": {
-                    "$ref": "defs.json#/definitions/uint32"
-                }
-            }
         },
         "NamespaceType": {
             "type": "string",

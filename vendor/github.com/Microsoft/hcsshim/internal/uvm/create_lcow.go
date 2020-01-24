@@ -1,7 +1,7 @@
 package uvm
 
 import (
-	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -9,18 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Microsoft/go-winio"
-	"github.com/Microsoft/go-winio/pkg/guid"
-	"github.com/Microsoft/hcsshim/internal/gcs"
-	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/guid"
+	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/mergemaps"
-	"github.com/Microsoft/hcsshim/internal/oc"
-	hcsschema "github.com/Microsoft/hcsshim/internal/schema2"
+	"github.com/Microsoft/hcsshim/internal/schema2"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
+	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/linuxkit/virtsock/pkg/hvsock"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
 )
 
 type PreferredRootFSType int
@@ -28,9 +25,6 @@ type PreferredRootFSType int
 const (
 	PreferredRootFSTypeInitRd PreferredRootFSType = iota
 	PreferredRootFSTypeVHD
-
-	entropyVsockPort  = 1
-	linuxLogVsockPort = 109
 )
 
 // OutputHandler is used to process the output from the program run in the UVM.
@@ -41,11 +35,6 @@ const (
 	InitrdFile = "initrd.img"
 	// VhdFile is the default file name for a rootfs.vhd used to boot LCOW.
 	VhdFile = "rootfs.vhd"
-	// KernelFile is the default file name for a kernel used to boot LCOW.
-	KernelFile = "kernel"
-	// UncompressedKernelFile is the default file name for an uncompressed
-	// kernel used to boot LCOW with KernelDirect.
-	UncompressedKernelFile = "vmlinux"
 )
 
 // OptionsLCOW are the set of options passed to CreateLCOW() to create a utility vm.
@@ -70,18 +59,6 @@ type OptionsLCOW struct {
 	PreferredRootFSType   PreferredRootFSType // If `KernelFile` is `InitrdFile` use `PreferredRootFSTypeInitRd`. If `KernelFile` is `VhdFile` use `PreferredRootFSTypeVHD`
 }
 
-// defaultLCOWOSBootFilesPath returns the default path used to locate the LCOW
-// OS kernel and root FS files. This default is the subdirectory
-// `LinuxBootFiles` in the directory of the executable that started the current
-// process; or, if it does not exist, `%ProgramFiles%\Linux Containers`.
-func defaultLCOWOSBootFilesPath() string {
-	localDirPath := filepath.Join(filepath.Dir(os.Args[0]), "LinuxBootFiles")
-	if _, err := os.Stat(localDirPath); err == nil {
-		return localDirPath
-	}
-	return filepath.Join(os.Getenv("ProgramFiles"), "Linux Containers")
-}
-
 // NewDefaultOptionsLCOW creates the default options for a bootable version of
 // LCOW.
 //
@@ -90,69 +67,57 @@ func defaultLCOWOSBootFilesPath() string {
 // `owner` the owner of the compute system. If not passed will use the
 // executable files name.
 func NewDefaultOptionsLCOW(id, owner string) *OptionsLCOW {
-	// Use KernelDirect boot by default on all builds that support it.
-	kernelDirectSupported := osversion.Get().Build >= 18286
 	opts := &OptionsLCOW{
-		Options:               newDefaultOptions(id, owner),
-		BootFilesPath:         defaultLCOWOSBootFilesPath(),
-		KernelFile:            KernelFile,
-		KernelDirect:          kernelDirectSupported,
+		Options: &Options{
+			ID:                   id,
+			Owner:                owner,
+			MemorySizeInMB:       1024,
+			AllowOvercommit:      true,
+			EnableDeferredCommit: false,
+			ProcessorCount:       defaultProcessorCount(),
+		},
+		BootFilesPath:         filepath.Join(os.Getenv("ProgramFiles"), "Linux Containers"),
+		KernelFile:            "kernel",
+		KernelDirect:          osversion.Get().Build >= 18286, // Use KernelDirect boot by default on all builds that support it.
 		RootFSFile:            InitrdFile,
 		KernelBootOptions:     "",
 		EnableGraphicsConsole: false,
 		ConsolePipe:           "",
 		SCSIControllerCount:   1,
 		UseGuestConnection:    true,
-		ExecCommandLine:       fmt.Sprintf("/bin/gcs -v4 -log-format json -loglevel %s", logrus.StandardLogger().Level.String()),
+		ExecCommandLine:       fmt.Sprintf("/bin/gcs -log-format json -loglevel %s", logrus.StandardLogger().Level.String()),
 		ForwardStdout:         false,
 		ForwardStderr:         true,
-		OutputHandler:         parseLogrus(id),
+		OutputHandler:         parseLogrus,
 		VPMemDeviceCount:      DefaultVPMEMCount,
 		VPMemSizeBytes:        DefaultVPMemSizeBytes,
 		PreferredRootFSType:   PreferredRootFSTypeInitRd,
 	}
 
-	// LCOW has more reliable behavior with the external bridge.
-	opts.Options.ExternalGuestConnection = true
+	if opts.ID == "" {
+		opts.ID = guid.New().String()
+	}
+	if opts.Owner == "" {
+		opts.Owner = filepath.Base(os.Args[0])
+	}
 
-	if _, err := os.Stat(filepath.Join(opts.BootFilesPath, VhdFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(opts.BootFilesPath, VhdFile)); err != nil {
 		// We have a rootfs.vhd in the boot files path. Use it over an initrd.img
 		opts.RootFSFile = VhdFile
 		opts.PreferredRootFSType = PreferredRootFSTypeVHD
 	}
-
-	if kernelDirectSupported {
-		// KernelDirect supports uncompressed kernel if the kernel is present.
-		// Default to uncompressed if on box. NOTE: If `kernel` is already
-		// uncompressed and simply named 'kernel' it will still be used
-		// uncompressed automatically.
-		if _, err := os.Stat(filepath.Join(opts.BootFilesPath, UncompressedKernelFile)); err == nil {
-			opts.KernelFile = UncompressedKernelFile
-		}
-	}
 	return opts
 }
 
+const linuxLogVsockPort = 109
+
 // CreateLCOW creates an HCS compute system representing a utility VM.
-func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error) {
-	ctx, span := trace.StartSpan(ctx, "uvm::CreateLCOW")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	if opts.ID == "" {
-		g, err := guid.NewV4()
-		if err != nil {
-			return nil, err
-		}
-		opts.ID = g.String()
-	}
-
-	span.AddAttributes(trace.StringAttribute(logfields.UVMID, opts.ID))
-	log.G(ctx).WithField("options", fmt.Sprintf("%+v", opts)).Debug("uvm::CreateLCOW options")
+func CreateLCOW(opts *OptionsLCOW) (_ *UtilityVM, err error) {
+	logrus.Debugf("uvm::CreateLCOW %+v", opts)
 
 	// We dont serialize OutputHandler so if it is missing we need to put it back to the default.
 	if opts.OutputHandler == nil {
-		opts.OutputHandler = parseLogrus(opts.ID)
+		opts.OutputHandler = parseLogrus
 	}
 
 	uvm := &UtilityVM{
@@ -163,18 +128,6 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		vpmemMaxCount:       opts.VPMemDeviceCount,
 		vpmemMaxSizeBytes:   opts.VPMemSizeBytes,
 	}
-	defer func() {
-		if err != nil {
-			uvm.Close()
-		}
-	}()
-
-	// To maintain compatability with Docker we need to automatically downgrade
-	// a user CPU count if the setting is not possible.
-	uvm.normalizeProcessorCount(ctx, opts.ProcessorCount)
-
-	// Align the requested memory size.
-	memorySizeInMB := uvm.normalizeMemorySize(ctx, opts.MemorySizeInMB)
 
 	kernelFullPath := filepath.Join(opts.BootFilesPath, opts.KernelFile)
 	if _, err := os.Stat(kernelFullPath); os.IsNotExist(err) {
@@ -213,14 +166,12 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 			Chipset:     &hcsschema.Chipset{},
 			ComputeTopology: &hcsschema.Topology{
 				Memory: &hcsschema.Memory2{
-					SizeInMB:             memorySizeInMB,
+					SizeInMB:             opts.MemorySizeInMB,
 					AllowOvercommit:      opts.AllowOvercommit,
 					EnableDeferredCommit: opts.EnableDeferredCommit,
 				},
 				Processor: &hcsschema.Processor2{
-					Count:  uvm.processorCount,
-					Limit:  opts.ProcessorLimit,
-					Weight: opts.ProcessorWeight,
+					Count: opts.ProcessorCount,
 				},
 			},
 			Devices: &hcsschema.Devices{
@@ -231,20 +182,11 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 						DefaultBindSecurityDescriptor: "D:P(A;;FA;;;SY)(A;;FA;;;BA)",
 					},
 				},
-				Plan9: &hcsschema.Plan9{},
 			},
 		},
 	}
 
-	// Handle StorageQoS if set
-	if opts.StorageQoSBandwidthMaximum > 0 || opts.StorageQoSIopsMaximum > 0 {
-		doc.VirtualMachine.StorageQoS = &hcsschema.StorageQoS{
-			IopsMaximum:      opts.StorageQoSIopsMaximum,
-			BandwidthMaximum: opts.StorageQoSBandwidthMaximum,
-		}
-	}
-
-	if opts.UseGuestConnection && !opts.ExternalGuestConnection {
+	if opts.UseGuestConnection {
 		doc.VirtualMachine.GuestConnection = &hcsschema.GuestConnection{
 			UseVsock:            true,
 			UseConnectedSuspend: true,
@@ -274,7 +216,7 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		}
 	case PreferredRootFSTypeVHD:
 		// Support for VPMem VHD(X) booting rather than initrd..
-		kernelArgs = "root=/dev/pmem0 ro rootwait init=/init"
+		kernelArgs = "root=/dev/pmem0 ro init=/init"
 		imageFormat := "Vhd1"
 		if strings.ToLower(filepath.Ext(opts.RootFSFile)) == "vhdx" {
 			imageFormat = "Vhdx"
@@ -286,13 +228,15 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 				ImageFormat: imageFormat,
 			},
 		}
+		if err := wclayer.GrantVmAccess(uvm.id, rootfsFullPath); err != nil {
+			return nil, fmt.Errorf("failed to grantvmaccess to %s: %s", rootfsFullPath, err)
+		}
 		// Add to our internal structure
 		uvm.vpmemDevices[0] = vpmemInfo{
 			hostPath: opts.RootFSFile,
 			uvmPath:  "/",
 			refCount: 1,
 		}
-		uvm.vpmemNumDevices++
 	}
 
 	vmDebugging := false
@@ -325,12 +269,9 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		kernelArgs += " " + opts.KernelBootOptions
 	}
 
-	// Inject initial entropy over vsock during init launch.
-	initArgs := fmt.Sprintf("-e %d", entropyVsockPort)
-
 	// With default options, run GCS with stderr pointing to the vsock port
 	// created below in order to forward guest logs to logrus.
-	initArgs += " /bin/vsockexec"
+	initArgs := "/bin/vsockexec"
 
 	if opts.ForwardStdout {
 		initArgs += fmt.Sprintf(" -o %d", linuxLogVsockPort)
@@ -347,7 +288,6 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		initArgs = `sh -c "` + initArgs + ` & exec sh"`
 	}
 
-	kernelArgs += fmt.Sprintf(" nr_cpus=%d", opts.ProcessorCount)
 	kernelArgs += ` pci=off brd.rd_nr=0 pmtmr=0 -- ` + initArgs
 
 	if !opts.KernelDirect {
@@ -374,16 +314,18 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		return nil, fmt.Errorf("failed to merge additional JSON '%s': %s", opts.AdditionHCSDocumentJSON, err)
 	}
 
-	err = uvm.create(ctx, fullDoc)
+	hcsSystem, err := hcs.CreateComputeSystem(uvm.id, fullDoc)
 	if err != nil {
+		logrus.Debugln("failed to create UVM: ", err)
 		return nil, err
 	}
 
-	// Cerate a socket to inject entropy during boot.
-	uvm.entropyListener, err = uvm.listenVsock(entropyVsockPort)
-	if err != nil {
-		return nil, err
-	}
+	uvm.hcsSystem = hcsSystem
+	defer func() {
+		if err != nil {
+			uvm.Close()
+		}
+	}()
 
 	// Create a socket that the executed program can send to. This is usually
 	// used by GCS to send log data.
@@ -396,20 +338,24 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		}
 	}
 
-	if opts.UseGuestConnection && opts.ExternalGuestConnection {
-		l, err := uvm.listenVsock(gcs.LinuxGcsVsockPort)
-		if err != nil {
-			return nil, err
-		}
-		uvm.gcListener = l
-	}
-
 	return uvm, nil
 }
 
 func (uvm *UtilityVM) listenVsock(port uint32) (net.Listener, error) {
-	return winio.ListenHvsock(&winio.HvsockAddr{
-		VMID:      uvm.runtimeID,
-		ServiceID: winio.VsockServiceID(port),
-	})
+	properties, err := uvm.hcsSystem.Properties()
+	if err != nil {
+		return nil, err
+	}
+	vmID, err := hvsock.GUIDFromString(properties.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	serviceID, _ := hvsock.GUIDFromString("00000000-facb-11e6-bd58-64006a7986d3")
+	binary.LittleEndian.PutUint32(serviceID[0:4], port)
+	return hvsock.Listen(hvsock.Addr{VMID: vmID, ServiceID: serviceID})
+}
+
+// PMemMaxSizeBytes returns the maximum size of a PMEM layer (LCOW)
+func (uvm *UtilityVM) PMemMaxSizeBytes() uint64 {
+	return uvm.vpmemMaxSizeBytes
 }

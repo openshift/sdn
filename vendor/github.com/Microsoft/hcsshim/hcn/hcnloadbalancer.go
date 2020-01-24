@@ -3,17 +3,17 @@ package hcn
 import (
 	"encoding/json"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/guid"
 	"github.com/Microsoft/hcsshim/internal/interop"
 	"github.com/sirupsen/logrus"
 )
 
 // LoadBalancerPortMapping is associated with HostComputeLoadBalancer
 type LoadBalancerPortMapping struct {
-	Protocol     uint32                       `json:",omitempty"` // EX: TCP = 6, UDP = 17
-	InternalPort uint16                       `json:",omitempty"`
-	ExternalPort uint16                       `json:",omitempty"`
-	Flags        LoadBalancerPortMappingFlags `json:",omitempty"`
+	Protocol     uint32 `json:",omitempty"` // EX: TCP = 6, UDP = 17
+	InternalPort uint16 `json:",omitempty"`
+	ExternalPort uint16 `json:",omitempty"`
+	Flags        uint32 `json:",omitempty"` // 0: None, 1: EnableILB, 2: LocalRoutedVip
 }
 
 // HostComputeLoadBalancer represents software load balancer.
@@ -24,34 +24,8 @@ type HostComputeLoadBalancer struct {
 	FrontendVIPs         []string                  `json:",omitempty"`
 	PortMappings         []LoadBalancerPortMapping `json:",omitempty"`
 	SchemaVersion        SchemaVersion             `json:",omitempty"`
-	Flags                LoadBalancerFlags         `json:",omitempty"` // 0: None, 1: EnableDirectServerReturn
+	Flags                uint32                    `json:",omitempty"` // 0: None, 1: EnableDirectServerReturn
 }
-
-//LoadBalancerFlags modify settings for a loadbalancer.
-type LoadBalancerFlags uint32
-
-var (
-	// LoadBalancerFlagsNone is the default.
-	LoadBalancerFlagsNone LoadBalancerFlags = 0
-	// LoadBalancerFlagsDSR enables Direct Server Return (DSR)
-	LoadBalancerFlagsDSR LoadBalancerFlags = 1
-)
-
-// LoadBalancerPortMappingFlags are special settings on a loadbalancer.
-type LoadBalancerPortMappingFlags uint32
-
-var (
-	// LoadBalancerPortMappingFlagsNone is the default.
-	LoadBalancerPortMappingFlagsNone LoadBalancerPortMappingFlags
-	// LoadBalancerPortMappingFlagsILB enables internal loadbalancing.
-	LoadBalancerPortMappingFlagsILB LoadBalancerPortMappingFlags = 1
-	// LoadBalancerPortMappingFlagsLocalRoutedVIP enables VIP access from the host.
-	LoadBalancerPortMappingFlagsLocalRoutedVIP LoadBalancerPortMappingFlags = 2
-	// LoadBalancerPortMappingFlagsUseMux enables DSR for NodePort access of VIP.
-	LoadBalancerPortMappingFlagsUseMux LoadBalancerPortMappingFlags = 4
-	// LoadBalancerPortMappingFlagsPreserveDIP delivers packets with destination IP as the VIP.
-	LoadBalancerPortMappingFlagsPreserveDIP LoadBalancerPortMappingFlags = 8
-)
 
 func getLoadBalancer(loadBalancerGuid guid.GUID, query string) (*HostComputeLoadBalancer, error) {
 	// Open loadBalancer.
@@ -148,10 +122,7 @@ func createLoadBalancer(settings string) (*HostComputeLoadBalancer, error) {
 }
 
 func modifyLoadBalancer(loadBalancerId string, settings string) (*HostComputeLoadBalancer, error) {
-	loadBalancerGuid, err := guid.FromString(loadBalancerId)
-	if err != nil {
-		return nil, errInvalidLoadBalancerID
-	}
+	loadBalancerGuid := guid.FromString(loadBalancerId)
 	// Open loadBalancer.
 	var (
 		loadBalancerHandle hcnLoadBalancer
@@ -192,10 +163,7 @@ func modifyLoadBalancer(loadBalancerId string, settings string) (*HostComputeLoa
 }
 
 func deleteLoadBalancer(loadBalancerId string) error {
-	loadBalancerGuid, err := guid.FromString(loadBalancerId)
-	if err != nil {
-		return errInvalidLoadBalancerID
-	}
+	loadBalancerGuid := guid.FromString(loadBalancerId)
 	var resultBuffer *uint16
 	hr := hcnDeleteLoadBalancer(&loadBalancerGuid, &resultBuffer)
 	if err := checkForErrors("hcnDeleteLoadBalancer", hr, resultBuffer); err != nil {
@@ -312,8 +280,20 @@ func (loadBalancer *HostComputeLoadBalancer) RemoveEndpoint(endpoint *HostComput
 }
 
 // AddLoadBalancer for the specified endpoints
-func AddLoadBalancer(endpoints []HostComputeEndpoint, flags LoadBalancerFlags, portMappingFlags LoadBalancerPortMappingFlags, sourceVIP string, frontendVIPs []string, protocol uint16, internalPort uint16, externalPort uint16) (*HostComputeLoadBalancer, error) {
-	logrus.Debugf("hcn::HostComputeLoadBalancer::AddLoadBalancer endpointId=%v, LoadBalancerFlags=%v, LoadBalancerPortMappingFlags=%v, sourceVIP=%s, frontendVIPs=%v, protocol=%v, internalPort=%v, externalPort=%v", endpoints, flags, portMappingFlags, sourceVIP, frontendVIPs, protocol, internalPort, externalPort)
+func AddLoadBalancer(endpoints []HostComputeEndpoint, isILB bool, isDSR bool, sourceVIP string, frontendVIPs []string, protocol uint16, internalPort uint16, externalPort uint16) (*HostComputeLoadBalancer, error) {
+	logrus.Debugf("hcn::HostComputeLoadBalancer::AddLoadBalancer endpointId=%v, isILB=%v, sourceVIP=%s, frontendVIPs=%v, protocol=%v, internalPort=%v, externalPort=%v", endpoints, isILB, sourceVIP, frontendVIPs, protocol, internalPort, externalPort)
+
+	var portMappingFlags uint32
+	portMappingFlags = 0
+	if isILB {
+		portMappingFlags = 1
+	}
+
+	var lbFlags uint32
+	lbFlags = 0
+	if isDSR {
+		lbFlags = 1 // EnableDirectServerReturn
+	}
 
 	loadBalancer := &HostComputeLoadBalancer{
 		SourceVIP: sourceVIP,
@@ -330,7 +310,7 @@ func AddLoadBalancer(endpoints []HostComputeEndpoint, flags LoadBalancerFlags, p
 			Major: 2,
 			Minor: 0,
 		},
-		Flags: flags,
+		Flags: lbFlags,
 	}
 
 	for _, endpoint := range endpoints {
