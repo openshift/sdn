@@ -67,6 +67,14 @@ func (ef *errorFormatter) descend(pe fieldpath.PathElement) {
 	ef.path = append(ef.path, pe)
 }
 
+// parent returns the parent, for the purpose of buffer reuse. It's an error to
+// call this if there is no parent.
+func (ef *errorFormatter) parent() errorFormatter {
+	return errorFormatter{
+		path: ef.path[:len(ef.path)-1],
+	}
+}
+
 func (ef errorFormatter) errorf(format string, args ...interface{}) ValidationErrors {
 	return ValidationErrors{{
 		Path:         append(fieldpath.Path{}, ef.path...),
@@ -197,6 +205,7 @@ func keyedAssociativeListItemToPathElement(list schema.List, index int, child va
 	if child.MapValue == nil {
 		return pe, errors.New("associative list with keys may not have non-map elements")
 	}
+	keyMap := &value.Map{}
 	for _, fieldName := range list.Keys {
 		var fieldValue value.Value
 		field, ok := child.MapValue.Get(fieldName)
@@ -206,11 +215,9 @@ func keyedAssociativeListItemToPathElement(list schema.List, index int, child va
 			// Treat keys as required.
 			return pe, fmt.Errorf("associative list with keys has an element that omits key field %q", fieldName)
 		}
-		pe.Key = append(pe.Key, value.Field{
-			Name:  fieldName,
-			Value: fieldValue,
-		})
+		keyMap.Set(fieldName, fieldValue)
 	}
+	pe.Key = keyMap
 	return pe, nil
 }
 
