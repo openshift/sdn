@@ -365,7 +365,7 @@ func (proxy *OsdnProxy) OnEndpointsSynced() {
 }
 
 func (proxy *OsdnProxy) OnServiceAdd(service *corev1.Service) {
-	klog.V(2).Infof("sdn proxy: add svc %s/%s: %v", service.Namespace, service.Name, service)
+	klog.V(4).Infof("sdn proxy: add svc %s/%s: %v", service.Namespace, service.Name, service)
 	proxy.baseProxy.OnServiceAdd(service)
 }
 
