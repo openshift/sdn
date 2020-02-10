@@ -344,10 +344,7 @@ func newInformer(
 	// This will hold incoming changes. Note how we pass clientState in as a
 	// KeyLister, that way resync operations will result in the correct set
 	// of update/delete deltas.
-	fifo := NewDeltaFIFOWithOptions(DeltaFIFOOptions{
-		KnownObjects:                       clientState,
-		ClientUnderstandsReplacedDeltaType: true,
-	})
+	fifo := NewDeltaFIFO(MetaNamespaceKeyFunc, clientState)
 
 	cfg := &Config{
 		Queue:            fifo,
@@ -360,7 +357,7 @@ func newInformer(
 			// from oldest to newest
 			for _, d := range obj.(Deltas) {
 				switch d.Type {
-				case Sync, Replaced, Added, Updated:
+				case Sync, Added, Updated:
 					if old, exists, err := clientState.Get(d.Object); err == nil && exists {
 						if err := clientState.Update(d.Object); err != nil {
 							return err

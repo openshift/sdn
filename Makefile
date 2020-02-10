@@ -1,10 +1,15 @@
 all: build
 .PHONY: all
 
+export GO111MODULE=on
+export GOPROXY=https://proxy.golang.org
+unexport GOPATH
+
 GO_BUILD_PACKAGES = \
     ./cmd/... \
     ./vendor/github.com/containernetworking/plugins/plugins/ipam/host-local \
     ./vendor/k8s.io/kubernetes/cmd/kube-proxy
+GO_BUILD_PACKAGES_EXPANDED =$(shell GO111MODULE=on $(GO) list $(GO_MOD_FLAGS) $(GO_BUILD_PACKAGES))
 
 # Include the library makefile
 include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machinery/make/, \
