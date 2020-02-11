@@ -80,7 +80,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	iptInterface := utiliptables.New(execer, protocol)
 
 	var proxier proxy.Provider
-	var healthzServer *healthcheck.HealthzServer
+	var healthzServer *healthcheck.ProxierHealthServer
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
@@ -88,7 +88,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			UID:       types.UID(hostname),
 			Namespace: "",
 		}
-		healthzServer = healthcheck.NewDefaultHealthzServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+		healthzServer = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
 	}
 
 	enableUnidling := false
