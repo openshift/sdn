@@ -3,7 +3,7 @@ package hcn
 import (
 	"encoding/json"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/guid"
 	"github.com/Microsoft/hcsshim/internal/interop"
 	"github.com/sirupsen/logrus"
 )
@@ -148,10 +148,7 @@ func createLoadBalancer(settings string) (*HostComputeLoadBalancer, error) {
 }
 
 func modifyLoadBalancer(loadBalancerId string, settings string) (*HostComputeLoadBalancer, error) {
-	loadBalancerGuid, err := guid.FromString(loadBalancerId)
-	if err != nil {
-		return nil, errInvalidLoadBalancerID
-	}
+	loadBalancerGuid := guid.FromString(loadBalancerId)
 	// Open loadBalancer.
 	var (
 		loadBalancerHandle hcnLoadBalancer
@@ -192,10 +189,7 @@ func modifyLoadBalancer(loadBalancerId string, settings string) (*HostComputeLoa
 }
 
 func deleteLoadBalancer(loadBalancerId string) error {
-	loadBalancerGuid, err := guid.FromString(loadBalancerId)
-	if err != nil {
-		return errInvalidLoadBalancerID
-	}
+	loadBalancerGuid := guid.FromString(loadBalancerId)
 	var resultBuffer *uint16
 	hr := hcnDeleteLoadBalancer(&loadBalancerGuid, &resultBuffer)
 	if err := checkForErrors("hcnDeleteLoadBalancer", hr, resultBuffer); err != nil {

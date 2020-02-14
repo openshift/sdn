@@ -364,6 +364,22 @@ func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.checkInitialized()
 }
 
+func (proxier *OsdnProxy) OnNodeAdd(node *corev1.Node) {
+	proxier.baseProxy.OnNodeAdd(node)
+}
+
+func (proxier *OsdnProxy) OnNodeUpdate(oldNode, node *corev1.Node) {
+	proxier.baseProxy.OnNodeUpdate(oldNode, node)
+}
+
+func (proxier *OsdnProxy) OnNodeDelete(node *corev1.Node) {
+	proxier.baseProxy.OnNodeDelete(node)
+}
+
+func (proxier *OsdnProxy) OnNodeSynced() {
+	proxier.baseProxy.OnNodeSynced()
+}
+
 func (proxy *OsdnProxy) OnServiceAdd(service *corev1.Service) {
 	klog.V(2).Infof("sdn proxy: add svc %s/%s: %v", service.Namespace, service.Name, service)
 	proxy.baseProxy.OnServiceAdd(service)

@@ -24,7 +24,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	"k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilnode "k8s.io/kubernetes/pkg/util/node"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
@@ -78,11 +77,10 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-proxy", Host: hostname})
 
 	execer := utilexec.New()
-	dbus := utildbus.New()
-	iptInterface := utiliptables.New(execer, dbus, protocol)
+	iptInterface := utiliptables.New(execer, protocol)
 
 	var proxier proxy.Provider
-	var healthzServer *healthcheck.HealthzServer
+	var healthzServer *healthcheck.ProxierHealthServer
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
@@ -90,7 +88,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			UID:       types.UID(hostname),
 			Namespace: "",
 		}
-		healthzServer = healthcheck.NewDefaultHealthzServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+		healthzServer = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
 	}
 
 	enableUnidling := false
@@ -202,7 +200,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 	proxier = sdn.OsdnProxy
 
-	iptInterface.AddReloadFunc(proxier.Sync)
 	serviceConfig.RegisterEventHandler(proxier)
 	go serviceConfig.Run(utilwait.NeverStop)
 

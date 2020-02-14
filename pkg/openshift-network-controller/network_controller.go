@@ -24,7 +24,8 @@ import (
 	sdnmaster "github.com/openshift/sdn/pkg/network/master"
 
 	// for metrics
-	_ "k8s.io/kubernetes/pkg/client/metrics/prometheus"
+	_ "k8s.io/component-base/metrics/prometheus/restclient"
+	_ "k8s.io/component-base/metrics/prometheus/version"
 )
 
 func RunOpenShiftNetworkController() error {

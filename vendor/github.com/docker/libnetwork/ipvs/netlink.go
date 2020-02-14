@@ -422,11 +422,8 @@ func assembleDestination(attrs []syscall.NetlinkRouteAttr) (*Destination, error)
 		attrType := int(attr.Attr.Type)
 
 		switch attrType {
-
-		case ipvsDestAttrAddressFamily:
-			d.AddressFamily = native.Uint16(attr.Value)
 		case ipvsDestAttrAddress:
-			ip, err := parseIP(attr.Value, d.AddressFamily)
+			ip, err := parseIP(attr.Value, syscall.AF_INET)
 			if err != nil {
 				return nil, err
 			}
@@ -441,6 +438,8 @@ func assembleDestination(attrs []syscall.NetlinkRouteAttr) (*Destination, error)
 			d.UpperThreshold = native.Uint32(attr.Value)
 		case ipvsDestAttrLowerThreshold:
 			d.LowerThreshold = native.Uint32(attr.Value)
+		case ipvsDestAttrAddressFamily:
+			d.AddressFamily = native.Uint16(attr.Value)
 		case ipvsDestAttrActiveConnections:
 			d.ActiveConnections = int(native.Uint16(attr.Value))
 		case ipvsDestAttrInactiveConnections:

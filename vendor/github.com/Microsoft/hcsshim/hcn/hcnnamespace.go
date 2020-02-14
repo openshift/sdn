@@ -5,8 +5,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
 	icni "github.com/Microsoft/hcsshim/internal/cni"
+	"github.com/Microsoft/hcsshim/internal/guid"
 	"github.com/Microsoft/hcsshim/internal/interop"
 	"github.com/Microsoft/hcsshim/internal/regstate"
 	"github.com/Microsoft/hcsshim/internal/runhcs"
@@ -165,10 +165,7 @@ func createNamespace(settings string) (*HostComputeNamespace, error) {
 }
 
 func modifyNamespace(namespaceId string, settings string) (*HostComputeNamespace, error) {
-	namespaceGuid, err := guid.FromString(namespaceId)
-	if err != nil {
-		return nil, errInvalidNamespaceID
-	}
+	namespaceGuid := guid.FromString(namespaceId)
 	// Open namespace.
 	var (
 		namespaceHandle  hcnNamespace
@@ -209,10 +206,7 @@ func modifyNamespace(namespaceId string, settings string) (*HostComputeNamespace
 }
 
 func deleteNamespace(namespaceId string) error {
-	namespaceGuid, err := guid.FromString(namespaceId)
-	if err != nil {
-		return errInvalidNamespaceID
-	}
+	namespaceGuid := guid.FromString(namespaceId)
 	var resultBuffer *uint16
 	hr := hcnDeleteNamespace(&namespaceGuid, &resultBuffer)
 	if err := checkForErrors("hcnDeleteNamespace", hr, resultBuffer); err != nil {
@@ -247,11 +241,7 @@ func ListNamespacesQuery(query HostComputeQuery) ([]HostComputeNamespace, error)
 
 // GetNamespaceByID returns the Namespace specified by Id.
 func GetNamespaceByID(namespaceId string) (*HostComputeNamespace, error) {
-	g, err := guid.FromString(namespaceId)
-	if err != nil {
-		return nil, errInvalidNamespaceID
-	}
-	return getNamespace(g, defaultQueryJson())
+	return getNamespace(guid.FromString(namespaceId), defaultQueryJson())
 }
 
 // GetNamespaceEndpointIds returns the endpoints of the Namespace specified by Id.

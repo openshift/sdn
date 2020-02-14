@@ -87,6 +87,22 @@ func NewHybridProxier(
 	return p, nil
 }
 
+func (proxier *HybridProxier) OnNodeAdd(node *corev1.Node) {
+	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+}
+
+func (proxier *HybridProxier) OnNodeUpdate(oldNode, node *corev1.Node) {
+	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+}
+
+func (proxier *HybridProxier) OnNodeDelete(node *corev1.Node) {
+	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+}
+
+func (proxier *HybridProxier) OnNodeSynced() {
+	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+}
+
 func (p *HybridProxier) OnServiceAdd(service *corev1.Service) {
 	svcName := types.NamespacedName{
 		Namespace: service.Namespace,
