@@ -347,13 +347,12 @@ func (p *HybridProxier) Sync() {
 // We do this so that we can guarantee that changes are applied to both
 // proxies, especially when unidling a newly-awoken service.
 func (p *HybridProxier) syncProxyRules() {
-	klog.V(2).Infof("hybrid proxy: syncProxyRules start")
+	klog.V(4).Infof("hybrid proxy: syncProxyRules start")
 
 	p.mainProxy.SyncProxyRules()
-	klog.V(2).Infof("hybrid proxy: mainProxy.syncProxyRules complete")
 	p.unidlingProxy.SyncProxyRules()
 
-	klog.V(2).Infof("hybrid proxy: unidlingProxy.syncProxyRules complete")
+	klog.V(4).Infof("hybrid proxy: syncProxyRules finished")
 }
 
 // SyncLoop runs periodic work.  This is expected to run as a goroutine or as the main loop of the app.  It does not return.
