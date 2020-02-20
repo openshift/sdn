@@ -6,7 +6,8 @@ import:
 - package: k8s.io/apimachinery
   version: kubernetes-1.16.0
 - package: k8s.io/client-go
-  version: kubernetes-1.16.0
+  repo:    https://github.com/openshift/kubernetes-client-go.git
+  version: sdn-4.3-kubernetes-1.16.0
 - package: k8s.io/component-base
   version: kubernetes-1.16.0
 - package: k8s.io/kube-proxy
@@ -25,11 +26,11 @@ import:
 
 # openshift second
 - package: github.com/openshift/api
-  version: prebase-1.16
+  version: release-4.3
 - package: github.com/openshift/client-go
-  version: prebase-1.16
+  version: release-4.3
 - package: github.com/openshift/library-go
-  version: prebase-1.16
+  version: release-4.3
 
 # ours: shared with kube, but forced by openshift
 # master: co-exist with klog
@@ -47,3 +48,27 @@ import:
 # used to be ~v1 to keep up with fixes.  It didn't build past v1.0.8.
 - package: github.com/miekg/dns
   version: v1.0.8
+
+# lock down some things to their 4.3.0 versions
+- package: github.com/containernetworking/cni
+  version: a2da8f8d7fd8e6dc25f336408a8ac86f050fbd88
+- package: github.com/godbus/dbus
+  version: 5ae69d1623c4c46049fbe4f8ef2d3af85fa766a7
+- package: github.com/gorilla/mux
+  version: 884b5ffcbd3a11b730f0b75f5c86ac408753c34d
+- package: github.com/lithammer/dedent
+  version: bacd562a68752afbd2c992df855db07be0db9bde
+- package: github.com/Microsoft/go-winio
+  version: fc70bd9a86b5562b3b5eb1040e803febee1e90a1
+- package: github.com/Microsoft/hcsshim
+  version: 82c7525d98c8990d0ceb533322bc9c72fbddaf70
+- package: github.com/opencontainers/runc
+  version: 84373aaa560b3f14cfda210b2f34ca14fd4b1fce
+- package: github.com/opencontainers/runtime-spec
+  version: 52e2591aa9f7211d64c49c4fed8691a183189284
+- package: github.com/spf13/pflag
+  version: 2e9d26c8c37aae03e3f9d4e90b7116f5accb7cab
+- package: go.opencensus.io
+  version: df6e2001952312404b06f5f6f03fcb4aec1648e5
+- package: k8s.io/cloud-provider
+  version: a9c1f33e9fb973aced01c110c71f09cd9007f949
