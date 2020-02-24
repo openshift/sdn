@@ -1,4 +1,4 @@
-## How to do a Kubernetes rebase
+## How to do a Kubernetes rebase 
 
 First off, wait for someone else to start the origin rebase. It will
 make things easier...
