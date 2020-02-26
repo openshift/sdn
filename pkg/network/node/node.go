@@ -86,7 +86,9 @@ type OsdnNode struct {
 	oc                 *ovsController
 	networkInfo        *common.ParsedClusterNetwork
 	podManager         *podManager
+	clusterCIDRs       []string
 	localSubnetCIDR    string
+	localGatewayCIDR   string
 	localIP            string
 	hostName           string
 	useConnTrack       bool
@@ -388,11 +390,10 @@ func (node *OsdnNode) Start() error {
 		return err
 	}
 
-	var cidrList []string
 	for _, cn := range node.networkInfo.ClusterNetworks {
-		cidrList = append(cidrList, cn.ClusterCIDR.String())
+		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
-	nodeIPTables := newNodeIPTables(cidrList, node.iptablesSyncPeriod, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	nodeIPTables := newNodeIPTables(node.clusterCIDRs, node.iptablesSyncPeriod, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
 
 	if err = nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
@@ -421,7 +422,7 @@ func (node *OsdnNode) Start() error {
 		node.watchServices()
 	}
 
-	existingPodSandboxes, err := node.getPodSandboxes()
+	existingPodSandboxes, err := node.getSDNPodSandboxes()
 	if err != nil {
 		return err
 	}
@@ -443,6 +444,10 @@ func (node *OsdnNode) Start() error {
 		}
 	}
 
+	if err := node.FinishSetupSDN(); err != nil {
+		return fmt.Errorf("could not complete SDN setup: %v", err)
+	}
+
 	if err := node.validateMTU(); err != nil {
 		utilruntime.HandleError(err)
 	}
@@ -459,18 +464,14 @@ func (node *OsdnNode) Start() error {
 // attached to the OVS bridge before restart, and either reattaches or kills each of the
 // corresponding pods.
 func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.PodSandbox, existingOFPodNetworks map[string]podNetworkInfo) error {
-
-	failed := []*kruntimeapi.PodSandbox{}
 	for sandboxID, podInfo := range existingOFPodNetworks {
 		sandbox, ok := existingPodSandboxes[sandboxID]
-
 		if !ok {
 			klog.V(5).Infof("Sandbox for pod with IP %s no longer exists", podInfo.ip)
 			continue
 		}
 		if _, err := netlink.LinkByName(podInfo.vethName); err != nil {
 			klog.Infof("Interface %s for pod '%s/%s' no longer exists", podInfo.vethName, sandbox.Metadata.Namespace, sandbox.Metadata.Name)
-			failed = append(failed, sandbox)
 			continue
 		}
 
@@ -486,19 +487,20 @@ func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.
 		klog.Infof("Reattaching pod '%s/%s' to SDN", req.PodNamespace, req.PodName)
 		// NB: we don't need to worry about locking here because the cniserver
 		// isn't running for real yet.
-		if _, err := node.podManager.handleCNIRequest(req); err != nil {
+		if _, err := node.podManager.handleCNIRequest(req); err == nil {
+			delete(existingPodSandboxes, sandboxID)
+		} else {
 			klog.Warningf("Could not reattach pod '%s/%s' to SDN: %v", req.PodNamespace, req.PodName, err)
-			failed = append(failed, sandbox)
 		}
 	}
 
 	// Kill any remaining pods in another thread, after letting SDN startup proceed
-	go node.killFailedPods(failed)
+	go node.killFailedPods(existingPodSandboxes)
 
 	return nil
 }
 
-func (node *OsdnNode) killFailedPods(failed []*kruntimeapi.PodSandbox) {
+func (node *OsdnNode) killFailedPods(failed map[string]*kruntimeapi.PodSandbox) {
 	// Kill pods we couldn't recover; they will get restarted and then
 	// we'll be able to set them up correctly
 	for _, sandbox := range failed {
