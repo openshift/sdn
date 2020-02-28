@@ -621,29 +621,6 @@ func getIPTablesRestoreWaitFlag(vstring string) []string {
 	return []string{WaitString, WaitSecondsValue}
 }
 
-// getIPTablesRestoreVersionString runs "iptables-restore --version" to get the version string
-// in the form "X.X.X"
-func getIPTablesRestoreVersionString(exec utilexec.Interface, protocol Protocol) (string, error) {
-	// this doesn't access mutable state so we don't need to use the interface / runner
-
-	// iptables-restore hasn't always had --version, and worse complains
-	// about unrecognized commands but doesn't exit when it gets them.
-	// Work around that by setting stdin to nothing so it exits immediately.
-	iptablesRestoreCmd := iptablesRestoreCommand(protocol)
-	cmd := exec.Command(iptablesRestoreCmd, "--version")
-	cmd.SetStdin(bytes.NewReader([]byte{}))
-	bytes, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	versionMatcher := regexp.MustCompile("v([0-9]+(\\.[0-9]+)+)")
-	match := versionMatcher.FindStringSubmatch(string(bytes))
-	if match == nil {
-		return "", fmt.Errorf("no iptables version found in string: %s", bytes)
-	}
-	return match[1], nil
-}
-
 // goroutine to listen for D-Bus signals
 func (runner *runner) dbusSignalHandler(bus utildbus.Connection) {
 	firewalld := bus.Object(firewalldName, firewalldPath)
