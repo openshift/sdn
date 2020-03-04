@@ -11,7 +11,8 @@ COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin
 COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
 RUN INSTALL_PKGS=" \
-      openvswitch2.11 container-selinux socat ethtool nmap-ncat \
+      openvswitch2.11 tcpdump python3-netifaces openvswitch-test \
+      container-selinux socat ethtool nmap-ncat \
       libmnl libnetfilter_conntrack conntrack-tools \
       libnfnetlink iproute bridge-utils procps-ng openssl \
       iputils binutils xz sysvinit-tools dbus nftables \
