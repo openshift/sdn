@@ -3,3 +3,1594 @@ diff --no-dereference -N -r current/vendor/github.com/vishvananda/netlink/link_l
 < 			gre.FlowBased = true
 ---
 > 			gre.FlowBased = int8(datum.Value[0]) != 0
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/BUILD updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/BUILD
+77a78
+>             "//pkg/util/dbus:go_default_library",
+84a86
+>             "//pkg/util/dbus:go_default_library",
+91a94
+>             "//pkg/util/dbus:go_default_library",
+98a102
+>             "//pkg/util/dbus:go_default_library",
+105a110
+>             "//pkg/util/dbus:go_default_library",
+112a118
+>             "//pkg/util/dbus:go_default_library",
+119a126
+>             "//pkg/util/dbus:go_default_library",
+126a134
+>             "//pkg/util/dbus:go_default_library",
+133a142
+>             "//pkg/util/dbus:go_default_library",
+140a150
+>             "//pkg/util/dbus:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go
+44a45
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+85a87
+> 	var dbus utildbus.Interface
+90c92,93
+< 	iptInterface = utiliptables.New(execer, protocol)
+---
+> 	dbus = utildbus.New()
+> 	iptInterface = utiliptables.New(execer, dbus, protocol)
+181c184
+< 				ipt[0] = utiliptables.New(execer, utiliptables.ProtocolIpv4)
+---
+> 				ipt[0] = utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
+184c187
+< 				ipt[1] = utiliptables.New(execer, utiliptables.ProtocolIpv6)
+---
+> 				ipt[1] = utiliptables.New(execer, dbus, utiliptables.ProtocolIpv6)
+251a255,256
+> 
+> 	iptInterface.AddReloadFunc(proxier.Sync)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kubeadm/.import-restrictions updated/vendor/k8s.io/kubernetes/cmd/kubeadm/.import-restrictions
+77a78
+> 				"k8s.io/kubernetes/pkg/util/dbus",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/go.mod updated/vendor/k8s.io/kubernetes/go.mod
+64c64
+< 	github.com/godbus/dbus v4.1.0+incompatible // indirect
+---
+> 	github.com/godbus/dbus v4.1.0+incompatible
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/BUILD updated/vendor/k8s.io/kubernetes/pkg/kubelet/BUILD
+102a103
+>         "//pkg/util/dbus:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/hostport/fake_iptables.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/hostport/fake_iptables.go
+24d23
+< 	"time"
+339c338,341
+< func (f *fakeIPTables) Monitor(canary utiliptables.Chain, tables []utiliptables.Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+---
+> func (f *fakeIPTables) AddReloadFunc(reloadFunc func()) {
+> }
+> 
+> func (f *fakeIPTables) Destroy() {
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/BUILD updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/BUILD
+44a45
+>             "//pkg/util/dbus:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/kubenet_linux.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/kubenet_linux.go
+43a44
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+127,128c128,130
+< 	iptInterface := utiliptables.New(execer, utiliptables.ProtocolIpv4)
+< 	iptInterfacev6 := utiliptables.New(execer, utiliptables.ProtocolIpv6)
+---
+> 	dbus := utildbus.New()
+> 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
+> 	iptInterfacev6 := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv6)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet.go
+111a112
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+539c540
+< 		iptClient:                               utilipt.New(utilexec.New(), protocol),
+---
+> 		iptClient:                               utilipt.New(utilexec.New(), utildbus.New(), protocol),
+1430c1431
+< 	// Set up iptables util rules
+---
+> 	// Start loop to sync iptables util rules
+1432c1433
+< 		kl.initNetworkUtil()
+---
+> 		go wait.Until(kl.syncNetworkUtil, 1*time.Minute, wait.NeverStop)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_linux.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_linux.go
+23d22
+< 	"time"
+25d23
+< 	"k8s.io/apimachinery/pkg/util/wait"
+29,35d26
+< 
+< func (kl *Kubelet) initNetworkUtil() {
+< 	kl.syncNetworkUtil()
+< 	go kl.iptClient.Monitor(utiliptables.Chain("KUBE-KUBELET-CANARY"),
+< 		[]utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
+< 		kl.syncNetworkUtil, 1*time.Minute, wait.NeverStop)
+< }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_others.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_others.go
+22c22
+< func (kl *Kubelet) initNetworkUtil() {}
+---
+> func (kl *Kubelet) syncNetworkUtil() {}
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
+191d190
+< 	changesPending       bool
+327,333c326
+< 	// We pass syncPeriod to ipt.Monitor, which will call us only if it needs to.
+< 	// We need to pass *some* maxInterval to NewBoundedFrequencyRunner anyway though.
+< 	// time.Hour is arbitrary.
+< 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.maybeSyncProxyRules, minSyncPeriod, time.Hour, burstSyncs)
+< 	go ipt.Monitor(utiliptables.Chain("KUBE-PROXY-CANARY"),
+< 		[]utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
+< 		proxier.forceSyncProxyRules, syncPeriod, wait.NeverStop)
+---
+> 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
+465d457
+< 	proxier.changesPending = true
+500d491
+< 		proxier.changesPending = true
+525c516
+< 	proxier.forceSyncProxyRules()
+---
+> 	proxier.syncProxyRules()
+557c548
+< 	proxier.forceSyncProxyRules()
+---
+> 	proxier.syncProxyRules()
+593c584
+< 	proxier.forceSyncProxyRules()
+---
+> 	proxier.syncProxyRules()
+683,690d673
+< func (proxier *Proxier) maybeSyncProxyRules() {
+< 	proxier.syncProxyRules(false)
+< }
+< 
+< func (proxier *Proxier) forceSyncProxyRules() {
+< 	proxier.syncProxyRules(true)
+< }
+< 
+694c677
+< func (proxier *Proxier) syncProxyRules(force bool) {
+---
+> func (proxier *Proxier) syncProxyRules() {
+704,712d686
+< 	if !force && !proxier.changesPending {
+< 		// Nothing to do; just update healthz timestamp.
+< 		if proxier.healthzServer != nil {
+< 			proxier.healthzServer.UpdateTimestamp()
+< 		}
+< 		metrics.SyncProxyRulesLastTimestamp.SetToCurrentTime()
+< 		return
+< 	}
+< 
+1456,1457d1429
+< 	proxier.changesPending = false
+< 
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go
+8c8
+< 	p.forceSyncProxyRules()
+---
+> 	p.syncProxyRules()
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/BUILD
+19a20
+>         "//pkg/util/dbus:all-srcs",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD
+0a1,38
+> package(default_visibility = ["//visibility:public"])
+> 
+> load(
+>     "@io_bazel_rules_go//go:def.bzl",
+>     "go_library",
+>     "go_test",
+> )
+> 
+> go_library(
+>     name = "go_default_library",
+>     srcs = [
+>         "dbus.go",
+>         "doc.go",
+>         "fake_dbus.go",
+>     ],
+>     importpath = "k8s.io/kubernetes/pkg/util/dbus",
+>     deps = ["//vendor/github.com/godbus/dbus:go_default_library"],
+> )
+> 
+> go_test(
+>     name = "go_default_test",
+>     srcs = ["dbus_test.go"],
+>     embed = [":go_default_library"],
+>     deps = ["//vendor/github.com/godbus/dbus:go_default_library"],
+> )
+> 
+> filegroup(
+>     name = "package-srcs",
+>     srcs = glob(["**"]),
+>     tags = ["automanaged"],
+>     visibility = ["//visibility:private"],
+> )
+> 
+> filegroup(
+>     name = "all-srcs",
+>     srcs = [":package-srcs"],
+>     tags = ["automanaged"],
+> )
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus.go
+0a1,133
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> // Interface is an interface that presents a subset of the godbus/dbus API.  Use this
+> // when you want to inject fakeable/mockable D-Bus behavior.
+> type Interface interface {
+> 	// SystemBus returns a connection to the system bus, connecting to it
+> 	// first if necessary
+> 	SystemBus() (Connection, error)
+> 	// SessionBus returns a connection to the session bus, connecting to it
+> 	// first if necessary
+> 	SessionBus() (Connection, error)
+> }
+> 
+> // Connection represents a D-Bus connection
+> type Connection interface {
+> 	// Returns an Object representing the bus itself
+> 	BusObject() Object
+> 
+> 	// Object creates a representation of a remote D-Bus object
+> 	Object(name, path string) Object
+> 
+> 	// Signal registers or unregisters a channel to receive D-Bus signals
+> 	Signal(ch chan<- *godbus.Signal)
+> }
+> 
+> // Object represents a remote D-Bus object
+> type Object interface {
+> 	// Call synchronously calls a D-Bus method
+> 	Call(method string, flags godbus.Flags, args ...interface{}) Call
+> }
+> 
+> // Call represents a pending or completed D-Bus method call
+> type Call interface {
+> 	// Store returns a completed call's return values, or an error
+> 	Store(retvalues ...interface{}) error
+> }
+> 
+> // Implements Interface in terms of actually talking to D-Bus
+> type dbusImpl struct {
+> 	systemBus  *connImpl
+> 	sessionBus *connImpl
+> }
+> 
+> // Implements Connection as a godbus.Conn
+> type connImpl struct {
+> 	conn *godbus.Conn
+> }
+> 
+> // Implements Object as a godbus.Object
+> type objectImpl struct {
+> 	object godbus.BusObject
+> }
+> 
+> // Implements Call as a godbus.Call
+> type callImpl struct {
+> 	call *godbus.Call
+> }
+> 
+> // New returns a new Interface which will use godbus to talk to D-Bus
+> func New() Interface {
+> 	return &dbusImpl{}
+> }
+> 
+> // SystemBus is part of Interface
+> func (db *dbusImpl) SystemBus() (Connection, error) {
+> 	if db.systemBus == nil {
+> 		bus, err := godbus.SystemBus()
+> 		if err != nil {
+> 			return nil, err
+> 		}
+> 		db.systemBus = &connImpl{bus}
+> 	}
+> 
+> 	return db.systemBus, nil
+> }
+> 
+> // SessionBus is part of Interface
+> func (db *dbusImpl) SessionBus() (Connection, error) {
+> 	if db.sessionBus == nil {
+> 		bus, err := godbus.SessionBus()
+> 		if err != nil {
+> 			return nil, err
+> 		}
+> 		db.sessionBus = &connImpl{bus}
+> 	}
+> 
+> 	return db.sessionBus, nil
+> }
+> 
+> // BusObject is part of the Connection interface
+> func (conn *connImpl) BusObject() Object {
+> 	return &objectImpl{conn.conn.BusObject()}
+> }
+> 
+> // Object is part of the Connection interface
+> func (conn *connImpl) Object(name, path string) Object {
+> 	return &objectImpl{conn.conn.Object(name, godbus.ObjectPath(path))}
+> }
+> 
+> // Signal is part of the Connection interface
+> func (conn *connImpl) Signal(ch chan<- *godbus.Signal) {
+> 	conn.conn.Signal(ch)
+> }
+> 
+> // Call is part of the Object interface
+> func (obj *objectImpl) Call(method string, flags godbus.Flags, args ...interface{}) Call {
+> 	return &callImpl{obj.object.Call(method, flags, args...)}
+> }
+> 
+> // Store is part of the Call interface
+> func (call *callImpl) Store(retvalues ...interface{}) error {
+> 	return call.call.Store(retvalues...)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus_test.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus_test.go
+0a1,243
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	"fmt"
+> 	"os"
+> 	"testing"
+> 
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> const (
+> 	DBusNameFlagDoNotQueue uint32 = 1 << (iota + 1)
+> )
+> 
+> const (
+> 	DBusRequestNameReplyPrimaryOwner uint32 = iota + 1
+> 	DBusRequestNameReplyAlreadyOwner
+> )
+> 
+> const (
+> 	DBusReleaseNameReplyReleased uint32 = iota + 1
+> 	DBusReleaseNameReplyNotOwner
+> )
+> 
+> func doDBusTest(t *testing.T, dbus Interface, real bool) {
+> 	bus, err := dbus.SystemBus()
+> 	if err != nil {
+> 		if !real {
+> 			t.Errorf("dbus.SystemBus() failed with fake Interface")
+> 		}
+> 		t.Skipf("D-Bus is not running: %v", err)
+> 	}
+> 	busObj := bus.BusObject()
+> 
+> 	id := ""
+> 	err = busObj.Call("org.freedesktop.DBus.GetId", 0).Store(&id)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if len(id) == 0 {
+> 		t.Errorf("expected non-empty Id, got \"\"")
+> 	}
+> 
+> 	// Switch to the session bus for the rest, since the system bus is more
+> 	// locked down (and thus harder to trick into emitting signals).
+> 
+> 	bus, err = dbus.SessionBus()
+> 	if err != nil {
+> 		if !real {
+> 			t.Errorf("dbus.SystemBus() failed with fake Interface")
+> 		}
+> 		t.Skipf("D-Bus session bus is not available: %v", err)
+> 	}
+> 	busObj = bus.BusObject()
+> 
+> 	name := fmt.Sprintf("io.kubernetes.dbus_test_%d", os.Getpid())
+> 	owner := ""
+> 	err = busObj.Call("org.freedesktop.DBus.GetNameOwner", 0, name).Store(&owner)
+> 	if err == nil {
+> 		t.Errorf("expected '%s' to be un-owned, but found owner %s", name, owner)
+> 	}
+> 	dbuserr, ok := err.(godbus.Error)
+> 	if !ok {
+> 		t.Errorf("expected godbus.Error, but got %#v", err)
+> 	}
+> 	if dbuserr.Name != "org.freedesktop.DBus.Error.NameHasNoOwner" {
+> 		t.Errorf("expected NameHasNoOwner error but got %v", err)
+> 	}
+> 
+> 	sigchan := make(chan *godbus.Signal, 10)
+> 	bus.Signal(sigchan)
+> 
+> 	rule := fmt.Sprintf("type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',sender='org.freedesktop.DBus',arg0='%s'", name)
+> 	err = busObj.Call("org.freedesktop.DBus.AddMatch", 0, rule).Store()
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 
+> 	var ret uint32
+> 	err = busObj.Call("org.freedesktop.DBus.RequestName", 0, name, DBusNameFlagDoNotQueue).Store(&ret)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if ret != DBusRequestNameReplyPrimaryOwner {
+> 		t.Errorf("expected %v, got %v", DBusRequestNameReplyPrimaryOwner, ret)
+> 	}
+> 
+> 	err = busObj.Call("org.freedesktop.DBus.GetNameOwner", 0, name).Store(&owner)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 
+> 	var changedSignal, acquiredSignal, lostSignal *godbus.Signal
+> 
+> 	sig1 := <-sigchan
+> 	sig2 := <-sigchan
+> 	// We get two signals, but the order isn't guaranteed
+> 	if sig1.Name == "org.freedesktop.DBus.NameOwnerChanged" {
+> 		changedSignal = sig1
+> 		acquiredSignal = sig2
+> 	} else {
+> 		acquiredSignal = sig1
+> 		changedSignal = sig2
+> 	}
+> 
+> 	if acquiredSignal.Sender != "org.freedesktop.DBus" || acquiredSignal.Name != "org.freedesktop.DBus.NameAcquired" {
+> 		t.Errorf("expected NameAcquired signal, got %v", acquiredSignal)
+> 	}
+> 	acquiredName := acquiredSignal.Body[0].(string)
+> 	if acquiredName != name {
+> 		t.Errorf("unexpected NameAcquired arguments: %v", acquiredSignal)
+> 	}
+> 
+> 	if changedSignal.Sender != "org.freedesktop.DBus" || changedSignal.Name != "org.freedesktop.DBus.NameOwnerChanged" {
+> 		t.Errorf("expected NameOwnerChanged signal, got %v", changedSignal)
+> 	}
+> 
+> 	changedName := changedSignal.Body[0].(string)
+> 	oldOwner := changedSignal.Body[1].(string)
+> 	newOwner := changedSignal.Body[2].(string)
+> 	if changedName != name || oldOwner != "" || newOwner != owner {
+> 		t.Errorf("unexpected NameOwnerChanged arguments: %v", changedSignal)
+> 	}
+> 
+> 	err = busObj.Call("org.freedesktop.DBus.ReleaseName", 0, name).Store(&ret)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if ret != DBusReleaseNameReplyReleased {
+> 		t.Errorf("expected %v, got %v", DBusReleaseNameReplyReleased, ret)
+> 	}
+> 
+> 	sig1 = <-sigchan
+> 	sig2 = <-sigchan
+> 	if sig1.Name == "org.freedesktop.DBus.NameOwnerChanged" {
+> 		changedSignal = sig1
+> 		lostSignal = sig2
+> 	} else {
+> 		lostSignal = sig1
+> 		changedSignal = sig2
+> 	}
+> 
+> 	if lostSignal.Sender != "org.freedesktop.DBus" || lostSignal.Name != "org.freedesktop.DBus.NameLost" {
+> 		t.Errorf("expected NameLost signal, got %v", lostSignal)
+> 	}
+> 	lostName := lostSignal.Body[0].(string)
+> 	if lostName != name {
+> 		t.Errorf("unexpected NameLost arguments: %v", lostSignal)
+> 	}
+> 
+> 	if changedSignal.Sender != "org.freedesktop.DBus" || changedSignal.Name != "org.freedesktop.DBus.NameOwnerChanged" {
+> 		t.Errorf("expected NameOwnerChanged signal, got %v", changedSignal)
+> 	}
+> 
+> 	changedName = changedSignal.Body[0].(string)
+> 	oldOwner = changedSignal.Body[1].(string)
+> 	newOwner = changedSignal.Body[2].(string)
+> 	if changedName != name || oldOwner != owner || newOwner != "" {
+> 		t.Errorf("unexpected NameOwnerChanged arguments: %v", changedSignal)
+> 	}
+> 
+> 	if len(sigchan) != 0 {
+> 		t.Errorf("unexpected extra signals (%d)", len(sigchan))
+> 	}
+> 
+> 	// Unregister sigchan
+> 	bus.Signal(sigchan)
+> }
+> 
+> func TestRealDBus(t *testing.T) {
+> 	dbus := New()
+> 	doDBusTest(t, dbus, true)
+> }
+> 
+> func TestFakeDBus(t *testing.T) {
+> 	uniqueName := ":1.1"
+> 	ownedName := ""
+> 
+> 	fakeSystem := NewFakeConnection()
+> 	fakeSystem.SetBusObject(
+> 		func(method string, args ...interface{}) ([]interface{}, error) {
+> 			if method == "org.freedesktop.DBus.GetId" {
+> 				return []interface{}{"foo"}, nil
+> 			}
+> 			return nil, fmt.Errorf("unexpected method call '%s'", method)
+> 		},
+> 	)
+> 
+> 	fakeSession := NewFakeConnection()
+> 	fakeSession.SetBusObject(
+> 		func(method string, args ...interface{}) ([]interface{}, error) {
+> 			if method == "org.freedesktop.DBus.GetNameOwner" {
+> 				checkName := args[0].(string)
+> 				if checkName != ownedName {
+> 					return nil, godbus.Error{Name: "org.freedesktop.DBus.Error.NameHasNoOwner", Body: nil}
+> 				}
+> 				return []interface{}{uniqueName}, nil
+> 			} else if method == "org.freedesktop.DBus.RequestName" {
+> 				reqName := args[0].(string)
+> 				_ = args[1].(uint32)
+> 				if ownedName != "" {
+> 					return []interface{}{DBusRequestNameReplyAlreadyOwner}, nil
+> 				}
+> 				ownedName = reqName
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameAcquired", reqName)
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", reqName, "", uniqueName)
+> 				return []interface{}{DBusRequestNameReplyPrimaryOwner}, nil
+> 			} else if method == "org.freedesktop.DBus.ReleaseName" {
+> 				reqName := args[0].(string)
+> 				if reqName != ownedName {
+> 					return []interface{}{DBusReleaseNameReplyNotOwner}, nil
+> 				}
+> 				ownedName = ""
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", reqName, uniqueName, "")
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameLost", reqName)
+> 				return []interface{}{DBusReleaseNameReplyReleased}, nil
+> 			} else if method == "org.freedesktop.DBus.AddMatch" {
+> 				return nil, nil
+> 			} else {
+> 				return nil, fmt.Errorf("unexpected method call '%s'", method)
+> 			}
+> 		},
+> 	)
+> 
+> 	dbus := NewFake(fakeSystem, fakeSession)
+> 	doDBusTest(t, dbus, false)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/doc.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/doc.go
+0a1,18
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> // Package dbus provides an injectable interface and implementations for D-Bus communication
+> package dbus // import "k8s.io/kubernetes/pkg/util/dbus"
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/fake_dbus.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/fake_dbus.go
+0a1,140
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	"fmt"
+> 	"sync"
+> 
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> // Fake is a simple fake Interface type.
+> type Fake struct {
+> 	systemBus  *FakeConnection
+> 	sessionBus *FakeConnection
+> }
+> 
+> // FakeConnection represents a fake D-Bus connection
+> type FakeConnection struct {
+> 	lock           sync.Mutex
+> 	busObject      *fakeObject
+> 	objects        map[string]*fakeObject
+> 	signalHandlers []chan<- *godbus.Signal
+> }
+> 
+> // FakeHandler is used to handle fake D-Bus method calls
+> type FakeHandler func(method string, args ...interface{}) ([]interface{}, error)
+> 
+> type fakeObject struct {
+> 	handler FakeHandler
+> }
+> 
+> type fakeCall struct {
+> 	ret []interface{}
+> 	err error
+> }
+> 
+> // NewFake returns a new Interface which will fake talking to D-Bus
+> func NewFake(systemBus *FakeConnection, sessionBus *FakeConnection) *Fake {
+> 	return &Fake{systemBus, sessionBus}
+> }
+> 
+> // NewFakeConnection returns a FakeConnection Interface
+> func NewFakeConnection() *FakeConnection {
+> 	return &FakeConnection{
+> 		objects: make(map[string]*fakeObject),
+> 	}
+> }
+> 
+> // SystemBus is part of Interface
+> func (db *Fake) SystemBus() (Connection, error) {
+> 	if db.systemBus != nil {
+> 		return db.systemBus, nil
+> 	}
+> 	return nil, fmt.Errorf("DBus is not running")
+> }
+> 
+> // SessionBus is part of Interface
+> func (db *Fake) SessionBus() (Connection, error) {
+> 	if db.sessionBus != nil {
+> 		return db.sessionBus, nil
+> 	}
+> 	return nil, fmt.Errorf("DBus is not running")
+> }
+> 
+> // BusObject is part of the Connection interface
+> func (conn *FakeConnection) BusObject() Object {
+> 	return conn.busObject
+> }
+> 
+> // Object is part of the Connection interface
+> func (conn *FakeConnection) Object(name, path string) Object {
+> 	return conn.objects[name+path]
+> }
+> 
+> // Signal is part of the Connection interface
+> func (conn *FakeConnection) Signal(ch chan<- *godbus.Signal) {
+> 	conn.lock.Lock()
+> 	defer conn.lock.Unlock()
+> 	for i := range conn.signalHandlers {
+> 		if conn.signalHandlers[i] == ch {
+> 			conn.signalHandlers = append(conn.signalHandlers[:i], conn.signalHandlers[i+1:]...)
+> 			return
+> 		}
+> 	}
+> 	conn.signalHandlers = append(conn.signalHandlers, ch)
+> }
+> 
+> // SetBusObject sets the handler for the BusObject of conn
+> func (conn *FakeConnection) SetBusObject(handler FakeHandler) {
+> 	conn.busObject = &fakeObject{handler}
+> }
+> 
+> // AddObject adds a handler for the Object at name and path
+> func (conn *FakeConnection) AddObject(name, path string, handler FakeHandler) {
+> 	conn.objects[name+path] = &fakeObject{handler}
+> }
+> 
+> // EmitSignal emits a signal on conn
+> func (conn *FakeConnection) EmitSignal(name, path, iface, signal string, args ...interface{}) {
+> 	conn.lock.Lock()
+> 	defer conn.lock.Unlock()
+> 	sig := &godbus.Signal{
+> 		Sender: name,
+> 		Path:   godbus.ObjectPath(path),
+> 		Name:   iface + "." + signal,
+> 		Body:   args,
+> 	}
+> 	for _, ch := range conn.signalHandlers {
+> 		ch <- sig
+> 	}
+> }
+> 
+> // Call is part of the Object interface
+> func (obj *fakeObject) Call(method string, flags godbus.Flags, args ...interface{}) Call {
+> 	ret, err := obj.handler(method, args...)
+> 	return &fakeCall{ret, err}
+> }
+> 
+> // Store is part of the Call interface
+> func (call *fakeCall) Store(retvalues ...interface{}) error {
+> 	if call.err != nil {
+> 		return call.err
+> 	}
+> 	return godbus.Store(call.ret, retvalues...)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/iptables/BUILD
+19a20
+>         "//pkg/util/dbus:go_default_library",
+22c23
+<         "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+---
+>         "//vendor/github.com/godbus/dbus:go_default_library",
+28a30
+>             "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+39d40
+<         "monitor_test.go",
+44a46
+>             "//pkg/util/dbus:go_default_library",
+47d48
+<             "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables.go
+27a28
+> 	godbus "github.com/godbus/dbus"
+30d30
+< 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+31a32
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+67,77c68,71
+< 	// Monitor detects when the given iptables tables have been flushed by an external
+< 	// tool (e.g. a firewall reload) by creating canary chains and polling to see if
+< 	// they have been deleted. (Specifically, it polls tables[0] every interval until
+< 	// the canary has been deleted from there, then waits a short additional time for
+< 	// the canaries to be deleted from the remaining tables as well. You can optimize
+< 	// the polling by listing a relatively empty table in tables[0]). When a flush is
+< 	// detected, this calls the reloadFunc so the caller can reload their own iptables
+< 	// rules. If it is unable to create the canary chains (either initially or after
+< 	// a reload) it will log an error and stop monitoring.
+< 	// (This function should be called from a goroutine.)
+< 	Monitor(canary Chain, tables []Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{})
+---
+> 	// AddReloadFunc adds a function to call on iptables reload
+> 	AddReloadFunc(reloadFunc func())
+> 	// Destroy cleans up resources used by the Interface
+> 	Destroy()
+151a146
+> 	dbus            utildbus.Interface
+153a149
+> 	hasListener     bool
+157a154,156
+> 
+> 	reloadFuncs []func()
+> 	signal      chan *godbus.Signal
+162c161
+< func newInternal(exec utilexec.Interface, protocol Protocol, lockfilePath string) Interface {
+---
+> func newInternal(exec utilexec.Interface, dbus utildbus.Interface, protocol Protocol, lockfilePath string) Interface {
+174a174
+> 		dbus:            dbus,
+176a177
+> 		hasListener:     false,
+186,187c187,224
+< func New(exec utilexec.Interface, protocol Protocol) Interface {
+< 	return newInternal(exec, protocol, "")
+---
+> func New(exec utilexec.Interface, dbus utildbus.Interface, protocol Protocol) Interface {
+> 	return newInternal(exec, dbus, protocol, "")
+> }
+> 
+> // Destroy is part of Interface.
+> func (runner *runner) Destroy() {
+> 	if runner.signal != nil {
+> 		runner.signal <- nil
+> 	}
+> }
+> 
+> const (
+> 	firewalldName      = "org.fedoraproject.FirewallD1"
+> 	firewalldPath      = "/org/fedoraproject/FirewallD1"
+> 	firewalldInterface = "org.fedoraproject.FirewallD1"
+> )
+> 
+> // Connects to D-Bus and listens for FirewallD start/restart. (On non-FirewallD-using
+> // systems, this is effectively a no-op; we listen for the signals, but they will never be
+> // emitted, so reload() will never be called.)
+> func (runner *runner) connectToFirewallD() {
+> 	bus, err := runner.dbus.SystemBus()
+> 	if err != nil {
+> 		klog.V(1).Infof("Could not connect to D-Bus system bus: %s", err)
+> 		return
+> 	}
+> 	runner.hasListener = true
+> 
+> 	rule := fmt.Sprintf("type='signal',sender='%s',path='%s',interface='%s',member='Reloaded'", firewalldName, firewalldPath, firewalldInterface)
+> 	bus.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
+> 
+> 	rule = fmt.Sprintf("type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',sender='org.freedesktop.DBus',arg0='%s'", firewalldName)
+> 	bus.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
+> 
+> 	runner.signal = make(chan *godbus.Signal, 10)
+> 	bus.Signal(runner.signal)
+> 
+> 	go runner.dbusSignalHandler(bus)
+495,565d531
+< const (
+< 	// Max time we wait for an iptables flush to complete after we notice it has started
+< 	iptablesFlushTimeout = 5 * time.Second
+< 	// How often we poll while waiting for an iptables flush to complete
+< 	iptablesFlushPollTime = 100 * time.Millisecond
+< )
+< 
+< // Monitor is part of Interface
+< func (runner *runner) Monitor(canary Chain, tables []Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+< 	for {
+< 		_ = utilwait.PollImmediateUntil(interval, func() (bool, error) {
+< 			for _, table := range tables {
+< 				if _, err := runner.EnsureChain(table, canary); err != nil {
+< 					klog.Warningf("Could not set up iptables canary %s/%s: %v", string(table), string(canary), err)
+< 					return false, nil
+< 				}
+< 			}
+< 			return true, nil
+< 		}, stopCh)
+< 
+< 		// Poll until stopCh is closed or iptables is flushed
+< 		err := utilwait.PollUntil(interval, func() (bool, error) {
+< 			if exists, err := runner.chainExists(tables[0], canary); exists {
+< 				return false, nil
+< 			} else if isResourceError(err) {
+< 				klog.Warningf("Could not check for iptables canary %s/%s: %v", string(tables[0]), string(canary), err)
+< 				return false, nil
+< 			}
+< 			klog.V(2).Infof("iptables canary %s/%s deleted", string(tables[0]), string(canary))
+< 
+< 			// Wait for the other canaries to be deleted too before returning
+< 			// so we don't start reloading too soon.
+< 			err := utilwait.PollImmediate(iptablesFlushPollTime, iptablesFlushTimeout, func() (bool, error) {
+< 				for i := 1; i < len(tables); i++ {
+< 					if exists, err := runner.chainExists(tables[i], canary); exists || isResourceError(err) {
+< 						return false, nil
+< 					}
+< 				}
+< 				return true, nil
+< 			})
+< 			if err != nil {
+< 				klog.Warning("Inconsistent iptables state detected.")
+< 			}
+< 			return true, nil
+< 		}, stopCh)
+< 
+< 		if err != nil {
+< 			// stopCh was closed
+< 			for _, table := range tables {
+< 				_ = runner.DeleteChain(table, canary)
+< 			}
+< 			return
+< 		}
+< 
+< 		klog.V(2).Infof("Reloading after iptables flush")
+< 		reloadFunc()
+< 	}
+< }
+< 
+< // chainExists is used internally by Monitor; none of the public Interface methods can be
+< // used to distinguish "chain exists" from "chain does not exist" with no side effects
+< func (runner *runner) chainExists(table Table, chain Chain) (bool, error) {
+< 	fullArgs := makeFullArgs(table, chain)
+< 
+< 	runner.mu.Lock()
+< 	defer runner.mu.Unlock()
+< 
+< 	_, err := runner.run(opListChain, fullArgs)
+< 	return err == nil, err
+< }
+< 
+572d537
+< 	opListChain   operation = "-L"
+657a623,678
+> // goroutine to listen for D-Bus signals
+> func (runner *runner) dbusSignalHandler(bus utildbus.Connection) {
+> 	firewalld := bus.Object(firewalldName, firewalldPath)
+> 
+> 	for s := range runner.signal {
+> 		if s == nil {
+> 			// Unregister
+> 			bus.Signal(runner.signal)
+> 			return
+> 		}
+> 
+> 		switch s.Name {
+> 		case "org.freedesktop.DBus.NameOwnerChanged":
+> 			name := s.Body[0].(string)
+> 			newOwner := s.Body[2].(string)
+> 
+> 			if name != firewalldName || len(newOwner) == 0 {
+> 				continue
+> 			}
+> 
+> 			// FirewallD startup (specifically the part where it deletes
+> 			// all existing iptables rules) may not yet be complete when
+> 			// we get this signal, so make a dummy request to it to
+> 			// synchronize.
+> 			firewalld.Call(firewalldInterface+".getDefaultZone", 0)
+> 
+> 			runner.reload()
+> 		case firewalldInterface + ".Reloaded":
+> 			runner.reload()
+> 		}
+> 	}
+> }
+> 
+> // AddReloadFunc is part of Interface
+> func (runner *runner) AddReloadFunc(reloadFunc func()) {
+> 	runner.mu.Lock()
+> 	defer runner.mu.Unlock()
+> 
+> 	// We only need to listen to firewalld if there are Reload functions, so lazy
+> 	// initialize the listener.
+> 	if !runner.hasListener {
+> 		runner.connectToFirewallD()
+> 	}
+> 
+> 	runner.reloadFuncs = append(runner.reloadFuncs, reloadFunc)
+> }
+> 
+> // runs all reload funcs to re-sync iptables rules
+> func (runner *runner) reload() {
+> 	klog.V(1).Infof("reloading iptables rules")
+> 
+> 	for _, f := range runner.reloadFuncs {
+> 		f()
+> 	}
+> }
+> 
+697,709d717
+< }
+< 
+< const iptablesStatusResourceProblem = 4
+< 
+< // isResourceError returns true if the error indicates that iptables ran into a "resource
+< // problem" and was unable to attempt the request. In particular, this will be true if it
+< // times out trying to get the iptables lock.
+< func isResourceError(err error) bool {
+< 	if ee, isExitError := err.(utilexec.ExitError); isExitError {
+< 		return ee.ExitStatus() == iptablesStatusResourceProblem
+< 	} else {
+< 		return false
+< 	}
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables_test.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables_test.go
+28a29
+> 	"time"
+31a33
+> 	"k8s.io/kubernetes/pkg/util/dbus"
+65c67,68
+< 	_ = New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+109c112,113
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+166c170,171
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+203c208,209
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+239c245,246
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+275c282,283
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+308c316,317
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+338c347,348
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+365c375,376
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+398c409,410
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+428c440,441
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+458c471,472
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+493c507
+< 		ipt := New(&fexec, ProtocolIpv4)
+---
+> 		ipt := New(&fexec, nil, ProtocolIpv4)
+654c668,669
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+685c700,701
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+719c735,736
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+731a749,859
+> func TestReload(t *testing.T) {
+> 	dbusConn := dbus.NewFakeConnection()
+> 	dbusConn.SetBusObject(func(method string, args ...interface{}) ([]interface{}, error) { return nil, nil })
+> 	dbusConn.AddObject(firewalldName, firewalldPath, func(method string, args ...interface{}) ([]interface{}, error) { return nil, nil })
+> 	fdbus := dbus.NewFake(dbusConn, nil)
+> 
+> 	reloaded := make(chan bool, 2)
+> 
+> 	fcmd := fakeexec.FakeCmd{
+> 		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
+> 			// iptables version check
+> 			func() ([]byte, error) { return []byte("iptables v1.6.4"), nil },
+> 
+> 			// first reload
+> 			// EnsureChain
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 			// EnsureRule abc check
+> 			func() ([]byte, error) { return []byte{}, &fakeexec.FakeExitError{Status: 1} },
+> 			// EnsureRule abc
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 
+> 			// second reload
+> 			// EnsureChain
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 			// EnsureRule abc check
+> 			func() ([]byte, error) { return []byte{}, &fakeexec.FakeExitError{Status: 1} },
+> 			// EnsureRule abc
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 		},
+> 	}
+> 	fexec := fakeexec.FakeExec{
+> 		CommandScript: []fakeexec.FakeCommandAction{
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 		},
+> 	}
+> 
+> 	runner := New(&fexec, fdbus, ProtocolIpv4)
+> 	defer runner.Destroy()
+> 
+> 	runner.AddReloadFunc(func() {
+> 		exists, err := runner.EnsureChain(TableNAT, Chain("FOOBAR"))
+> 		if err != nil {
+> 			t.Errorf("expected success, got %v", err)
+> 		}
+> 		if exists {
+> 			t.Errorf("expected exists = false")
+> 		}
+> 		reloaded <- true
+> 	})
+> 
+> 	runner.AddReloadFunc(func() {
+> 		exists, err := runner.EnsureRule(Append, TableNAT, ChainOutput, "abc", "123")
+> 		if err != nil {
+> 			t.Errorf("expected success, got %v", err)
+> 		}
+> 		if exists {
+> 			t.Errorf("expected exists = false")
+> 		}
+> 		reloaded <- true
+> 	})
+> 
+> 	dbusConn.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", firewalldName, "", ":1.1")
+> 	<-reloaded
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("expected 4 CombinedOutput() calls total, got %d", fcmd.CombinedOutputCalls)
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll("iptables", "-t", "nat", "-N", "FOOBAR") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[2])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[3])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[3]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[4])
+> 	}
+> 
+> 	go func() { time.Sleep(time.Second / 100); reloaded <- true }()
+> 	dbusConn.EmitSignal(firewalldName, firewalldPath, firewalldInterface, "DefaultZoneChanged", "public")
+> 	dbusConn.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", "io.k8s.Something", "", ":1.1")
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("Incorrect signal caused a reload")
+> 	}
+> 
+> 	dbusConn.EmitSignal(firewalldName, firewalldPath, firewalldInterface, "Reloaded")
+> 	<-reloaded
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 7 {
+> 		t.Errorf("expected 7 CombinedOutput() calls total, got %d", fcmd.CombinedOutputCalls)
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[4]...).HasAll("iptables", "-t", "nat", "-N", "FOOBAR") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[5])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[5]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[6])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[6]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[7])
+> 	}
+> }
+> 
+765c893,894
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+834c963,964
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+916c1046
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+917a1048
+> 	defer runner.Destroy()
+957c1088
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+958a1090
+> 	defer runner.Destroy()
+1002c1134
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1003a1136
+> 	defer runner.Destroy()
+1048c1181
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1049a1183
+> 	defer runner.Destroy()
+1090c1224
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1091a1226
+> 	defer runner.Destroy()
+1130c1265
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1131a1267
+> 	defer runner.Destroy()
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/monitor_test.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/monitor_test.go
+1,338d0
+< // +build linux
+< 
+< /*
+< Copyright 2019 The Kubernetes Authors.
+< 
+< Licensed under the Apache License, Version 2.0 (the "License");
+< you may not use this file except in compliance with the License.
+< You may obtain a copy of the License at
+< 
+<     http://www.apache.org/licenses/LICENSE-2.0
+< 
+< Unless required by applicable law or agreed to in writing, software
+< distributed under the License is distributed on an "AS IS" BASIS,
+< WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+< See the License for the specific language governing permissions and
+< limitations under the License.
+< */
+< 
+< package iptables
+< 
+< import (
+< 	"context"
+< 	"fmt"
+< 	"io"
+< 	"sync"
+< 	"sync/atomic"
+< 	"testing"
+< 	"time"
+< 
+< 	"k8s.io/apimachinery/pkg/util/sets"
+< 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+< 	"k8s.io/utils/exec"
+< )
+< 
+< // We can't use the normal FakeExec because we don't know precisely how many times the
+< // Monitor thread will do its checks, and we don't know precisely how its iptables calls
+< // will interleave with the main thread's. So we use our own fake Exec implementation that
+< // implements a minimal iptables interface. This will need updates as iptables.runner
+< // changes its use of Exec.
+< type monitorFakeExec struct {
+< 	sync.Mutex
+< 
+< 	tables map[string]sets.String
+< 
+< 	block      bool
+< 	wasBlocked bool
+< }
+< 
+< func newMonitorFakeExec() *monitorFakeExec {
+< 	tables := make(map[string]sets.String)
+< 	tables["mangle"] = sets.NewString()
+< 	tables["filter"] = sets.NewString()
+< 	tables["nat"] = sets.NewString()
+< 	return &monitorFakeExec{tables: tables}
+< }
+< 
+< func (mfe *monitorFakeExec) blockIPTables(block bool) {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 
+< 	mfe.block = block
+< }
+< 
+< func (mfe *monitorFakeExec) getWasBlocked() bool {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 
+< 	wasBlocked := mfe.wasBlocked
+< 	mfe.wasBlocked = false
+< 	return wasBlocked
+< }
+< 
+< func (mfe *monitorFakeExec) Command(cmd string, args ...string) exec.Cmd {
+< 	return &monitorFakeCmd{mfe: mfe, cmd: cmd, args: args}
+< }
+< 
+< func (mfe *monitorFakeExec) CommandContext(ctx context.Context, cmd string, args ...string) exec.Cmd {
+< 	return mfe.Command(cmd, args...)
+< }
+< 
+< func (mfe *monitorFakeExec) LookPath(file string) (string, error) {
+< 	return file, nil
+< }
+< 
+< type monitorFakeCmd struct {
+< 	mfe  *monitorFakeExec
+< 	cmd  string
+< 	args []string
+< }
+< 
+< func (mfc *monitorFakeCmd) CombinedOutput() ([]byte, error) {
+< 	if mfc.cmd == cmdIPTablesRestore {
+< 		// Only used for "iptables-restore --version", and the result doesn't matter
+< 		return []byte{}, nil
+< 	} else if mfc.cmd != cmdIPTables {
+< 		panic("bad command " + mfc.cmd)
+< 	}
+< 
+< 	if len(mfc.args) == 1 && mfc.args[0] == "--version" {
+< 		return []byte("iptables v1.6.2"), nil
+< 	}
+< 
+< 	if len(mfc.args) != 6 || mfc.args[0] != WaitString || mfc.args[1] != WaitSecondsValue || mfc.args[4] != "-t" {
+< 		panic(fmt.Sprintf("bad args %#v", mfc.args))
+< 	}
+< 	op := operation(mfc.args[2])
+< 	chainName := mfc.args[3]
+< 	tableName := mfc.args[5]
+< 
+< 	mfc.mfe.Lock()
+< 	defer mfc.mfe.Unlock()
+< 
+< 	table := mfc.mfe.tables[tableName]
+< 	if table == nil {
+< 		return []byte{}, fmt.Errorf("no such table %q", tableName)
+< 	}
+< 
+< 	// For ease-of-testing reasons, blockIPTables blocks create and list, but not delete
+< 	if mfc.mfe.block && op != opDeleteChain {
+< 		mfc.mfe.wasBlocked = true
+< 		return []byte{}, exec.CodeExitError{Code: 4, Err: fmt.Errorf("could not get xtables.lock, etc")}
+< 	}
+< 
+< 	switch op {
+< 	case opCreateChain:
+< 		if !table.Has(chainName) {
+< 			table.Insert(chainName)
+< 		}
+< 		return []byte{}, nil
+< 	case opListChain:
+< 		if table.Has(chainName) {
+< 			return []byte{}, nil
+< 		} else {
+< 			return []byte{}, fmt.Errorf("no such chain %q", chainName)
+< 		}
+< 	case opDeleteChain:
+< 		table.Delete(chainName)
+< 		return []byte{}, nil
+< 	default:
+< 		panic("should not be reached")
+< 	}
+< }
+< 
+< func (mfc *monitorFakeCmd) SetStdin(in io.Reader) {
+< 	// Used by getIPTablesRestoreVersionString(), can be ignored
+< }
+< 
+< func (mfc *monitorFakeCmd) Run() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Output() ([]byte, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetDir(dir string) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetStdout(out io.Writer) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetStderr(out io.Writer) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetEnv(env []string) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) StdoutPipe() (io.ReadCloser, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) StderrPipe() (io.ReadCloser, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Start() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Wait() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Stop() {
+< 	panic("should not be reached")
+< }
+< 
+< func TestIPTablesMonitor(t *testing.T) {
+< 	mfe := newMonitorFakeExec()
+< 	ipt := New(mfe, ProtocolIpv4)
+< 
+< 	var reloads uint32
+< 	stopCh := make(chan struct{})
+< 
+< 	canary := Chain("MONITOR-TEST-CANARY")
+< 	tables := []Table{TableMangle, TableFilter, TableNAT}
+< 	go ipt.Monitor(canary, tables, func() {
+< 		if !ensureNoChains(mfe) {
+< 			t.Errorf("reload called while canaries still exist")
+< 		}
+< 		atomic.AddUint32(&reloads, 1)
+< 	}, 100*time.Millisecond, stopCh)
+< 
+< 	// Monitor should create canary chains quickly
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	if err := waitForReloads(&reloads, 0); err != nil {
+< 		t.Errorf("got unexpected reloads: %v", err)
+< 	}
+< 
+< 	// If we delete all of the chains, it should reload
+< 	ipt.DeleteChain(TableMangle, canary)
+< 	ipt.DeleteChain(TableFilter, canary)
+< 	ipt.DeleteChain(TableNAT, canary)
+< 
+< 	if err := waitForReloads(&reloads, 1); err != nil {
+< 		t.Errorf("got unexpected number of reloads after flush: %v", err)
+< 	}
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	// If we delete two chains, it should not reload yet
+< 	ipt.DeleteChain(TableMangle, canary)
+< 	ipt.DeleteChain(TableFilter, canary)
+< 
+< 	if err := waitForNoReload(&reloads, 1); err != nil {
+< 		t.Errorf("got unexpected number of reloads after partial flush: %v", err)
+< 	}
+< 
+< 	// Now ensure that "iptables -L" will get an error about the xtables.lock, and
+< 	// delete the last chain. The monitor should not reload, because it can't actually
+< 	// tell if the chain was deleted or not.
+< 	mfe.blockIPTables(true)
+< 	ipt.DeleteChain(TableNAT, canary)
+< 	if err := waitForBlocked(mfe); err != nil {
+< 		t.Errorf("failed waiting for monitor to be blocked from monitoring: %v", err)
+< 	}
+< 
+< 	// After unblocking the monitor, it should now reload
+< 	mfe.blockIPTables(false)
+< 
+< 	if err := waitForReloads(&reloads, 2); err != nil {
+< 		t.Errorf("got unexpected number of reloads after slow flush: %v", err)
+< 	}
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	// If we close the stop channel, it should stop running
+< 	close(stopCh)
+< 
+< 	if err := waitForNoReload(&reloads, 2); err != nil {
+< 		t.Errorf("got unexpected number of reloads after stop: %v", err)
+< 	}
+< 	if !ensureNoChains(mfe) {
+< 		t.Errorf("canaries still exist after stopping monitor")
+< 	}
+< 
+< 	// If we create a new monitor while the iptables lock is held, it will
+< 	// retry creating canaries until it succeeds
+< 
+< 	stopCh = make(chan struct{})
+< 	_ = mfe.getWasBlocked()
+< 	mfe.blockIPTables(true)
+< 	go ipt.Monitor(canary, tables, func() {
+< 		if !ensureNoChains(mfe) {
+< 			t.Errorf("reload called while canaries still exist")
+< 		}
+< 		atomic.AddUint32(&reloads, 1)
+< 	}, 100*time.Millisecond, stopCh)
+< 
+< 	// Monitor should not have created canaries yet
+< 	if !ensureNoChains(mfe) {
+< 		t.Errorf("canary created while iptables blocked")
+< 	}
+< 
+< 	if err := waitForBlocked(mfe); err != nil {
+< 		t.Errorf("failed waiting for monitor to fail creating canaries: %v", err)
+< 	}
+< 
+< 	mfe.blockIPTables(false)
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	close(stopCh)
+< }
+< 
+< func waitForChains(mfe *monitorFakeExec, canary Chain, tables []Table) error {
+< 	return utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 		mfe.Lock()
+< 		defer mfe.Unlock()
+< 
+< 		for _, table := range tables {
+< 			if !mfe.tables[string(table)].Has(string(canary)) {
+< 				return false, nil
+< 			}
+< 		}
+< 		return true, nil
+< 	})
+< }
+< 
+< func ensureNoChains(mfe *monitorFakeExec) bool {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 	return mfe.tables["mangle"].Len() == 0 &&
+< 		mfe.tables["filter"].Len() == 0 &&
+< 		mfe.tables["nat"].Len() == 0
+< }
+< 
+< func waitForReloads(reloads *uint32, expected uint32) error {
+< 	if atomic.LoadUint32(reloads) < expected {
+< 		utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 			return atomic.LoadUint32(reloads) >= expected, nil
+< 		})
+< 	}
+< 	got := atomic.LoadUint32(reloads)
+< 	if got != expected {
+< 		return fmt.Errorf("expected %d, got %d", expected, got)
+< 	}
+< 	return nil
+< }
+< 
+< func waitForNoReload(reloads *uint32, expected uint32) error {
+< 	utilwait.PollImmediate(50*time.Millisecond, 250*time.Millisecond, func() (bool, error) {
+< 		return atomic.LoadUint32(reloads) > expected, nil
+< 	})
+< 
+< 	got := atomic.LoadUint32(reloads)
+< 	if got != expected {
+< 		return fmt.Errorf("expected %d, got %d", expected, got)
+< 	}
+< 	return nil
+< }
+< 
+< func waitForBlocked(mfe *monitorFakeExec) error {
+< 	return utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 		blocked := mfe.getWasBlocked()
+< 		return blocked, nil
+< 	})
+< }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/testing/fake.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/testing/fake.go
+23d22
+< 	"time"
+101a101
+> func (*FakeIPTables) AddReloadFunc(reloadFunc func()) {}
+103,104c103
+< func (f *FakeIPTables) Monitor(canary iptables.Chain, tables []iptables.Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+< }
+---
+> func (*FakeIPTables) Destroy() {}
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/test/test_owners.csv updated/vendor/k8s.io/kubernetes/test/test_owners.csv
+780a781
+> k8s.io/kubernetes/pkg/util/dbus,roberthbailey,1,

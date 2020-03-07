@@ -188,6 +188,7 @@ type Proxier struct {
 	endpointSlicesSynced bool
 	servicesSynced       bool
 	initialized          int32
+	changesPending       bool
 	syncRunner           *async.BoundedFrequencyRunner // governs calls to syncProxyRules
 
 	// These are effectively const and do not need the mutex to be held.
@@ -323,7 +324,13 @@ func NewProxier(ipt utiliptables.Interface,
 	}
 	burstSyncs := 2
 	klog.V(3).Infof("minSyncPeriod: %v, syncPeriod: %v, burstSyncs: %d", minSyncPeriod, syncPeriod, burstSyncs)
-	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
+	// We pass syncPeriod to ipt.Monitor, which will call us only if it needs to.
+	// We need to pass *some* maxInterval to NewBoundedFrequencyRunner anyway though.
+	// time.Hour is arbitrary.
+	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.maybeSyncProxyRules, minSyncPeriod, time.Hour, burstSyncs)
+	go ipt.Monitor(utiliptables.Chain("KUBE-PROXY-CANARY"),
+		[]utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
+		proxier.forceSyncProxyRules, syncPeriod, wait.NeverStop)
 	return proxier, nil
 }
 
@@ -455,6 +462,7 @@ func (proxier *Proxier) probability(n int) string {
 
 // Sync is called to synchronize the proxier state to iptables as soon as possible.
 func (proxier *Proxier) Sync() {
+	proxier.changesPending = true
 	proxier.syncRunner.Run()
 }
 
@@ -489,6 +497,7 @@ func (proxier *Proxier) OnServiceAdd(service *v1.Service) {
 // service object is observed.
 func (proxier *Proxier) OnServiceUpdate(oldService, service *v1.Service) {
 	if proxier.serviceChanges.Update(oldService, service) && proxier.isInitialized() {
+		proxier.changesPending = true
 		proxier.syncRunner.Run()
 	}
 }
@@ -513,7 +522,7 @@ func (proxier *Proxier) OnServiceSynced() {
 	proxier.mu.Unlock()
 
 	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnEndpointsAdd is called whenever creation of new endpoints object
@@ -545,7 +554,7 @@ func (proxier *Proxier) OnEndpointsSynced() {
 	proxier.mu.Unlock()
 
 	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnEndpointSliceAdd is called whenever creation of a new endpoint slice object
@@ -581,7 +590,7 @@ func (proxier *Proxier) OnEndpointSlicesSynced() {
 	proxier.mu.Unlock()
 
 	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // portProtoHash takes the ServicePortName and protocol for a service
@@ -671,16 +680,33 @@ func (proxier *Proxier) appendServiceCommentLocked(args []string, svcName string
 	args = append(args, "-m", "comment", "--comment", svcName)
 }
 
+func (proxier *Proxier) maybeSyncProxyRules() {
+	proxier.syncProxyRules(false)
+}
+
+func (proxier *Proxier) forceSyncProxyRules() {
+	proxier.syncProxyRules(true)
+}
+
 // This is where all of the iptables-save/restore calls happen.
 // The only other iptables rules are those that are setup in iptablesInit()
 // This assumes proxier.mu is NOT held
-func (proxier *Proxier) syncProxyRules() {
+func (proxier *Proxier) syncProxyRules(force bool) {
 	proxier.mu.Lock()
 	defer proxier.mu.Unlock()
 
 	// don't sync rules till we've received services and endpoints
 	if !proxier.isInitialized() {
 		klog.V(2).Info("Not syncing iptables until Services and Endpoints have been received from master")
+		return
+	}
+
+	if !force && !proxier.changesPending {
+		// Nothing to do; just update healthz timestamp.
+		if proxier.healthzServer != nil {
+			proxier.healthzServer.UpdateTimestamp()
+		}
+		metrics.SyncProxyRulesLastTimestamp.SetToCurrentTime()
 		return
 	}
 
@@ -1427,6 +1453,8 @@ func (proxier *Proxier) syncProxyRules() {
 		utilproxy.RevertPorts(replacementPortsMap, proxier.portsMap)
 		return
 	}
+	proxier.changesPending = false
+
 	for name, lastChangeTriggerTimes := range endpointUpdateResult.LastChangeTriggerTimes {
 		for _, lastChangeTriggerTime := range lastChangeTriggerTimes {
 			latency := metrics.SinceInSeconds(lastChangeTriggerTime)
