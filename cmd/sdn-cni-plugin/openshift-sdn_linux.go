@@ -247,7 +247,7 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 
 		// Block access to certain things
 		for _, args := range iptablesCommands {
-			out, err := exec.Command("iptables", args...).CombinedOutput()
+			out, err := exec.Command("iptables", append([]string{"-w"}, args...)...).CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("could not set up pod iptables rules: %s", string(out))
 			}
