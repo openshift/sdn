@@ -275,12 +275,12 @@ func cniRequestToPodRequest(r *http.Request) (*PodRequest, error) {
 	}
 
 	req.PodNamespace, ok = cniArgs["K8S_POD_NAMESPACE"]
-	if err != nil {
+	if !ok {
 		return nil, fmt.Errorf("missing K8S_POD_NAMESPACE")
 	}
 
 	req.PodName, ok = cniArgs["K8S_POD_NAME"]
-	if err != nil {
+	if !ok {
 		return nil, fmt.Errorf("missing K8S_POD_NAME")
 	}
 
