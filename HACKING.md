@@ -9,39 +9,43 @@ make things easier...
    branch named
    `sdn-${OPENSHIFT_RELEASE_NUMBER}-kubernetes-${KUBERNETES_RELEASE_NUMBER}`,
    based on the latest upstream release/pre-release tag. eg, the first
-   rebase attempt for OCP 4.3 was the branch
-   `sdn-4.3-kubernetes-1.16.0-beta.2`, based off the upstream tag
-   `v1.16.0-beta.2`. The `${OPENSHIFT_RELEASE_NUMBER}` should just be
+   rebase attempt for OCP 4.4 was the branch
+   `sdn-4.4-kubernetes-1.17.2`, based off the upstream tag
+   `v1.17.2`. The `${OPENSHIFT_RELEASE_NUMBER}` should just be
    `MAJOR.MINOR`, but the `${KUBERNETES_RELEASE_NUMBER}` should be
    exactly the name of the upstream tag you used, minus the initial
-   "`v`".
+   "`v`". Sometimes https://github.com/openshift/kubernetes won't have all the
+   tags, make sure to get the latest tag from
+   https://github.com/kubernetes/kubernetes 
 
 3. Peruse the previous release's branch using your favorite git tool.
    If you're not sure what branch that is, look in [sdn's
-   `glide.yaml`](./glide.yaml):
+   `go.mod`](./go.mod):
 
        ...
-       - package: k8s.io/kubernetes
-         repo:    https://github.com/openshift/kubernetes.git
-         version: sdn-4.2-kubernetes-1.14.0
+         [...]
+         replace (
+            [...]
+            k8s.io/kubernetes => github.com/openshift/kubernetes v1.17.0-alpha.0.0.20190924141618-7eb200efda20
+            [...]
+         )
        ...
+
+   Unfortunately, `go mod` will autogenerate the version in a non
+   human-friendly way, in this case, `7eb200efda20` is the commit number.
+   One way to see the branch is going to the github.com/openshift/kubernetes
+   repository, and check the log for it:
+   `git log --oneline --decorate 7eb200efda20`
 
    So, eg, [that branch in
-   `openshift/kubernetes`](https://github.com/openshift/kubernetes/commits/sdn-4.2-kubernetes-1.14.0)
-   looks like:
+   openshift/kubernetes](https://github.com/openshift/kubernetes/commits/sdn-4.4-kubernetes-1.17.2) looks like:
 
-       89abaaf762 (origin/sdn-4.2-kubernetes-1.14.0) Merge pull request #70 from squeed/openshift-4.2-fix-unidling
-       1dfd96da53 UPSTREAM: <carry>: Allow low-level tweaking of proxy sync flow
-       42eb726769 UPSTREAM: 71735: proxy/userspace: respect minSyncInterval
-       f409845764 UPSTREAM: 74027: proxy: add some useful metrics
-       64a1883466 UPSTREAM: 78428:Capture stderr output and write it to buffer on error
-       dd6811c547 UPSTREAM: 78428:Discard stderr output when calling iptables-save
-       d5a5dbeeb5 UPSTREAM: 78428:Better error message if panic occurs during iptables-save output parsing
-       dbf92ac7e1 UPSTREAM: 77303: Update iptables.IsNotFoundError for iptables-nft error messages
-       9bb96ce068 UPSTREAM: <carry>: kube-proxy: make wiring in kubeproxy easy until we sort out config
-   
-       641856db18 (tag: v1.14.0) Merge pull request #75530 from logicalhan/automated-cherry-pick-of-#75529-upstream-release-1.14
-       ...
+       $  git log --oneline --decorate=no 7eb200efda2 | head -5
+       7eb200efda2 UPSTREAM: <carry>: kube-proxy: make wiring in kubeproxy easy until we sort out config
+       f92ec1095b1 UPSTREAM: <carry>: Allow low-level tweaking of proxy sync flow
+       2bd9643cee5 Add/Update CHANGELOG-1.16.md for v1.16.0-rc.2.
+       4cb51f0d2d8 Merge pull request #82688 from dims/automated-cherry-pick-of-#82669-upstream-release-1.16
+       101ecd704d9 Merge pull request #82658 from liggitt/automated-cherry-pick-of-#82653-upstream-release-1.16
 
 4. Look through all of the upstream commits on the previous branch:
    you should be able to drop all of the commits marked `<drop>`
@@ -53,12 +57,12 @@ make things easier...
    upstream already.)
 
 5. Cherry-pick the commits you need to [the new
-   branch](https://github.com/openshift/kubernetes/commits/sdn-4.3-kubernetes-1.16.0-beta.2):
+   branch](https://github.com/openshift/kubernetes/tree/sdn-4.4-kubernetes-1.17.2):
 
-       00686ab296 (sdn-4.3-kubernetes-1.16.0-beta.2) UPSTREAM: <carry>: Allow low-level tweaking of proxy sync flow
-       d7cd27b93a UPSTREAM: <carry>: kube-proxy: make wiring in kubeproxy easy until we sort out config
-    
-       48ca054dab (tag: v1.16.0-beta.2) Merge remote-tracking branch 'origin/master' into release-1.16
+       7a71bf4afe8 (sdn-4.4-kubernetes-1.17.2) UPSTREAM: <carry>: kube-proxy: make wiring in kubeproxy easy until we sort out config
+       4a62e82fa9c UPSTREAM: <carry>: Allow low-level tweaking of proxy sync flow
+       59603c6e503 (tag: v1.17.2) Merge pull request #87334 from justaugustus/cl-117-bump-tag
+
 
 6. Run "make" to ensure it still compiles with the carried patches.
 
@@ -71,62 +75,58 @@ make things easier...
 
 ### Updating the sdn repo dependencies
 
-1. Update the kubernetes dependencies in `glide.yaml`. For
-   `k8s.io/kubernetes` itself that means updating it to point to your
-   new branch. For everything else, it means updating to a branch/tag
-   that matches what you rebased `k8s.io/kubernetes` to. You should not
-   need to create special sdn/openshift-specific branches of anything
-   besides `k8s.io/kubernetes`.
+1. Update the kubernetes dependencies in `go.mod`. Because `k8s.io/kubernetes`
+   [wasn't designed to be used as a go module](https://github.com/golang/go/issues/26366)
+   we need to do  some hacks.
 
-   (For kubernetes dependencies that depend on a commit SHA rather
-   than a branch or tag, see step 2.)
+   First we need to update kubernetes itself, in go.mod, the dependencies on
+   the require section **must** point to a version that exists on that module
+   upstream. This means picking whatever is the closest to whatever you need,
+   for the k8s.io/* dependencies, for the 1.17.2 I used v1.17.2, but don't
+   worry too much about this because we'll actually define the dependency on
+   the replace section and `go mod tidy` will change whatever you write anyway.
 
-   Occasionally, if you're rebasing to a prerelease version, one of
-   the repos will not have the correct branch/tag yet. In that case,
-   look at the repo, and see if there's another recent tag (eg, from
-   the previous beta) or else see if `master` can reasonably be used.
-   If you do this leave a `# FIXME` comment in `glide.yaml`.
+   The replace section is where we define what is the dependency which will
+   really be vendored. All the modules that are part of kubernetes must be
+   replaced to point to their path in kubernetes. These depdendencies can be
+   easily found out with grep:
 
-   If you get to the final rebase (ie, `.0`, no `beta` or `rc`) and
-   there's some module where there's still no appropriate tag, then
-   it's better to depend on the commit SHA of the current master
-   rather than actually depending on `master`.
+       $ cat go.mod | grep -e  replace -e staging | grep -v sigs.k8s.io/yaml
+       replace (
 
-2. Update the remaining kubernetes and openshift dependencies in
-   `glide.yaml`. For dependencies under `github.com/openshift/`, and
-   for kubernetes dependencies where we currently depend on a specific
-   commit SHA, see what version is now being used by the origin
-   rebase, and use that. (This is why you waited until after someone
-   started the origin rebase...)
+      	k8s.io/api => github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20190924141618-7eb200efda20
+	
+         k8s.io/apiextensions-apiserver => github.com/openshift/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20190924141618-7eb200efda20
+	      k8s.io/apimachinery => github.com/openshift/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20190924141618-7eb200efda20
+	      k8s.io/apiserver => github.com/openshift/kubernetes/staging/src/k8s.io/apiserver v0.0.0-20190924141618-7eb200efda20
+         ...
+   
+   We need to replace the version, in this case
+   `v0.0.0-20190924141618-7eb200efda20`, with the correct branch. I used sed:
+   
+       sed -i 's/v0.0.0-20190924141618-7eb200efda20/sdn-4.4-kubernetes-1.17.2/g' go.mod
 
-3. Try it out... run
+   You shouldn't need to update the rest of the dependencies unless there are
+   conflicts.
 
-       make update-deps
+2. Update `go.mod` and `go.lock` and the vendor directory using:
+   
+       make update-deps-overrides
+   
+   Which at a lower level executes:
 
-   And hopefully this will work. But probably it won't. If it fails,
-   look back through the messages glide printed while it was running
-   and see what repos it complained about, and try to figure out how
-   to resolve it.
+       go mod tidy && go mod vendor && go mod verify
 
-   Sometimes you will get errors like:
+   This should work but it may not, if you get any errors, run the steps
+   individually and good luck. Try modifying go.mod and repeat until it works.
 
-       [ERROR]	Error scanning k8s.io/kubernetes/pkg/kubelet/apis/cri: cannot find package "." in:
-       	/home/danw/.glide/cache/src/https-github.com-openshift-kubernetes.git/pkg/kubelet/apis/cri
+3. Update non kubernetes dependencies in `go.mod`. If some of the dependencies
+   kubernetes are used by kubernetes as well, there is a chance that
+   `make update-deps-overrides` has modified them as well. If this breaks
+   something you can overwrite the version in the `replace` section of
+   `go.mod`.
 
-   That means that some part of `openshift/sdn` is trying to pull in
-   some package that no longer exists in one of its dependencies.
-   You'll need to figure out what happened with that package, and fix
-   our code accordingly. (eg, in this case,
-   `k8s.io/kubernetes/pkg/kubelet/apis/cri` moved to
-   `k8s.io/cri-api/pkg/apis`, so several files in `pkg/network/node`
-   had to be updated to point to the new place.)
-
-   Once glide completes successfully, do:
-
-       git add glide.yaml glide.lock vendor
-       git commit -m bump
-
-   (Don't commit any code changes yet.)
+4. Repeat steap 2: `make update-deps-overrides`
 
 ### Updating the code
 
@@ -144,14 +144,15 @@ version of `golang.org/x/sys` that was required by other
 dependencies.)
 
 Another thing that can happen (especially in the final rebase) is that
-if glide decides to pull in any new dependencies that aren't listed in
-`glide.yaml`, it may pull the git master version of it and get some
-code that depends on the master versions of everything else and so
-won't compile. In that case, the fix is to explicitly pin that new
-module to the right version in `glide.yaml`.
+if go mod decides to pull in any new dependencies that aren't listed in
+`go.mod` or `go.lock`, it may pull a version incompatible with other
+some other module and so won't compile.
+In that case, the fix is to explicitly pin the two incompatible modules
+to compatible versions in the `replace` section of go.mod. This may not be
+possible without code changes.
 
 Once you figure out a working set of dependency versions, update
-`glide.yaml`, re-run `make update-deps`, and amend the bump commit.
+`go.mod`, re-run `make update-deps-overrides`, and amend the bump commit.
 Then commit the corresponding code fixes as one or more separate
 commits (for ease of review later).
 
@@ -168,6 +169,10 @@ Much of the above is generic to any module. For the specific case of
    You should look through the changes made upstream since the
    previous release and see if any of them need to be copied into our
    fork.
+
+   On proxy.go you should also pay special attention to metrics, as we
+   expect to have some problems in the near future with the
+   [metrics handler](https://github.com/openshift/sdn/pull/114).
 
 2. Since OpenShift's e2e tests are all run out of the origin repo, if
    there are any new upstream tests that depend on new kube-proxy
