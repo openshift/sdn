@@ -32,7 +32,7 @@ import (
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
-	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog"
 )
 
@@ -217,7 +217,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
 		})
-		mux.Handle("/metrics", prometheus.Handler())
+		mux.Handle("/metrics", legacyregistry.Handler())
 		go utilwait.Until(func() {
 			err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
 			if err != nil {

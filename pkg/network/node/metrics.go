@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"k8s.io/component-base/metrics"
+	"k8s.io/component-base/metrics/legacyregistry"
 )
 
 const (
@@ -36,8 +36,8 @@ const (
 )
 
 var (
-	OVSFlows = prometheus.NewGauge(
-		prometheus.GaugeOpts{
+	OVSFlows = metrics.NewGauge(
+		&metrics.GaugeOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      OVSFlowsKey,
@@ -45,8 +45,8 @@ var (
 		},
 	)
 
-	ARPCacheAvailableEntries = prometheus.NewGauge(
-		prometheus.GaugeOpts{
+	ARPCacheAvailableEntries = metrics.NewGauge(
+		&metrics.GaugeOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      ARPCacheAvailableEntriesKey,
@@ -54,8 +54,8 @@ var (
 		},
 	)
 
-	PodIPs = prometheus.NewGauge(
-		prometheus.GaugeOpts{
+	PodIPs = metrics.NewGauge(
+		&metrics.GaugeOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      PodIPsKey,
@@ -63,8 +63,8 @@ var (
 		},
 	)
 
-	PodOperationsErrors = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
+	PodOperationsErrors = metrics.NewCounterVec(
+		&metrics.CounterOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      PodOperationsErrorsKey,
@@ -73,8 +73,8 @@ var (
 		[]string{"operation_type"},
 	)
 
-	PodOperationsLatency = prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
+	PodOperationsLatency = metrics.NewSummaryVec(
+		&metrics.SummaryOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      PodOperationsLatencyKey,
@@ -83,8 +83,8 @@ var (
 		[]string{"operation_type"},
 	)
 
-	VnidNotFoundErrors = prometheus.NewCounter(
-		prometheus.CounterOpts{
+	VnidNotFoundErrors = metrics.NewCounter(
+		&metrics.CounterOpts{
 			Namespace: SDNNamespace,
 			Subsystem: SDNSubsystem,
 			Name:      VnidNotFoundErrorsKey,
@@ -105,12 +105,12 @@ var registerMetrics sync.Once
 // Register all node metrics.
 func RegisterMetrics() {
 	registerMetrics.Do(func() {
-		prometheus.MustRegister(OVSFlows)
-		prometheus.MustRegister(ARPCacheAvailableEntries)
-		prometheus.MustRegister(PodIPs)
-		prometheus.MustRegister(PodOperationsErrors)
-		prometheus.MustRegister(PodOperationsLatency)
-		prometheus.MustRegister(VnidNotFoundErrors)
+		legacyregistry.MustRegister(OVSFlows)
+		legacyregistry.MustRegister(ARPCacheAvailableEntries)
+		legacyregistry.MustRegister(PodIPs)
+		legacyregistry.MustRegister(PodOperationsErrors)
+		legacyregistry.MustRegister(PodOperationsLatency)
+		legacyregistry.MustRegister(VnidNotFoundErrors)
 	})
 }
 
