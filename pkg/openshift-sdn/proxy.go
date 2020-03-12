@@ -13,6 +13,8 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/server/mux"
+	"k8s.io/apiserver/pkg/server/routes"
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
@@ -213,11 +215,14 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// Start up a metrics server if requested
 	if len(sdn.ProxyConfig.MetricsBindAddress) > 0 {
-		mux := http.NewServeMux()
+		mux := mux.NewPathRecorderMux("kube-proxy")
 		mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
 		})
 		mux.Handle("/metrics", legacyregistry.Handler())
+		if sdn.ProxyConfig.EnableProfiling {
+			routes.Profiling{}.Install(mux)
+		}
 		go utilwait.Until(func() {
 			err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
 			if err != nil {
