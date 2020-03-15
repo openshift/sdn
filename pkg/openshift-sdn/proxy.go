@@ -7,8 +7,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	kapierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -27,7 +25,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
-	utilnode "k8s.io/kubernetes/pkg/util/node"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	utilexec "k8s.io/utils/exec"
 
@@ -66,28 +63,19 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if bindAddr.To4() == nil {
 		protocol = utiliptables.ProtocolIpv6
 	}
-
-	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
-
-	hostname, err := utilnode.GetHostname(sdn.ProxyConfig.HostnameOverride)
-	if err != nil {
-		klog.Fatalf("Unable to get hostname: %v", err)
-	}
 	nodeAddr := bindAddr
 	if nodeAddr.Equal(net.IPv4zero) {
 		nodeAddr = net.ParseIP(sdn.nodeIP)
-		if nodeAddr == nil || nodeAddr.Equal(net.IPv4zero) {
-			var err error
-			nodeAddr, err = getNodeIP(sdn.informers.KubeClient.CoreV1(), hostname)
-			if err != nil {
-				klog.Fatalf("Unable to get node address: %v", err)
-			}
+		if nodeAddr == nil {
+			klog.Fatalf("Unable to parse node IP %q", sdn.nodeIP)
 		}
 	}
 
+	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
+
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: sdn.informers.KubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-proxy", Host: hostname})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
 
 	execer := utilexec.New()
 	iptInterface := utiliptables.New(execer, protocol)
@@ -97,14 +85,15 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
-			Name:      hostname,
-			UID:       types.UID(hostname),
+			Name:      sdn.nodeName,
+			UID:       types.UID(sdn.nodeName),
 			Namespace: "",
 		}
 		healthzServer = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
 	}
 
 	enableUnidling := false
+	var err error
 
 	switch string(sdn.ProxyConfig.Mode) {
 	case "unidling+iptables":
@@ -125,7 +114,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.ProxyConfig.IPTables.MasqueradeAll,
 			int(*sdn.ProxyConfig.IPTables.MasqueradeBit),
 			sdn.ProxyConfig.ClusterCIDR,
-			hostname,
+			sdn.nodeName,
 			nodeAddr,
 			recorder,
 			healthzServer,
@@ -238,40 +227,4 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	// periodically sync k8s iptables rules
 	go utilwait.Forever(proxier.SyncLoop, 0)
 	klog.Infof("Started Kubernetes Proxy on %s", sdn.ProxyConfig.BindAddress)
-}
-
-// getNodeIP is copied from the upstream proxy config to retrieve the IP of a node.
-func getNodeIP(client kv1core.CoreV1Interface, hostname string) (net.IP, error) {
-	var node *v1.Node
-	var nodeErr error
-
-	// We may beat the thread that causes the node object to be created,
-	// so if we can't get it, then we need to wait.
-	// This will wait 0, 2, 4, 8, ... 64 seconds, for a total of ~2 mins
-	nodeWaitBackoff := utilwait.Backoff{
-		Duration: 2 * time.Second,
-		Factor:   2,
-		Steps:    7,
-	}
-	utilwait.ExponentialBackoff(nodeWaitBackoff, func() (bool, error) {
-		node, nodeErr = client.Nodes().Get(hostname, metav1.GetOptions{})
-		if nodeErr == nil {
-			return true, nil
-		} else if kapierrors.IsNotFound(nodeErr) {
-			klog.Warningf("waiting for node %q to be registered with master...", hostname)
-			return false, nil
-		} else {
-			return false, nodeErr
-		}
-	})
-	if nodeErr != nil {
-		return nil, fmt.Errorf("failed to retrieve node info (after waiting): %v", nodeErr)
-	}
-
-	nodeIP, err := utilnode.GetNodeHostIP(node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve node IP: %v", err)
-	}
-
-	return nodeIP, nil
 }

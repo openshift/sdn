@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	kubeutilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -116,7 +115,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		return nil, fmt.Errorf("could not get ClusterNetwork resource: %v", err)
 	}
 
-	if err := c.setNodeIP(networkInfo); err != nil {
+	if err := c.validateNodeIP(networkInfo); err != nil {
 		return nil, err
 	}
 
@@ -187,30 +186,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	return plugin, nil
 }
 
-// Set node IP if required
-func (c *OsdnNodeConfig) setNodeIP(networkInfo *common.ParsedClusterNetwork) error {
-	if len(c.NodeName) == 0 {
-		output, err := kexec.New().Command("uname", "-n").CombinedOutput()
-		if err != nil {
-			return err
-		}
-		c.NodeName = strings.TrimSpace(string(output))
-	}
-
-	if len(c.NodeIP) == 0 {
-		var err error
-		c.NodeIP, err = GetNodeIP(c.NodeName)
-		if err != nil {
-			klog.Infof("Failed to determine node address from hostname %s; using default interface (%v)", c.NodeName, err)
-			var defaultIP net.IP
-			defaultIP, err = kubeutilnet.ChooseHostInterface()
-			if err != nil {
-				return err
-			}
-			c.NodeIP = defaultIP.String()
-		}
-	}
-
+func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork) error {
 	if _, _, err := GetLinkDetails(c.NodeIP); err != nil {
 		if err == ErrorNetworkInterfaceNotFound {
 			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.NodeIP, c.NodeName)
@@ -228,33 +204,6 @@ func (c *OsdnNodeConfig) setNodeIP(networkInfo *common.ParsedClusterNetwork) err
 	}
 
 	return nil
-}
-
-func GetNodeIP(nodeName string) (string, error) {
-	ip := net.ParseIP(nodeName)
-	if ip == nil {
-		addrs, err := net.LookupIP(nodeName)
-		if err != nil {
-			return "", fmt.Errorf("Failed to lookup IP address for node %s: %v", nodeName, err)
-		}
-		for _, addr := range addrs {
-			// Skip loopback and non IPv4 addrs
-			if addr.IsLoopback() || addr.To4() == nil {
-				klog.V(5).Infof("Skipping loopback/non-IPv4 addr: %q for node %s", addr.String(), nodeName)
-				continue
-			}
-			ip = addr
-			break
-		}
-	} else if ip.IsLoopback() || ip.To4() == nil {
-		klog.V(5).Infof("Skipping loopback/non-IPv4 addr: %q for node %s", ip.String(), nodeName)
-		ip = nil
-	}
-
-	if ip == nil || len(ip.String()) == 0 {
-		return "", fmt.Errorf("Failed to obtain IP address from node name: %s", nodeName)
-	}
-	return ip.String(), nil
 }
 
 var (

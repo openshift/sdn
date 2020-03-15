@@ -3,7 +3,6 @@ package openshift_sdn
 import (
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"k8s.io/klog"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/interrupt"
@@ -27,13 +25,11 @@ import (
 // OpenShiftSDN stores the variables needed to initialize the real networking
 // processess from the command line.
 type OpenShiftSDN struct {
-	ProxyConfigFilePath       string
-	URLOnlyKubeConfigFilePath string
-
 	nodeName string
 	nodeIP   string
 
-	ProxyConfig *kubeproxyconfig.KubeProxyConfiguration
+	ProxyConfigFilePath string
+	ProxyConfig         *kubeproxyconfig.KubeProxyConfiguration
 
 	informers   *informers
 	OsdnNode    *sdnnode.OsdnNode
@@ -43,8 +39,7 @@ type OpenShiftSDN struct {
 
 var networkLong = `
 Start OpenShift SDN node components. This includes the service proxy.
-
-This will also read the node name from the environment variable K8S_NODE_NAME.`
+`
 
 func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 	sdn := &OpenShiftSDN{}
@@ -67,23 +62,19 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.StringVar(&sdn.nodeName, "node-name", "", "Kubernetes node name")
+	cmd.MarkFlagRequired("node-name")
 	flags.StringVar(&sdn.nodeIP, "node-ip", "", "Kubernetes node IP")
+	cmd.MarkFlagRequired("node-ip")
 	flags.StringVar(&sdn.ProxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
 	cmd.MarkFlagRequired("proxy-config")
-	flags.StringVar(&sdn.URLOnlyKubeConfigFilePath, "url-only-kubeconfig", "", "Path to a kubeconfig file to use, but only to determine the URL to the apiserver. The in-cluster credentials will be used.")
 
 	return cmd
 }
 
 // Run starts the network process. Does not return.
 func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan struct{}) {
-	err := injectKubeAPIEnv(sdn.URLOnlyKubeConfigFilePath)
-	if err != nil {
-		klog.Fatal(err)
-	}
-
 	// Parse config file, build config objects
-	err = sdn.ValidateAndParse()
+	err := sdn.ValidateAndParse()
 	if err != nil {
 		if kerrors.IsInvalid(err) {
 			if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
@@ -121,18 +112,12 @@ func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan str
 // ValidateAndParse validates the command line options, parses the node
 // configuration, and builds the upstream proxy configuration.
 func (sdn *OpenShiftSDN) ValidateAndParse() error {
-	// Backward compatibility
-	if sdn.nodeName == "" {
-		sdn.nodeName = os.Getenv("K8S_NODE_NAME")
-	}
-
 	klog.V(2).Infof("Reading proxy configuration from %s", sdn.ProxyConfigFilePath)
 	var err error
 	sdn.ProxyConfig, err = readProxyConfig(sdn.ProxyConfigFilePath)
 	if err != nil {
 		return err
 	}
-	sdn.ProxyConfig.HostnameOverride = sdn.nodeName
 
 	return nil
 }
@@ -181,33 +166,6 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 		klog.Fatal(err)
 	}
 	klog.V(2).Infof("openshift-sdn network plugin ready")
-	return nil
-}
-
-// injectKubeAPIEnv consumes the url-only-kubeconfig and re-injects it as
-// environment variables. We need to do this because we cannot use the
-// apiserver service ip (since we set it up!), but we want to use the in-cluster
-// configuration. So, take the server URL from the kubelet kubeconfig.
-func injectKubeAPIEnv(kcPath string) error {
-	if kcPath != "" {
-		kubeconfig, err := clientcmd.LoadFromFile(kcPath)
-		if err != nil {
-			return err
-		}
-		clusterName := kubeconfig.Contexts[kubeconfig.CurrentContext].Cluster
-		apiURL := kubeconfig.Clusters[clusterName].Server
-
-		url, err := url.Parse(apiURL)
-		if err != nil {
-			return err
-		}
-
-		// The kubernetes in-cluster functions don't let you override the apiserver
-		// directly; gotta "pass" it via environment vars.
-		klog.V(2).Infof("Overriding kubernetes api to %s", apiURL)
-		os.Setenv("KUBERNETES_SERVICE_HOST", url.Hostname())
-		os.Setenv("KUBERNETES_SERVICE_PORT", url.Port())
-	}
 	return nil
 }
 
