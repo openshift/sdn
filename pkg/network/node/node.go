@@ -63,8 +63,8 @@ type osdnPolicy interface {
 }
 
 type OsdnNodeConfig struct {
-	Hostname string
-	SelfIP   string
+	NodeName string
+	NodeIP   string
 
 	NetworkClient networkclient.Interface
 	KClient       kubernetes.Interface
@@ -144,13 +144,13 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		return nil, fmt.Errorf("%q plugin is not compatible with proxy-mode %q", networkInfo.PluginName, c.ProxyMode)
 	}
 
-	klog.Infof("Initializing SDN node of type %q with configured hostname %q (IP %q)", networkInfo.PluginName, c.Hostname, c.SelfIP)
+	klog.Infof("Initializing SDN node %q (%s) of type %q", c.NodeName, c.NodeIP, networkInfo.PluginName)
 
 	ovsif, err := ovs.New(kexec.New(), Br0, minOvsVersion)
 	if err != nil {
 		return nil, err
 	}
-	oc := NewOVSController(ovsif, pluginId, useConnTrack, c.SelfIP)
+	oc := NewOVSController(ovsif, pluginId, useConnTrack, c.NodeIP)
 
 	masqBit := uint32(0)
 	if c.MasqueradeBit != nil {
@@ -170,8 +170,8 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		oc:                 oc,
 		networkInfo:        networkInfo,
 		podManager:         newPodManager(c.KClient, policy, networkInfo.MTU, oc),
-		localIP:            c.SelfIP,
-		hostName:           c.Hostname,
+		localIP:            c.NodeIP,
+		hostName:           c.NodeName,
 		useConnTrack:       useConnTrack,
 		iptablesSyncPeriod: c.IPTablesSyncPeriod,
 		masqueradeBit:      masqBit,
@@ -179,7 +179,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		egressDNS:          egressDNS,
 		kubeInformers:      c.KubeInformers,
 		networkInformers:   c.NetworkInformers,
-		egressIP:           newEgressIPWatcher(oc, c.SelfIP, c.MasqueradeBit),
+		egressIP:           newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
 	}
 
 	RegisterMetrics()
@@ -189,31 +189,31 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 // Set node IP if required
 func (c *OsdnNodeConfig) setNodeIP(networkInfo *common.ParsedClusterNetwork) error {
-	if len(c.Hostname) == 0 {
+	if len(c.NodeName) == 0 {
 		output, err := kexec.New().Command("uname", "-n").CombinedOutput()
 		if err != nil {
 			return err
 		}
-		c.Hostname = strings.TrimSpace(string(output))
+		c.NodeName = strings.TrimSpace(string(output))
 	}
 
-	if len(c.SelfIP) == 0 {
+	if len(c.NodeIP) == 0 {
 		var err error
-		c.SelfIP, err = GetNodeIP(c.Hostname)
+		c.NodeIP, err = GetNodeIP(c.NodeName)
 		if err != nil {
-			klog.Infof("Failed to determine node address from hostname %s; using default interface (%v)", c.Hostname, err)
+			klog.Infof("Failed to determine node address from hostname %s; using default interface (%v)", c.NodeName, err)
 			var defaultIP net.IP
 			defaultIP, err = kubeutilnet.ChooseHostInterface()
 			if err != nil {
 				return err
 			}
-			c.SelfIP = defaultIP.String()
+			c.NodeIP = defaultIP.String()
 		}
 	}
 
-	if _, _, err := GetLinkDetails(c.SelfIP); err != nil {
+	if _, _, err := GetLinkDetails(c.NodeIP); err != nil {
 		if err == ErrorNetworkInterfaceNotFound {
-			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.SelfIP, c.Hostname)
+			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.NodeIP, c.NodeName)
 		}
 		utilruntime.HandleError(fmt.Errorf("Unable to find network interface for node IP; some features will not work! (%v)", err))
 	}
