@@ -31,6 +31,7 @@ type OpenShiftSDN struct {
 	URLOnlyKubeConfigFilePath string
 
 	nodeName string
+	nodeIP   string
 
 	ProxyConfig *kubeproxyconfig.KubeProxyConfiguration
 
@@ -65,6 +66,8 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 	}
 
 	flags := cmd.Flags()
+	flags.StringVar(&sdn.nodeName, "node-name", "", "Kubernetes node name")
+	flags.StringVar(&sdn.nodeIP, "node-ip", "", "Kubernetes node IP")
 	flags.StringVar(&sdn.ProxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
 	cmd.MarkFlagRequired("proxy-config")
 	flags.StringVar(&sdn.URLOnlyKubeConfigFilePath, "url-only-kubeconfig", "", "Path to a kubeconfig file to use, but only to determine the URL to the apiserver. The in-cluster credentials will be used.")
@@ -118,7 +121,10 @@ func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan str
 // ValidateAndParse validates the command line options, parses the node
 // configuration, and builds the upstream proxy configuration.
 func (sdn *OpenShiftSDN) ValidateAndParse() error {
-	sdn.nodeName = os.Getenv("K8S_NODE_NAME")
+	// Backward compatibility
+	if sdn.nodeName == "" {
+		sdn.nodeName = os.Getenv("K8S_NODE_NAME")
+	}
 
 	klog.V(2).Infof("Reading proxy configuration from %s", sdn.ProxyConfigFilePath)
 	var err error

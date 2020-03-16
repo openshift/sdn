@@ -73,6 +73,17 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if err != nil {
 		klog.Fatalf("Unable to get hostname: %v", err)
 	}
+	nodeAddr := bindAddr
+	if nodeAddr.Equal(net.IPv4zero) {
+		nodeAddr = net.ParseIP(sdn.nodeIP)
+		if nodeAddr == nil || nodeAddr.Equal(net.IPv4zero) {
+			var err error
+			nodeAddr, err = getNodeIP(sdn.informers.KubeClient.CoreV1(), hostname)
+			if err != nil {
+				klog.Fatalf("Unable to get node address: %v", err)
+			}
+		}
+	}
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: sdn.informers.KubeClient.CoreV1().Events("")})
@@ -101,13 +112,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		fallthrough
 	case "iptables":
 		klog.V(0).Infof("Using %s Proxier.", sdn.ProxyConfig.Mode)
-		if bindAddr.Equal(net.IPv4zero) {
-			var err error
-			bindAddr, err = getNodeIP(sdn.informers.KubeClient.CoreV1(), hostname)
-			if err != nil {
-				klog.Fatalf("Unable to get a bind address: %v", err)
-			}
-		}
 		if sdn.ProxyConfig.IPTables.MasqueradeBit == nil {
 			// IPTablesMasqueradeBit must be specified or defaulted.
 			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
@@ -122,7 +126,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			int(*sdn.ProxyConfig.IPTables.MasqueradeBit),
 			sdn.ProxyConfig.ClusterCIDR,
 			hostname,
-			bindAddr,
+			nodeAddr,
 			recorder,
 			healthzServer,
 			sdn.ProxyConfig.NodePortAddresses,
