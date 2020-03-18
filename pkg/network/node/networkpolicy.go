@@ -577,7 +577,7 @@ func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *ne
 	oldNPP, existed := npns.policies[policy.UID]
 	npns.policies[policy.UID] = npp
 
-	changed := !existed || !reflect.DeepEqual(oldNPP.flows, npp.flows)
+	changed := !existed || !reflect.DeepEqual(oldNPP.flows, npp.flows) || !reflect.DeepEqual(oldNPP.selectedIPs, npp.selectedIPs)
 	if !changed {
 		klog.V(5).Infof("NetworkPolicy %s/%s is unchanged", policy.Namespace, policy.Name)
 	}
