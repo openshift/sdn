@@ -132,6 +132,7 @@ func TestNetworkPolicy(t *testing.T) {
 		namespacesByName: make(map[string]*npNamespace),
 		pods:             make(map[ktypes.UID]corev1.Pod),
 		nsMatchCache:     make(map[string]*npCacheEntry),
+		podMatchCache:    make(map[string]map[string]*npPodCacheEntry),
 	}
 	np.vnids = newNodeVNIDMap(np, nil)
 
