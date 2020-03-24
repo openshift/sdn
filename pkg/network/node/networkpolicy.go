@@ -371,18 +371,23 @@ func (np *networkPolicyPlugin) selectNamespacesInternal(selector labels.Selector
 
 func (np *networkPolicyPlugin) selectPodsInternal(namespaceName string, selector labels.Selector) map[string]string {
 	cacheKey := selector.String()
-	match := np.podMatchCache[namespaceName][cacheKey]
-	if match == nil {
+
+	namespaceMatch := np.podMatchCache[namespaceName]
+	if namespaceMatch == nil {
 		np.podMatchCache[namespaceName] = make(map[string]*npPodCacheEntry)
-		match = &npPodCacheEntry{selector: selector, matches: make(map[string]string)}
+	}
+	fullMatch := np.podMatchCache[namespaceName][cacheKey]
+	if fullMatch == nil {
+		entries := &npPodCacheEntry{selector: selector, matches: make(map[string]string)}
 		for _, pod := range np.pods {
 			if namespaceName == pod.Namespace && selector.Matches(labels.Set(pod.Labels)) {
-				match.matches[pod.Name] = pod.Status.PodIP
+				entries.matches[pod.Name] = pod.Status.PodIP
 			}
 		}
+		np.podMatchCache[namespaceName][cacheKey] = entries
 	}
-	np.podMatchCache[namespaceName][cacheKey] = match
-	return match.matches
+
+	return np.podMatchCache[namespaceName][cacheKey].matches
 }
 
 func (np *networkPolicyPlugin) updateMatchCache(npns *npNamespace) {
@@ -395,20 +400,12 @@ func (np *networkPolicyPlugin) updateMatchCache(npns *npNamespace) {
 	}
 }
 
-func (np *networkPolicyPlugin) updatePodMatchCache(pod, oldPod *corev1.Pod) {
-	var potentialMatches map[string]*npPodCacheEntry
-	if pod != nil {
-		potentialMatches = np.podMatchCache[pod.Namespace]
-	}
-
-	//pod deletion case
-	if pod == nil && oldPod != nil {
-		potentialMatches = np.podMatchCache[oldPod.Namespace]
-	}
+func (np *networkPolicyPlugin) updatePodMatchCache(pod, oldPod *corev1.Pod, namespaceName string) {
+	potentialMatches := np.podMatchCache[namespaceName]
 
 	if oldPod != nil {
 		for _, cacheEntry := range potentialMatches {
-			delete(cacheEntry.matches, pod.Name)
+			delete(cacheEntry.matches, oldPod.Name)
 		}
 	}
 	if pod != nil {
@@ -450,8 +447,8 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 	namespaces := np.selectNamespacesInternal(nsSel)
 	for namespace := range namespaces {
 		pods := np.selectPodsInternal(namespace, podSel)
-		for _, podIPs := range pods {
-			peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", namespaces[namespace], podIPs))
+		for _, podIP := range pods {
+			peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", namespaces[namespace], podIP))
 		}
 	}
 
@@ -709,7 +706,7 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, _ interface{}, eventTyp
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	np.updatePodMatchCache(pod, &oldPod)
+	np.updatePodMatchCache(pod, &oldPod, pod.Namespace)
 
 	np.pods[pod.UID] = *pod
 	np.refreshNetworkPolicies(refreshForPods)
@@ -727,7 +724,7 @@ func (np *networkPolicyPlugin) handleDeletePod(obj interface{}) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
-	np.updatePodMatchCache(nil, pod)
+	np.updatePodMatchCache(nil, pod, pod.Namespace)
 
 	delete(np.pods, pod.UID)
 	np.refreshNetworkPolicies(refreshForPods)
