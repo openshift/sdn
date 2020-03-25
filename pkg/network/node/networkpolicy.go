@@ -378,16 +378,17 @@ func (np *networkPolicyPlugin) selectPodsInternal(namespaceName string, selector
 	}
 	fullMatch := np.podMatchCache[namespaceName][cacheKey]
 	if fullMatch == nil {
-		entries := &npPodCacheEntry{selector: selector, matches: make(map[string]string)}
+		fullMatch = &npPodCacheEntry{selector: selector, matches: make(map[string]string)}
 		for _, pod := range np.pods {
 			if namespaceName == pod.Namespace && selector.Matches(labels.Set(pod.Labels)) {
-				entries.matches[pod.Name] = pod.Status.PodIP
+				fullMatch.matches[pod.Name] = pod.Status.PodIP
+				fmt.Printf("KEYWORD: Adding Entries: %s : %s\n", pod.Name, pod.Status.PodIP)
 			}
 		}
-		np.podMatchCache[namespaceName][cacheKey] = entries
+		np.podMatchCache[namespaceName][cacheKey] = fullMatch
 	}
 
-	return np.podMatchCache[namespaceName][cacheKey].matches
+	return fullMatch.matches
 }
 
 func (np *networkPolicyPlugin) updateMatchCache(npns *npNamespace) {
