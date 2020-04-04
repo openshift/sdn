@@ -21,16 +21,16 @@ func (sdn *OpenShiftSDN) initSDN() error {
 
 	var err error
 	sdn.OsdnNode, err = sdnnode.New(&sdnnode.OsdnNodeConfig{
-		NodeName:           sdn.nodeName,
-		NodeIP:             sdn.nodeIP,
-		NetworkClient:      sdn.informers.NetworkClient,
-		KClient:            sdn.informers.KubeClient,
-		KubeInformers:      sdn.informers.KubeInformers,
-		NetworkInformers:   sdn.informers.NetworkInformers,
-		IPTablesSyncPeriod: sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-		MasqueradeBit:      sdn.ProxyConfig.IPTables.MasqueradeBit,
-		ProxyMode:          sdn.ProxyConfig.Mode,
-		Recorder:           sdn.sdnRecorder,
+		NodeName:         sdn.nodeName,
+		NodeIP:           sdn.nodeIP,
+		NetworkClient:    sdn.informers.NetworkClient,
+		KClient:          sdn.informers.KubeClient,
+		KubeInformers:    sdn.informers.KubeInformers,
+		NetworkInformers: sdn.informers.NetworkInformers,
+		IPTables:         sdn.ipt,
+		MasqueradeBit:    sdn.ProxyConfig.IPTables.MasqueradeBit,
+		ProxyMode:        sdn.ProxyConfig.Mode,
+		Recorder:         sdn.sdnRecorder,
 	})
 	return err
 }
