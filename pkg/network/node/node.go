@@ -33,6 +33,7 @@ import (
 	kruntimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
+	"k8s.io/kubernetes/pkg/util/iptables"
 	taints "k8s.io/kubernetes/pkg/util/taints"
 	kexec "k8s.io/utils/exec"
 
@@ -73,27 +74,28 @@ type OsdnNodeConfig struct {
 	KubeInformers    informers.SharedInformerFactory
 	NetworkInformers networkinformers.SharedInformerFactory
 
-	IPTablesSyncPeriod time.Duration
-	ProxyMode          kubeproxyconfig.ProxyMode
-	MasqueradeBit      *int32
+	IPTables      iptables.Interface
+	ProxyMode     kubeproxyconfig.ProxyMode
+	MasqueradeBit *int32
 }
 
 type OsdnNode struct {
-	policy             osdnPolicy
-	kClient            kubernetes.Interface
-	networkClient      networkclient.Interface
-	recorder           record.EventRecorder
-	oc                 *ovsController
-	networkInfo        *common.ParsedClusterNetwork
-	podManager         *podManager
-	clusterCIDRs       []string
-	localSubnetCIDR    string
-	localGatewayCIDR   string
-	localIP            string
-	hostName           string
-	useConnTrack       bool
-	iptablesSyncPeriod time.Duration
-	masqueradeBit      uint32
+	policy           osdnPolicy
+	kClient          kubernetes.Interface
+	networkClient    networkclient.Interface
+	recorder         record.EventRecorder
+	oc               *ovsController
+	networkInfo      *common.ParsedClusterNetwork
+	podManager       *podManager
+	ipt              iptables.Interface
+	nodeIPTables     *NodeIPTables
+	clusterCIDRs     []string
+	localSubnetCIDR  string
+	localGatewayCIDR string
+	localIP          string
+	hostName         string
+	useConnTrack     bool
+	masqueradeBit    uint32
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
@@ -163,23 +165,23 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	}
 
 	plugin := &OsdnNode{
-		policy:             policy,
-		kClient:            c.KClient,
-		networkClient:      c.NetworkClient,
-		recorder:           c.Recorder,
-		oc:                 oc,
-		networkInfo:        networkInfo,
-		podManager:         newPodManager(c.KClient, policy, networkInfo.MTU, oc),
-		localIP:            c.SelfIP,
-		hostName:           c.Hostname,
-		useConnTrack:       useConnTrack,
-		iptablesSyncPeriod: c.IPTablesSyncPeriod,
-		masqueradeBit:      masqBit,
-		egressPolicies:     make(map[uint32][]networkapi.EgressNetworkPolicy),
-		egressDNS:          egressDNS,
-		kubeInformers:      c.KubeInformers,
-		networkInformers:   c.NetworkInformers,
-		egressIP:           newEgressIPWatcher(oc, c.SelfIP, c.MasqueradeBit),
+		policy:           policy,
+		kClient:          c.KClient,
+		networkClient:    c.NetworkClient,
+		recorder:         c.Recorder,
+		oc:               oc,
+		networkInfo:      networkInfo,
+		podManager:       newPodManager(c.KClient, policy, networkInfo.MTU, oc),
+		localIP:          c.SelfIP,
+		hostName:         c.Hostname,
+		useConnTrack:     useConnTrack,
+		ipt:              c.IPTables,
+		masqueradeBit:    masqBit,
+		egressPolicies:   make(map[uint32][]networkapi.EgressNetworkPolicy),
+		egressDNS:        egressDNS,
+		kubeInformers:    c.KubeInformers,
+		networkInformers: c.NetworkInformers,
+		egressIP:         newEgressIPWatcher(oc, c.SelfIP, c.MasqueradeBit),
 	}
 
 	RegisterMetrics()
@@ -393,9 +395,9 @@ func (node *OsdnNode) Start() error {
 	for _, cn := range node.networkInfo.ClusterNetworks {
 		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
-	nodeIPTables := newNodeIPTables(node.clusterCIDRs, node.iptablesSyncPeriod, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
 
-	if err = nodeIPTables.Setup(); err != nil {
+	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	if err = node.nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
 	}
 
@@ -414,7 +416,7 @@ func (node *OsdnNode) Start() error {
 		if err := node.SetupEgressNetworkPolicy(); err != nil {
 			return err
 		}
-		if err := node.egressIP.Start(node.networkInformers, nodeIPTables); err != nil {
+		if err := node.egressIP.Start(node.networkInformers, node.nodeIPTables); err != nil {
 			return err
 		}
 	}
@@ -612,4 +614,8 @@ func (node *OsdnNode) handleDeleteService(obj interface{}) {
 
 	klog.V(5).Infof("Watch %s event for Service %q", watch.Deleted, serv.Name)
 	node.DeleteServiceRules(serv)
+}
+
+func (node *OsdnNode) ReloadIPTables() error {
+	return node.nodeIPTables.syncIPTableRules()
 }
