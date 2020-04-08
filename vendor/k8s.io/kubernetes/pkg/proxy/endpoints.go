@@ -307,8 +307,8 @@ type endpointsChange struct {
 
 // UpdateEndpointMapResult is the updated results after applying endpoints changes.
 type UpdateEndpointMapResult struct {
-	// HCEndpointsLocalIPSize maps an endpoints name to the length of its local IPs.
-	HCEndpointsLocalIPSize map[types.NamespacedName]int
+	// HCEndpointsLocalReadyIPSize maps an endpoints name to the length of its local ready IPs.
+	HCEndpointsLocalReadyIPSize map[types.NamespacedName]int
 	// StaleEndpoints identifies if an endpoints service pair is stale.
 	StaleEndpoints []ServiceEndpoint
 	// StaleServiceNames identifies if a service is stale.
@@ -330,10 +330,10 @@ func (em EndpointsMap) Update(changes *EndpointChangeTracker) (result UpdateEndp
 
 	// TODO: If this will appear to be computationally expensive, consider
 	// computing this incrementally similarly to endpointsMap.
-	result.HCEndpointsLocalIPSize = make(map[types.NamespacedName]int)
-	localIPs := em.getLocalEndpointIPs()
+	result.HCEndpointsLocalReadyIPSize = make(map[types.NamespacedName]int)
+	localIPs := em.getLocalReadyEndpointIPs()
 	for nsn, ips := range localIPs {
-		result.HCEndpointsLocalIPSize[nsn] = len(ips)
+		result.HCEndpointsLocalReadyIPSize[nsn] = len(ips)
 	}
 
 	return result
@@ -454,12 +454,12 @@ func (em EndpointsMap) unmerge(other EndpointsMap) {
 	}
 }
 
-// GetLocalEndpointIPs returns endpoints IPs if given endpoint is local - local means the endpoint is running in same host as kube-proxy.
-func (em EndpointsMap) getLocalEndpointIPs() map[types.NamespacedName]sets.String {
+// getLocalReadyEndpointIPs returns local ready endpoints IPs, where local means the endpoint is on the same host as kube-proxy.
+func (em EndpointsMap) getLocalReadyEndpointIPs() map[types.NamespacedName]sets.String {
 	localIPs := make(map[types.NamespacedName]sets.String)
 	for svcPortName, epList := range em {
 		for _, ep := range epList {
-			if ep.GetIsLocal() {
+			if ep.GetIsLocal() && ep.IsReady() && !ep.IsTerminating() {
 				nsn := svcPortName.NamespacedName
 				if localIPs[nsn] == nil {
 					localIPs[nsn] = sets.NewString()

@@ -135,7 +135,8 @@ type hcInstance struct {
 	port      uint16
 	listener  net.Listener
 	server    httpServer
-	endpoints int // number of local endpoints for a service
+	// endpoints is the number of local ready endpoints for a service.
+	endpoints int
 }
 
 type hcHandler struct {
