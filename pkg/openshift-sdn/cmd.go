@@ -12,9 +12,13 @@ import (
 	"k8s.io/klog"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/interrupt"
+	"k8s.io/kubernetes/pkg/util/iptables"
+	kexec "k8s.io/utils/exec"
 
 	"github.com/openshift/library-go/pkg/serviceability"
 	sdnnode "github.com/openshift/sdn/pkg/network/node"
@@ -35,6 +39,8 @@ type OpenShiftSDN struct {
 	OsdnNode    *sdnnode.OsdnNode
 	sdnRecorder record.EventRecorder
 	OsdnProxy   *sdnproxy.OsdnProxy
+
+	ipt iptables.Interface
 }
 
 var networkLong = `
@@ -131,6 +137,8 @@ func (sdn *OpenShiftSDN) Init() error {
 		return fmt.Errorf("failed to build informers: %v", err)
 	}
 
+	sdn.ipt = iptables.New(kexec.New(), iptables.ProtocolIpv4)
+
 	// Configure SDN
 	err = sdn.initSDN()
 	if err != nil {
@@ -166,7 +174,24 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 		klog.Fatal(err)
 	}
 	klog.V(2).Infof("openshift-sdn network plugin ready")
+
+	go sdn.ipt.Monitor(iptables.Chain("OPENSHIFT-SDN-CANARY"),
+		[]iptables.Table{iptables.TableMangle, iptables.TableNAT, iptables.TableFilter},
+		sdn.reloadIPTables,
+		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		utilwait.NeverStop)
+
 	return nil
+}
+
+// reloadIPTables reloads node and proxy iptables rules after a flush
+func (sdn *OpenShiftSDN) reloadIPTables() {
+	if err := sdn.OsdnNode.ReloadIPTables(); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Reloading openshift node iptables rules failed: %v", err))
+	}
+	if err := sdn.OsdnProxy.ReloadIPTables(); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Reloading openshift proxy iptables rules failed: %v", err))
+	}
 }
 
 // watchForChanges closes stopCh if the configuration file changed.

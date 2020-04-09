@@ -176,7 +176,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		proxier, err = hybrid.NewHybridProxier(
 			hp,
 			unidlingUserspaceProxy,
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
 			sdn.informers.KubeInformers.Core().V1().Services().Lister(),
 		)
