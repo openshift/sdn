@@ -52,7 +52,7 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, iptables *NodeIPTables) error {
 	eip.iptables = iptables
 
-	updates := make(chan *egressVXLANNode)
+	updates := make(chan *egressVXLANNode, 300)
 	eip.vxlanMonitor = newEgressVXLANMonitor(eip.oc.ovs, eip.tracker, updates)
 	go eip.watchVXLAN(updates)
 
