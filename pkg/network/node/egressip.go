@@ -52,6 +52,12 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, iptables *NodeIPTables) error {
 	eip.iptables = iptables
 
+	// FIXME: Having a 300 element buffered channel is a hack, and we
+	// shouldn't need this at all.
+	// With the current design there evm locks on some functions that write to
+	// this channel, which is read on the eit.setNodeOffline function which
+	// locks the eit. So this is a hack and makes the channel bigger than
+	// anyone should need, but it's not really a proper fix.
 	updates := make(chan *egressVXLANNode, 300)
 	eip.vxlanMonitor = newEgressVXLANMonitor(eip.oc.ovs, eip.tracker, updates)
 	go eip.watchVXLAN(updates)
