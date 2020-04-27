@@ -119,7 +119,7 @@ func (vmap *nodeVNIDMap) WaitAndGetVNID(name string) (uint32, error) {
 			return 0, fmt.Errorf("failed to find netid for namespace: %s, %v", name, err)
 		}
 		klog.Warningf("Netid for namespace: %s exists but not found in vnid map", name)
-		vmap.setVNID(netns.Name, netns.NetID, netnsIsMulticastEnabled(netns))
+		vmap.handleAddOrUpdateNetNamespace(netns, nil, watch.Added)
 		return netns.NetID, nil
 	}
 }
