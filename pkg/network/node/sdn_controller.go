@@ -111,6 +111,13 @@ func (plugin *OsdnNode) SetupSDN() (bool, map[string]podNetworkInfo, error) {
 		return false, nil, fmt.Errorf("net/ipv4/ip_forward=0, it must be set to 1")
 	}
 
+	// In OCP 4 apparently we have a lot of rejects.
+	// Default rate mask is 6188, 6160 is default without destination unreachable
+	// FIXME: Why is this new to OCP 4?
+	if err = sysctl.SetSysctl("net/ipv4/icmp_ratemask", 6160); err != nil {
+		return false, nil, fmt.Errorf("Failed to setup icmp_ratemask: %s", err)
+	}
+
 	localSubnetCIDR := plugin.localSubnetCIDR
 	_, ipnet, err := net.ParseCIDR(localSubnetCIDR)
 	if err != nil {
