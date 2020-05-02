@@ -124,7 +124,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 	var policy osdnPolicy
 	var pluginId int
-	var minOvsVersion string
 	switch strings.ToLower(networkInfo.PluginName) {
 	case networkutils.SingleTenantPluginName:
 		policy = NewSingleTenantPlugin()
@@ -145,7 +144,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 	klog.Infof("Initializing SDN node %q (%s) of type %q", c.NodeName, c.NodeIP, networkInfo.PluginName)
 
-	ovsif, err := ovs.New(kexec.New(), Br0, minOvsVersion)
+	ovsif, err := ovs.New(kexec.New(), Br0)
 	if err != nil {
 		return nil, err
 	}
