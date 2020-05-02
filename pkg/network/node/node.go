@@ -125,7 +125,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 	var policy osdnPolicy
 	var pluginId int
-	var minOvsVersion string
 	var useConnTrack bool
 	switch strings.ToLower(networkInfo.PluginName) {
 	case networkutils.SingleTenantPluginName:
@@ -141,7 +140,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
-		minOvsVersion = "2.6.0"
 		useConnTrack = true
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
@@ -153,7 +151,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 	klog.Infof("Initializing SDN node %q (%s) of type %q", c.NodeName, c.NodeIP, networkInfo.PluginName)
 
-	ovsif, err := ovs.New(kexec.New(), Br0, minOvsVersion)
+	ovsif, err := ovs.New(kexec.New(), Br0)
 	if err != nil {
 		return nil, err
 	}
