@@ -9,7 +9,6 @@ import (
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	utilversion "k8s.io/apimachinery/pkg/util/version"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"k8s.io/utils/exec"
@@ -120,7 +119,7 @@ type ovsExec struct {
 }
 
 // New returns a new ovs.Interface
-func New(execer exec.Interface, bridge string, minVersion string) (Interface, error) {
+func New(execer exec.Interface, bridge string) (Interface, error) {
 	if _, err := execer.LookPath(OVS_OFCTL); err != nil {
 		return nil, fmt.Errorf("OVS is not installed")
 	}
@@ -128,28 +127,7 @@ func New(execer exec.Interface, bridge string, minVersion string) (Interface, er
 		return nil, fmt.Errorf("OVS is not installed")
 	}
 
-	ovsif := &ovsExec{execer: execer, bridge: bridge}
-
-	if minVersion != "" {
-		minVer := utilversion.MustParseGeneric(minVersion)
-
-		out, err := ovsif.exec(OVS_VSCTL, "--version")
-		if err != nil {
-			return nil, fmt.Errorf("could not check OVS version is %s or higher", minVersion)
-		}
-		// First output line should end with version
-		lines := strings.Split(out, "\n")
-		spc := strings.LastIndex(lines[0], " ")
-		instVer, err := utilversion.ParseGeneric(lines[0][spc+1:])
-		if err != nil {
-			return nil, fmt.Errorf("could not find OVS version in %q", lines[0])
-		}
-		if !instVer.AtLeast(minVer) {
-			return nil, fmt.Errorf("found OVS %v, need %s or later", instVer, minVersion)
-		}
-	}
-
-	return ovsif, nil
+	return &ovsExec{execer: execer, bridge: bridge}, nil
 }
 
 func (ovsif *ovsExec) execWithStdin(cmd string, stdinArgs []string, args ...string) (string, error) {

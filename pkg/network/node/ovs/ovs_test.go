@@ -74,7 +74,7 @@ func ensureInputFlows(t *testing.T, fakeCmd *fakeexec.FakeCmd, flows []string) {
 func TestTransactionSuccess(t *testing.T) {
 	fexec := normalSetup()
 
-	ovsif, err := New(fexec, "br0", "")
+	ovsif, err := New(fexec, "br0")
 	if err != nil {
 		t.Fatalf("Unexpected error from ovs.New(): %v", err)
 	}
@@ -156,7 +156,7 @@ func TestDumpFlows(t *testing.T) {
  cookie=0x0, duration=13284.67s, table=0, n_packets=782815611, n_bytes=179416494325, priority=50 actions=output:2
 `, nil)
 
-	ovsif, err := New(fexec, "br0", "")
+	ovsif, err := New(fexec, "br0")
 	if err != nil {
 		t.Fatalf("Unexpected error from ovs.New(): %v", err)
 	}
@@ -177,7 +177,7 @@ func TestDumpFlows(t *testing.T) {
 
 func TestOVSMissing(t *testing.T) {
 	fexec := missingSetup()
-	ovsif, err := New(fexec, "br0", "")
+	ovsif, err := New(fexec, "br0")
 	if err == nil || ovsif != nil {
 		t.Fatalf("Unexpectedly did not get error")
 	}
@@ -188,7 +188,7 @@ func TestOVSMissing(t *testing.T) {
 
 func TestAddPort(t *testing.T) {
 	fexec := normalSetup()
-	ovsif, err := New(fexec, "br0", "")
+	ovsif, err := New(fexec, "br0")
 	if err != nil {
 		t.Fatalf("Unexpected error from ovs.New(): %v", err)
 	}
@@ -261,29 +261,9 @@ func TestAddPort(t *testing.T) {
 	ensureTestResults(t, fexec)
 }
 
-func TestOVSVersion(t *testing.T) {
-	fexec := normalSetup()
-	defer ensureTestResults(t, fexec)
-
-	addTestResult(t, fexec, "ovs-vsctl --timeout=30 --version", "2.5.0", nil)
-	if _, err := New(fexec, "br0", "2.5.0"); err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	addTestResult(t, fexec, "ovs-vsctl --timeout=30 --version", "2.4.0", nil)
-	if _, err := New(fexec, "br0", "2.5.0"); err == nil {
-		t.Fatalf("Unexpectedly did not get error")
-	}
-
-	addTestResult(t, fexec, "ovs-vsctl --timeout=30 --version", "3.2.0", nil)
-	if _, err := New(fexec, "br0", "2.5.0"); err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-}
-
 func TestFind(t *testing.T) {
 	fexec := normalSetup()
-	ovsif, err := New(fexec, "br0", "")
+	ovsif, err := New(fexec, "br0")
 	if err != nil {
 		t.Fatalf("Unexpected error from ovs.New(): %v", err)
 	}
