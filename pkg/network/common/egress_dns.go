@@ -10,6 +10,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+	utilnet "k8s.io/utils/net"
 )
 
 type EgressDNSUpdate struct {
@@ -36,8 +37,8 @@ type EgressDNS struct {
 	Updates chan EgressDNSUpdates
 }
 
-func NewEgressDNS() (*EgressDNS, error) {
-	dnsInfo, err := NewDNS("/etc/resolv.conf")
+func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
+	dnsInfo, err := NewDNS("/etc/resolv.conf", ipv4, ipv6)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return nil, err
@@ -164,9 +165,14 @@ func (e *EgressDNS) GetIPs(dnsName string) []net.IP {
 
 func (e *EgressDNS) GetNetCIDRs(dnsName string) []net.IPNet {
 	cidrs := []net.IPNet{}
+	masklen := 0
 	for _, ip := range e.GetIPs(dnsName) {
-		// IPv4 CIDR
-		cidrs = append(cidrs, net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)})
+		if utilnet.IsIPv6(ip) {
+			masklen = 128
+		} else {
+			masklen = 32
+		}
+		cidrs = append(cidrs, net.IPNet{IP: ip, Mask: net.CIDRMask(masklen, masklen)})
 	}
 	return cidrs
 }

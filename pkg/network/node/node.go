@@ -160,7 +160,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		masqBit = uint32(*c.MasqueradeBit)
 	}
 
-	egressDNS, err := common.NewEgressDNS()
+	egressDNS, err := common.NewEgressDNS(true, false)
 	if err != nil {
 		return nil, err
 	}

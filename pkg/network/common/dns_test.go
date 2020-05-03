@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,59 @@ import (
 
 	"github.com/miekg/dns"
 )
+
+func TestFixupNameservers(t *testing.T) {
+	type fixupTest struct {
+		testCase    string
+		nameservers []string
+		defaultPort string
+		ipv4        bool
+		ipv6        bool
+		output      []string
+	}
+
+	tests := []fixupTest{
+		{
+			testCase:    "Single-stack IPv4, mixed resolvers",
+			nameservers: []string{"1.2.3.4", "5.6.7.8:5353", "fd00::1234", "[fd00::5678]:5353"},
+			defaultPort: "53",
+			ipv4:        true,
+			ipv6:        false,
+			output:      []string{"1.2.3.4:53", "5.6.7.8:5353"},
+		},
+		{
+			testCase:    "Single-stack IPv6, mixed resolvers",
+			nameservers: []string{"1.2.3.4", "5.6.7.8:5353", "fd00::1234", "[fd00::5678]:5353"},
+			defaultPort: "53",
+			ipv4:        false,
+			ipv6:        true,
+			output:      []string{"[fd00::1234]:53", "[fd00::5678]:5353"},
+		},
+		{
+			testCase:    "Single-stack IPv6, IPv4-only resolvers",
+			nameservers: []string{"1.2.3.4", "5.6.7.8:5353"},
+			defaultPort: "53",
+			ipv4:        false,
+			ipv6:        true,
+			output:      []string{"1.2.3.4:53", "5.6.7.8:5353"},
+		},
+		{
+			testCase:    "Dual stack, mixed resolvers",
+			nameservers: []string{"1.2.3.4", "5.6.7.8:5353", "fd00::1234", "[fd00::5678]:5353"},
+			defaultPort: "53",
+			ipv4:        true,
+			ipv6:        true,
+			output:      []string{"1.2.3.4:53", "5.6.7.8:5353", "[fd00::1234]:53", "[fd00::5678]:5353"},
+		},
+	}
+
+	for _, test := range tests {
+		output := fixupNameservers(test.nameservers, test.defaultPort, test.ipv4, test.ipv6)
+		if !reflect.DeepEqual(output, test.output) {
+			t.Fatalf("Bad results for %q: expected %v, got %v", test.testCase, test.output, output)
+		}
+	}
+}
 
 func TestAddDNS(t *testing.T) {
 	s, addr, err := runLocalUDPServer("127.0.0.1:0")
@@ -80,7 +134,220 @@ func TestAddDNS(t *testing.T) {
 		dns.HandleFunc(test.domainName, serverFn)
 		defer dns.HandleRemove(test.domainName)
 
-		n, err := NewDNS(configFileName)
+		n, err := NewDNS(configFileName, true, false)
+		if err != nil {
+			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
+		}
+		// Override timeout so the "no response" test doesn't take too long
+		n.timeout = 100 * time.Millisecond
+
+		err = n.Add(test.domainName)
+		if test.expectFailure && err == nil {
+			t.Fatalf("Test case: %s failed, expected failure but got success", test.testCase)
+		} else if !test.expectFailure && err != nil {
+			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
+		}
+
+		if test.expectFailure {
+			if _, ok := n.dnsMap[test.domainName]; ok {
+				t.Fatalf("Test case: %s failed, unexpected domain %q found in dns map", test.testCase, test.domainName)
+			}
+		} else {
+			d, ok := n.dnsMap[test.domainName]
+			if !ok {
+				t.Fatalf("Test case: %s failed, domain %q not found in dns map", test.testCase, test.domainName)
+			}
+			if !ipsEqual(d.ips, test.ips) {
+				t.Fatalf("Test case: %s failed, expected IPs: %v, got: %v for the domain %q", test.testCase, test.ips, d.ips, test.domainName)
+			}
+			if d.ttl.Seconds() != test.ttl {
+				t.Fatalf("Test case: %s failed, expected TTL: %g, got: %g for the domain %q", test.testCase, test.ttl, d.ttl.Seconds(), test.domainName)
+			}
+			if d.nextQueryTime.IsZero() {
+				t.Fatalf("Test case: %s failed, nextQueryTime for the domain %q is not set", test.testCase, test.domainName)
+			}
+		}
+	}
+}
+
+func TestAddDNSIPv6(t *testing.T) {
+	s, addr, err := runLocalUDPServer("[::]:0")
+	if err != nil {
+		t.Fatalf("unable to run test server: %v", err)
+	}
+	defer s.Shutdown()
+
+	configFileName, err := createResolveConfFile(addr)
+	if err != nil {
+		t.Fatalf("unable to create test resolver: %v", err)
+	}
+	defer os.Remove(configFileName)
+
+	type dnsTest struct {
+		testCase          string
+		domainName        string
+		dnsResolverOutput string
+		ips               []net.IP
+		ttl               float64
+		expectFailure     bool
+	}
+
+	ip := net.ParseIP("2600:5200::7800:1")
+	tests := []dnsTest{
+		{
+			testCase:          "Test valid domain name with resolver returning only AAAA record",
+			domainName:        "example.com",
+			dnsResolverOutput: "example.com. 600 IN AAAA 2600:5200::7800:1",
+			ips:               []net.IP{ip},
+			ttl:               600,
+			expectFailure:     false,
+		},
+		{
+			testCase:          "Test valid domain name with resolver returning both CNAME and AAAA records",
+			domainName:        "example.com",
+			dnsResolverOutput: "example.com. 200 IN CNAME foo.example.com.\nfoo.example.com. 600 IN AAAA 2600:5200::7800:1",
+			ips:               []net.IP{ip},
+			ttl:               200,
+			expectFailure:     false,
+		},
+		{
+			testCase:          "Test valid domain name with resolver returning only A record",
+			domainName:        "example.com",
+			dnsResolverOutput: "example.com. 600 IN A 10.11.12.13",
+			expectFailure:     true,
+		},
+	}
+
+	for _, test := range tests {
+		serverFn := dummyServer(test.dnsResolverOutput)
+		dns.HandleFunc(test.domainName, serverFn)
+		defer dns.HandleRemove(test.domainName)
+
+		n, err := NewDNS(configFileName, false, true)
+		if err != nil {
+			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
+		}
+		// Override timeout so the "no response" test doesn't take too long
+		n.timeout = 100 * time.Millisecond
+
+		err = n.Add(test.domainName)
+		if test.expectFailure && err == nil {
+			t.Fatalf("Test case: %s failed, expected failure but got success", test.testCase)
+		} else if !test.expectFailure && err != nil {
+			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
+		}
+
+		if test.expectFailure {
+			if _, ok := n.dnsMap[test.domainName]; ok {
+				t.Fatalf("Test case: %s failed, unexpected domain %q found in dns map", test.testCase, test.domainName)
+			}
+		} else {
+			d, ok := n.dnsMap[test.domainName]
+			if !ok {
+				t.Fatalf("Test case: %s failed, domain %q not found in dns map", test.testCase, test.domainName)
+			}
+			if !ipsEqual(d.ips, test.ips) {
+				t.Fatalf("Test case: %s failed, expected IPs: %v, got: %v for the domain %q", test.testCase, test.ips, d.ips, test.domainName)
+			}
+			if d.ttl.Seconds() != test.ttl {
+				t.Fatalf("Test case: %s failed, expected TTL: %g, got: %g for the domain %q", test.testCase, test.ttl, d.ttl.Seconds(), test.domainName)
+			}
+			if d.nextQueryTime.IsZero() {
+				t.Fatalf("Test case: %s failed, nextQueryTime for the domain %q is not set", test.testCase, test.domainName)
+			}
+		}
+	}
+}
+
+func TestAddDNSDualStack(t *testing.T) {
+	s, addr, err := runLocalUDPServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("unable to run test server: %v", err)
+	}
+	defer s.Shutdown()
+
+	configFileName, err := createResolveConfFile(addr)
+	if err != nil {
+		t.Fatalf("unable to create test resolver: %v", err)
+	}
+	defer os.Remove(configFileName)
+
+	type dnsTest struct {
+		testCase      string
+		domainName    string
+		dnsV4Output   string
+		dnsV6Output   string
+		ips           []net.IP
+		ttl           float64
+		expectFailure bool
+	}
+
+	ip4 := net.ParseIP("10.11.12.13")
+	ip6 := net.ParseIP("2600:5200::7800:1")
+
+	// Returning an SOA to mean "no answer" is what real DNS servers to (and makes the test
+	// complete immediately rather than needing to time out).
+	tests := []dnsTest{
+		{
+			testCase:      "Test valid domain name with resolver returning only A record",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 600 IN A 10.11.12.13",
+			dnsV6Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
+			ips:           []net.IP{ip4},
+			ttl:           600,
+			expectFailure: false,
+		},
+		{
+			testCase:      "Test valid domain name with resolver returning only AAAA record",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
+			dnsV6Output:   "example.com. 600 IN AAAA 2600:5200::7800:1",
+			ips:           []net.IP{ip6},
+			ttl:           600,
+			expectFailure: false,
+		},
+		{
+			testCase:      "Test valid domain name with resolver returning both A and AAAA records",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 200 IN A 10.11.12.13",
+			dnsV6Output:   "example.com. 600 IN AAAA 2600:5200::7800:1",
+			ips:           []net.IP{ip4, ip6},
+			ttl:           200,
+			expectFailure: false,
+		},
+		{
+			testCase:      "Test valid domain name with resolver returning both A and AAAA records, AAA has lower TTL",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 600 IN A 10.11.12.13",
+			dnsV6Output:   "example.com. 200 IN AAAA 2600:5200::7800:1",
+			ips:           []net.IP{ip4, ip6},
+			ttl:           200,
+			expectFailure: false,
+		},
+		{
+			testCase:      "Test valid domain name with resolver returning A record and failing on AAAA request",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 200 IN A 10.11.12.13",
+			dnsV6Output:   "",
+			ips:           []net.IP{ip4},
+			ttl:           200,
+			expectFailure: false,
+		},
+		{
+			testCase:      "Test no match",
+			domainName:    "example.com",
+			dnsV4Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
+			dnsV6Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
+			expectFailure: true,
+		},
+	}
+
+	for _, test := range tests {
+		serverFn := dummyDualStackServer(test.dnsV4Output, test.dnsV6Output)
+		dns.HandleFunc(test.domainName, serverFn)
+		defer dns.HandleRemove(test.domainName)
+
+		n, err := NewDNS(configFileName, true, true)
 		if err != nil {
 			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
 		}
@@ -183,7 +450,7 @@ func TestUpdateDNS(t *testing.T) {
 		dns.HandleFunc(test.domainName, serverFn)
 		defer dns.HandleRemove(test.domainName)
 
-		n, err := NewDNS(configFileName)
+		n, err := NewDNS(configFileName, true, false)
 		if err != nil {
 			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
 		}
@@ -247,6 +514,27 @@ func dummyServer(output string) func(dns.ResponseWriter, *dns.Msg) {
 		m := new(dns.Msg)
 		m.SetReply(req)
 
+		answers := strings.Split(output, "\n")
+		m.Answer = make([]dns.RR, len(answers))
+		for i, ans := range answers {
+			mx, _ := dns.NewRR(ans)
+			m.Answer[i] = mx
+		}
+		w.WriteMsg(m)
+	}
+}
+
+func dummyDualStackServer(v4output, v6output string) func(dns.ResponseWriter, *dns.Msg) {
+	return func(w dns.ResponseWriter, req *dns.Msg) {
+		m := new(dns.Msg)
+		m.SetReply(req)
+
+		var output string
+		if req.Question[0].Qtype == dns.TypeA {
+			output = v4output
+		} else if req.Question[0].Qtype == dns.TypeAAAA {
+			output = v6output
+		}
 		answers := strings.Split(output, "\n")
 		m.Answer = make([]dns.RR, len(answers))
 		for i, ans := range answers {
