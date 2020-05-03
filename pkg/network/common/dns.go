@@ -36,6 +36,9 @@ type DNS struct {
 	nameservers []string
 	// DNS port
 	port string
+
+	// query timeout; overridden by tests
+	timeout time.Duration
 }
 
 func NewDNS(resolverConfigFile string) (*DNS, error) {
@@ -48,6 +51,7 @@ func NewDNS(resolverConfigFile string) (*DNS, error) {
 		dnsMap:      map[string]dnsValue{},
 		nameservers: filterIPv4Servers(config.Servers),
 		port:        config.Port,
+		timeout:     5 * time.Second,
 	}, nil
 }
 
@@ -136,7 +140,7 @@ func (d *DNS) getIPsAndMinTTL(domain string) ([]net.IP, time.Duration, error) {
 			dialServer = net.JoinHostPort(server, d.port)
 		}
 		c := new(dns.Client)
-		c.Timeout = 5 * time.Second
+		c.Timeout = d.timeout
 		in, _, err := c.Exchange(msg, dialServer)
 		if err != nil {
 			return nil, defaultTTL, err

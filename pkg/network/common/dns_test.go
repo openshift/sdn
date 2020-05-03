@@ -54,6 +54,12 @@ func TestAddDNS(t *testing.T) {
 			expectFailure:     false,
 		},
 		{
+			testCase:          "Test valid domain name with no response",
+			domainName:        "example.com",
+			dnsResolverOutput: "",
+			expectFailure:     true,
+		},
+		{
 			testCase:          "Test invalid domain name",
 			domainName:        "sads@#$.com",
 			dnsResolverOutput: "",
@@ -78,6 +84,8 @@ func TestAddDNS(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Test case: %s failed, err: %v", test.testCase, err)
 		}
+		// Override timeout so the "no response" test doesn't take too long
+		n.timeout = 100 * time.Millisecond
 
 		err = n.Add(test.domainName)
 		if test.expectFailure && err == nil {
