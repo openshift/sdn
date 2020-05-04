@@ -6,6 +6,6 @@ package dependencymagnet
 
 import (
 	_ "github.com/containernetworking/plugins/plugins/ipam/host-local"
-	_ "github.com/openshift/library-go/alpha-build-machinery"
+	_ "github.com/openshift/build-machinery-go"
 	_ "k8s.io/kubernetes/cmd/kube-proxy"
 )

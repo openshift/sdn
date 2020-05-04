@@ -11,6 +11,7 @@ require (
 	github.com/gorilla/mux v1.7.4-0.20190830121156-884b5ffcbd3a
 	github.com/miekg/dns v1.1.4
 	github.com/openshift/api v0.0.0-20200116145750-0e2ff1e215dd
+	github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc
 	github.com/openshift/client-go v0.0.0-20200116152001-92a2713fa240
 	github.com/openshift/library-go v0.0.0-20200130090538-26ae77929944
 	github.com/prometheus/client_golang v1.1.0
@@ -19,6 +20,7 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
+	k8s.io/apiserver v0.17.1
 	k8s.io/client-go v0.17.1
 	k8s.io/component-base v0.17.1
 	k8s.io/cri-api v0.0.0
