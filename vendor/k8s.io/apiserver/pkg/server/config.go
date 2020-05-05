@@ -18,8 +18,10 @@ package server
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	goruntime "runtime"
 	"runtime/debug"
 	"sort"
@@ -32,6 +34,7 @@ import (
 	"github.com/go-openapi/spec"
 	"github.com/google/uuid"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -60,7 +63,10 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/routes"
 	serverstore "k8s.io/apiserver/pkg/server/storage"
+	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog"
@@ -106,6 +112,9 @@ type Config struct {
 	// to set values and determine whether its allowed
 	AdmissionControl      admission.Interface
 	CorsAllowedOriginList []string
+
+	// FlowControl, if not nil, gives priority and fairness to request handling
+	FlowControl utilflowcontrol.Interface
 
 	EnableIndex     bool
 	EnableProfiling bool
@@ -193,10 +202,19 @@ type Config struct {
 	// Predicate which is true for paths of long-running http requests
 	LongRunningFunc apirequest.LongRunningRequestCheck
 
+	// GoawayChance is the probability that send a GOAWAY to HTTP/2 clients. When client received
+	// GOAWAY, the in-flight requests will not be affected and new requests will use
+	// a new TCP connection to triggering re-balancing to another server behind the load balance.
+	// Default to 0, means never send GOAWAY. Max is 0.02 to prevent break the apiserver.
+	GoawayChance float64
+
 	// MergedResourceConfig indicates which groupVersion enabled and its resources enabled/disabled.
 	// This is composed of genericapiserver defaultAPIResourceConfig and those parsed from flags.
 	// If not specify any in flags, then genericapiserver will only enable defaultAPIResourceConfig.
 	MergedResourceConfig *serverstore.ResourceConfig
+
+	// EventSink receives events about the life cycle of the API server, e.g. readiness, serving, signals and termination.
+	EventSink EventSink
 
 	//===========================================================================
 	// values below here are targets for removal
@@ -210,6 +228,11 @@ type Config struct {
 	// EquivalentResourceRegistry provides information about resources equivalent to a given resource,
 	// and the kind associated with a given resource. As resources are installed, they are registered here.
 	EquivalentResourceRegistry runtime.EquivalentResourceRegistry
+}
+
+// EventSink allows to create events.
+type EventSink interface {
+	Create(event *corev1.Event) (*corev1.Event, error)
 }
 
 type RecommendedConfig struct {
@@ -477,6 +500,10 @@ func (c *Config) Complete(informers informers.SharedInformerFactory) CompletedCo
 		c.DiscoveryAddresses = discovery.DefaultAddresses{DefaultAddress: c.ExternalAddress}
 	}
 
+	if c.EventSink == nil {
+		c.EventSink = nullEventSink{}
+	}
+
 	AuthorizeClientBearerToken(c.LoopbackClientConfig, &c.Authentication, &c.Authorization)
 
 	if c.RequestInfoResolver == nil {
@@ -504,7 +531,56 @@ func (c *Config) Complete(informers informers.SharedInformerFactory) CompletedCo
 // Complete fills in any fields not set that are required to have valid data and can be derived
 // from other fields. If you're going to `ApplyOptions`, do that first. It's mutating the receiver.
 func (c *RecommendedConfig) Complete() CompletedConfig {
+	if c.ClientConfig != nil {
+		ref, err := eventReference()
+		if err != nil {
+			klog.Warningf("Failed to derive event reference, won't create events: %v", err)
+			c.EventSink = nullEventSink{}
+		} else {
+			ns := ref.Namespace
+			if len(ns) == 0 {
+				ns = "default"
+			}
+			c.EventSink = &v1.EventSinkImpl{
+				Interface: kubernetes.NewForConfigOrDie(c.ClientConfig).CoreV1().Events(ns),
+			}
+		}
+	}
+
 	return c.Config.Complete(c.SharedInformerFactory)
+}
+
+func eventReference() (*corev1.ObjectReference, error) {
+	ns := os.Getenv("POD_NAMESPACE")
+	pod := os.Getenv("POD_NAME")
+	if len(ns) == 0 && len(pod) > 0 {
+		serviceAccountNamespaceFile := "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+		if _, err := os.Stat(serviceAccountNamespaceFile); err == nil {
+			bs, err := ioutil.ReadFile(serviceAccountNamespaceFile)
+			if err != nil {
+				return nil, err
+			}
+			ns = string(bs)
+		}
+	}
+	if len(ns) == 0 {
+		pod = ""
+		ns = "kube-system"
+	}
+	if len(pod) == 0 {
+		return &corev1.ObjectReference{
+			Kind:       "Namespace",
+			Name:       ns,
+			APIVersion: "v1",
+		}, nil
+	}
+
+	return &corev1.ObjectReference{
+		Kind:       "Pod",
+		Namespace:  ns,
+		Name:       pod,
+		APIVersion: "v1",
+	}, nil
 }
 
 // New creates a new server which logically combines the handling chain with the passed server.
@@ -564,7 +640,16 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 
 		maxRequestBodyBytes: c.MaxRequestBodyBytes,
 		livezClock:          clock.RealClock{},
+
+		eventSink: c.EventSink,
 	}
+
+	ref, err := eventReference()
+	if err != nil {
+		klog.Warningf("Failed to derive event reference, won't create events: %v", err)
+		c.EventSink = nullEventSink{}
+	}
+	s.eventRef = ref
 
 	for {
 		if c.JSONPatchMaxCopyBytes <= 0 {
@@ -606,6 +691,21 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 		}
 	}
 
+	const priorityAndFairnessConfigConsumerHookName = "priority-and-fairness-config-consumer"
+	if s.isPostStartHookRegistered(priorityAndFairnessConfigConsumerHookName) {
+	} else if c.FlowControl != nil {
+		err := s.AddPostStartHook(priorityAndFairnessConfigConsumerHookName, func(context PostStartHookContext) error {
+			go c.FlowControl.Run(context.StopCh)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		// TODO(yue9944882): plumb pre-shutdown-hook for request-management system?
+	} else {
+		klog.V(3).Infof("Not requested to run hook %s", priorityAndFairnessConfigConsumerHookName)
+	}
+
 	for _, delegateCheck := range delegationTarget.HealthzChecks() {
 		skip := false
 		for _, existingCheck := range c.HealthzChecks {
@@ -638,7 +738,11 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 
 func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 	handler := genericapifilters.WithAuthorization(apiHandler, c.Authorization.Authorizer, c.Serializer)
-	handler = genericfilters.WithMaxInFlightLimit(handler, c.MaxRequestsInFlight, c.MaxMutatingRequestsInFlight, c.LongRunningFunc)
+	if c.FlowControl != nil {
+		handler = genericfilters.WithPriorityAndFairness(handler, c.LongRunningFunc, c.FlowControl)
+	} else {
+		handler = genericfilters.WithMaxInFlightLimit(handler, c.MaxRequestsInFlight, c.MaxMutatingRequestsInFlight, c.LongRunningFunc)
+	}
 	handler = genericapifilters.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = genericapifilters.WithAudit(handler, c.AuditBackend, c.AuditPolicyChecker, c.LongRunningFunc)
 	failedHandler := genericapifilters.Unauthorized(c.Serializer, c.Authentication.SupportsBasicAuth)
@@ -648,6 +752,9 @@ func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 	handler = genericfilters.WithTimeoutForNonLongRunningRequests(handler, c.LongRunningFunc, c.RequestTimeout)
 	handler = genericfilters.WithWaitGroup(handler, c.LongRunningFunc, c.HandlerChainWaitGroup)
 	handler = genericapifilters.WithRequestInfo(handler, c.RequestInfoResolver)
+	if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && c.GoawayChance > 0 {
+		handler = genericfilters.WithProbabilisticGoaway(handler, c.GoawayChance)
+	}
 	handler = genericfilters.WithPanicRecovery(handler)
 	return handler
 }
@@ -738,6 +845,14 @@ func AuthorizeClientBearerToken(loopback *restclient.Config, authn *Authenticati
 	tokenAuthenticator := authenticatorfactory.NewFromTokens(tokens)
 	authn.Authenticator = authenticatorunion.New(tokenAuthenticator, authn.Authenticator)
 
-	tokenAuthorizer := authorizerfactory.NewPrivilegedGroups(user.SystemPrivilegedGroup)
-	authz.Authorizer = authorizerunion.New(tokenAuthorizer, authz.Authorizer)
+	if !skipSystemMastersAuthorizer {
+		tokenAuthorizer := authorizerfactory.NewPrivilegedGroups(user.SystemPrivilegedGroup)
+		authz.Authorizer = authorizerunion.New(tokenAuthorizer, authz.Authorizer)
+	}
+}
+
+type nullEventSink struct{}
+
+func (nullEventSink) Create(event *corev1.Event) (*corev1.Event, error) {
+	return nil, nil
 }

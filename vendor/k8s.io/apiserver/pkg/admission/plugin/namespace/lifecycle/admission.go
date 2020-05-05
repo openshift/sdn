@@ -54,7 +54,16 @@ const (
 // Register registers a plugin
 func Register(plugins *admission.Plugins) {
 	plugins.Register(PluginName, func(config io.Reader) (admission.Interface, error) {
-		return NewLifecycle(sets.NewString(metav1.NamespaceDefault, metav1.NamespaceSystem, metav1.NamespacePublic))
+		return NewLifecycle(sets.NewString(metav1.NamespaceDefault, metav1.NamespaceSystem, metav1.NamespacePublic,
+			// user specified configuration that cannot be rebuilt
+			"openshift-config",
+			// cluster generated configuration that cannot be rebuilt (etcd encryption keys)
+			"openshift-config-managed",
+			// the CVO which is the root we use to rebuild all the rest
+			"openshift-cluster-version",
+			// contains a namespaced list of all nodes in the cluster (yeah, weird.  they do it for multi-tenant management I think?)
+			"openshift-machine-api",
+		))
 	})
 }
 
@@ -154,7 +163,7 @@ func (l *Lifecycle) Admit(ctx context.Context, a admission.Attributes, o admissi
 	// refuse to operate on non-existent namespaces
 	if !exists || forceLiveLookup {
 		// as a last resort, make a call directly to storage
-		namespace, err = l.client.CoreV1().Namespaces().Get(a.GetNamespace(), metav1.GetOptions{})
+		namespace, err = l.client.CoreV1().Namespaces().Get(context.TODO(), a.GetNamespace(), metav1.GetOptions{})
 		switch {
 		case errors.IsNotFound(err):
 			return err
