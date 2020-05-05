@@ -24,6 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	"k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
+	proxyutiliptables "k8s.io/kubernetes/pkg/proxy/util/iptables"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	utilexec "k8s.io/utils/exec"
@@ -81,7 +82,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	iptInterface := utiliptables.New(execer, protocol)
 
 	var proxier proxy.Provider
-	var healthzServer *healthcheck.ProxierHealthServer
+	var healthzServer healthcheck.ProxierHealthUpdater
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
@@ -105,6 +106,12 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			// IPTablesMasqueradeBit must be specified or defaulted.
 			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
 		}
+
+		localDetector, err := proxyutiliptables.NewDetectLocalByCIDR(sdn.ProxyConfig.ClusterCIDR, iptInterface)
+		if err != nil {
+			klog.Fatalf("Unable to configure local traffic detector: %v", err)
+		}
+
 		proxier, err = iptables.NewProxier(
 			iptInterface,
 			utilsysctl.New(),
@@ -113,7 +120,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
 			sdn.ProxyConfig.IPTables.MasqueradeAll,
 			int(*sdn.ProxyConfig.IPTables.MasqueradeBit),
-			sdn.ProxyConfig.ClusterCIDR,
+			localDetector,
 			sdn.nodeName,
 			nodeAddr,
 			recorder,
