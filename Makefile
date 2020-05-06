@@ -12,7 +12,7 @@ GO_BUILD_PACKAGES = \
 GO_BUILD_PACKAGES_EXPANDED =$(shell GO111MODULE=on $(GO) list $(GO_MOD_FLAGS) $(GO_BUILD_PACKAGES))
 
 # Include the library makefile
-include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machinery/make/, \
+include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	golang.mk \
 	targets/openshift/deps.mk \
 	targets/openshift/images.mk \

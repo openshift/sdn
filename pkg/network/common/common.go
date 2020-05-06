@@ -1,11 +1,12 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"net"
 
 	kapi "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
@@ -166,7 +167,7 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 }
 
 func GetParsedClusterNetwork(networkClient networkclient.Interface) (*ParsedClusterNetwork, error) {
-	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(networkv1.ClusterNetworkDefault, v1.GetOptions{})
+	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(context.TODO(), networkv1.ClusterNetworkDefault, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -223,4 +224,20 @@ func GetHostIPNetworks(skipInterfaces []string) ([]*net.IPNet, []net.IP, error) 
 		}
 	}
 	return hostIPNets, hostIPs, kerrors.NewAggregate(errList)
+}
+
+func HSEgressIPsToStrings(ips []networkv1.HostSubnetEgressIP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, string(ip))
+	}
+	return out
+}
+
+func StringsToHSEgressIPs(ips []string) []networkv1.HostSubnetEgressIP {
+	out := make([]networkv1.HostSubnetEgressIP, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, networkv1.HostSubnetEgressIP(ip))
+	}
+	return out
 }

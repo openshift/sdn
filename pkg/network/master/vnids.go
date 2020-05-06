@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -212,7 +213,7 @@ func (vmap *masterVNIDMap) assignVNID(networkClient networkclient.Interface, nsN
 			NetName:    nsName,
 			NetID:      netid,
 		}
-		if _, err := networkClient.NetworkV1().NetNamespaces().Create(netns); err != nil {
+		if _, err := networkClient.NetworkV1().NetNamespaces().Create(context.TODO(), netns, metav1.CreateOptions{}); err != nil {
 			if er := vmap.releaseNetID(nsName); er != nil {
 				utilruntime.HandleError(er)
 			}
@@ -227,7 +228,7 @@ func (vmap *masterVNIDMap) revokeVNID(networkClient networkclient.Interface, nsN
 	defer vmap.lock.Unlock()
 
 	// Delete NetNamespace object
-	if err := networkClient.NetworkV1().NetNamespaces().Delete(nsName, &metav1.DeleteOptions{}); err != nil {
+	if err := networkClient.NetworkV1().NetNamespaces().Delete(context.TODO(), nsName, metav1.DeleteOptions{}); err != nil {
 		return err
 	}
 
@@ -247,7 +248,7 @@ func (vmap *masterVNIDMap) updateVNID(networkClient networkclient.Interface, ori
 		return nil
 	} else if !vmap.allowRenumbering {
 		networkapihelpers.DeleteChangePodNetworkAnnotation(netns)
-		_, _ = networkClient.NetworkV1().NetNamespaces().Update(netns)
+		_, _ = networkClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{})
 		return fmt.Errorf("network plugin does not allow NetNamespace renumbering")
 	}
 
@@ -261,7 +262,7 @@ func (vmap *masterVNIDMap) updateVNID(networkClient networkclient.Interface, ori
 	netns.NetID = netid
 	networkapihelpers.DeleteChangePodNetworkAnnotation(netns)
 
-	if _, err := networkClient.NetworkV1().NetNamespaces().Update(netns); err != nil {
+	if _, err := networkClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -281,7 +282,7 @@ func (master *OsdnMaster) startVNIDMaster() error {
 }
 
 func (master *OsdnMaster) initNetIDAllocator() error {
-	netnsList, err := master.networkClient.NetworkV1().NetNamespaces().List(metav1.ListOptions{})
+	netnsList, err := master.networkClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

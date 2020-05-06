@@ -3,6 +3,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -102,7 +103,7 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) 
 	proxy.baseProxy = proxier
 	proxy.waitChan = waitChan
 
-	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(metav1.ListOptions{})
+	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
@@ -413,7 +414,7 @@ func (proxy *OsdnProxy) SyncLoop() {
 }
 
 func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
-	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(metav1.ListOptions{})
+	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Could not get EgressNetworkPolicies: %v", err))
 		return
@@ -428,7 +429,7 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 
 			policy, ok := getPolicy(policyUpdate.UID, policies)
 			if !ok {
-				policies, err = proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(metav1.ListOptions{})
+				policies, err = proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 				if err != nil {
 					utilruntime.HandleError(fmt.Errorf("Failed to update proxy firewall for policy: %v, Could not get EgressNetworkPolicies: %v", policyUpdate.UID, err))
 					continue

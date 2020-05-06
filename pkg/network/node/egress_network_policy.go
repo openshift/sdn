@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/klog"
@@ -17,7 +18,7 @@ import (
 )
 
 func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
-	policies, err := plugin.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(metav1.ListOptions{})
+	policies, err := plugin.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}

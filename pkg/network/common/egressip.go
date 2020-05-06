@@ -224,7 +224,11 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 	}
 
 	// Process EgressCIDRs
-	newRequestedCIDRs := sets.NewString(hs.EgressCIDRs...)
+	newRequestedCIDRs := sets.NewString()
+	for _, cidr := range hs.EgressCIDRs {
+		newRequestedCIDRs.Insert(string(cidr))
+	}
+
 	if !node.requestedCIDRs.Equal(newRequestedCIDRs) {
 		if len(hs.EgressCIDRs) == 0 {
 			eit.nodesWithCIDRs--
@@ -234,8 +238,8 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 		node.requestedCIDRs = newRequestedCIDRs
 		node.parsedCIDRs = make(map[string]*net.IPNet)
 		for _, cidr := range hs.EgressCIDRs {
-			_, parsed, _ := net.ParseCIDR(cidr)
-			node.parsedCIDRs[cidr] = parsed
+			_, parsed, _ := net.ParseCIDR(string(cidr))
+			node.parsedCIDRs[string(cidr)] = parsed
 		}
 		eit.updateEgressCIDRs = true
 	}
@@ -264,7 +268,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 
 	// Process new and removed EgressIPs
 	oldRequestedIPs := node.requestedIPs
-	node.requestedIPs = sets.NewString(hs.EgressIPs...)
+	node.requestedIPs = sets.NewString(HSEgressIPsToStrings(hs.EgressIPs)...)
 	for _, ip := range node.requestedIPs.Difference(oldRequestedIPs).UnsortedList() {
 		eit.addNodeEgressIP(node, ip)
 	}
@@ -310,8 +314,11 @@ func (eit *EgressIPTracker) UpdateNetNamespaceEgress(netns *networkv1.NetNamespa
 	}
 
 	oldRequestedIPs := sets.NewString(ns.requestedIPs...)
-	newRequestedIPs := sets.NewString(netns.EgressIPs...)
-	ns.requestedIPs = netns.EgressIPs
+	ns.requestedIPs = make([]string, 0, len(netns.EgressIPs))
+	for _, ip := range netns.EgressIPs {
+		ns.requestedIPs = append(ns.requestedIPs, string(ip))
+	}
+	newRequestedIPs := sets.NewString(ns.requestedIPs...)
 
 	// Process new and removed EgressIPs
 	for _, ip := range newRequestedIPs.Difference(oldRequestedIPs).UnsortedList() {
