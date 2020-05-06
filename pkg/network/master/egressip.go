@@ -1,12 +1,14 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"k8s.io/klog"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
@@ -105,7 +107,7 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 			newIPs := sets.NewString(egressIPs...)
 			if !oldIPs.Equal(newIPs) {
 				hs.EgressIPs = common.StringsToHSEgressIPs(egressIPs)
-				_, err = eim.networkClient.NetworkV1().HostSubnets().Update(hs)
+				_, err = eim.networkClient.NetworkV1().HostSubnets().Update(context.TODO(), hs, metav1.UpdateOptions{})
 			}
 			return err
 		})

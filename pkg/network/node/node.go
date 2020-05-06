@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -276,14 +277,14 @@ func (node *OsdnNode) validateMTU() error {
 	needsTaint := mtu < int(node.networkInfo.MTU)+50
 	const MTUTaintKey string = "network.openshift.io/mtu-too-small"
 	mtuTooSmallTaint := &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"}
-	nodeObj, err := node.kClient.CoreV1().Nodes().Get(node.hostName, metav1.GetOptions{})
+	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
 	}
 	tainted := taints.TaintExists(nodeObj.Spec.Taints, mtuTooSmallTaint)
 	if needsTaint != tainted {
 		resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			nodeObj, err = node.kClient.CoreV1().Nodes().Get(node.hostName, metav1.GetOptions{})
+			nodeObj, err = node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
 			}
@@ -319,7 +320,7 @@ func (node *OsdnNode) validateMTU() error {
 				return fmt.Errorf("could not create patch for object: %v", err)
 			}
 
-			_, err = node.kClient.CoreV1().Nodes().Patch(node.hostName, types.StrategicMergePatchType, patchBytes)
+			_, err = node.kClient.CoreV1().Nodes().Patch(context.TODO(), node.hostName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
 
 			return err
 		})
@@ -495,7 +496,7 @@ func (node *OsdnNode) GetRunningPods(namespace string) ([]corev1.Pod, error) {
 		LabelSelector: labels.Everything().String(),
 		FieldSelector: fieldSelector.String(),
 	}
-	podList, err := node.kClient.CoreV1().Pods(namespace).List(opts)
+	podList, err := node.kClient.CoreV1().Pods(namespace).List(context.TODO(), opts)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -468,7 +469,7 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 		}
 	}()
 
-	v1Pod, err := m.kClient.CoreV1().Pods(req.PodNamespace).Get(req.PodName, metav1.GetOptions{})
+	v1Pod, err := m.kClient.CoreV1().Pods(req.PodNamespace).Get(context.TODO(), req.PodName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

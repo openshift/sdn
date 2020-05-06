@@ -33,8 +33,8 @@ func missingSetup() *fakeexec.FakeExec {
 
 func addTestResult(t *testing.T, fexec *fakeexec.FakeExec, command string, output string, err error) *fakeexec.FakeCmd {
 	fcmd := &fakeexec.FakeCmd{
-		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
-			func() ([]byte, error) { return []byte(output), err },
+		CombinedOutputScript: []fakeexec.FakeAction{
+			func() ([]byte, []byte, error) { return []byte(output), nil, err },
 		},
 	}
 	fexec.CommandScript = append(fexec.CommandScript,
