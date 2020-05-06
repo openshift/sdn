@@ -145,13 +145,13 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	}
 
 	for i, egressIP := range hs.EgressIPs {
-		if _, err := validateIPv4(egressIP); err != nil {
+		if _, err := validateIPv4(string(egressIP)); err != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("egressIPs").Index(i), egressIP, err.Error()))
 		}
 	}
 
 	for i, egressCIDR := range hs.EgressCIDRs {
-		if _, err := validateCIDRv4(egressCIDR); err != nil {
+		if _, err := validateCIDRv4(string(egressCIDR)); err != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("egressCIDRs").Index(i), egressCIDR, err.Error()))
 		}
 	}

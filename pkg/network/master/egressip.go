@@ -101,10 +101,10 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 				monitorNodes[hs.HostIP] = &egressNode{ip: hs.HostIP}
 			}
 
-			oldIPs := sets.NewString(hs.EgressIPs...)
+			oldIPs := sets.NewString(common.HSEgressIPsToStrings(hs.EgressIPs)...)
 			newIPs := sets.NewString(egressIPs...)
 			if !oldIPs.Equal(newIPs) {
-				hs.EgressIPs = egressIPs
+				hs.EgressIPs = common.StringsToHSEgressIPs(egressIPs)
 				_, err = eim.networkClient.NetworkV1().HostSubnets().Update(hs)
 			}
 			return err
