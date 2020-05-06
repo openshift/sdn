@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sort"
@@ -139,7 +140,7 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 func (np *networkPolicyPlugin) initNamespaces() error {
 	inUseVNIDs := np.node.oc.FindPolicyVNIDs()
 
-	namespaces, err := np.node.kClient.CoreV1().Namespaces().List(metav1.ListOptions{})
+	namespaces, err := np.node.kClient.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -159,7 +160,7 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 		}
 	}
 
-	policies, err := np.node.kClient.NetworkingV1().NetworkPolicies(corev1.NamespaceAll).List(metav1.ListOptions{})
+	policies, err := np.node.kClient.NetworkingV1().NetworkPolicies(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

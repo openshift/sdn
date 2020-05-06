@@ -1,11 +1,12 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"net"
 
 	kapi "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
@@ -166,7 +167,7 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 }
 
 func GetParsedClusterNetwork(networkClient networkclient.Interface) (*ParsedClusterNetwork, error) {
-	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(networkv1.ClusterNetworkDefault, v1.GetOptions{})
+	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(context.TODO(), networkv1.ClusterNetworkDefault, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

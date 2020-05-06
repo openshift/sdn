@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 
 	kapi "k8s.io/api/core/v1"
@@ -129,13 +130,13 @@ func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
 	var subnets []networkapi.HostSubnet
 	var pods []kapi.Pod
 	var services []kapi.Service
-	if subnetList, err := master.networkClient.NetworkV1().HostSubnets().List(metav1.ListOptions{}); err == nil {
+	if subnetList, err := master.networkClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{}); err == nil {
 		subnets = subnetList.Items
 	}
-	if podList, err := master.kClient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{}); err == nil {
+	if podList, err := master.kClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{}); err == nil {
 		pods = podList.Items
 	}
-	if serviceList, err := master.kClient.CoreV1().Services(metav1.NamespaceAll).List(metav1.ListOptions{}); err == nil {
+	if serviceList, err := master.kClient.CoreV1().Services(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{}); err == nil {
 		services = serviceList.Items
 	}
 

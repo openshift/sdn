@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -114,7 +115,7 @@ func (vmap *nodeVNIDMap) WaitAndGetVNID(name string) (uint32, error) {
 		// So that we can imply insufficient timeout if we see many VnidNotFoundErrors.
 		VnidNotFoundErrors.Inc()
 
-		netns, err := vmap.networkClient.NetworkV1().NetNamespaces().Get(name, metav1.GetOptions{})
+		netns, err := vmap.networkClient.NetworkV1().NetNamespaces().Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return 0, fmt.Errorf("failed to find netid for namespace: %s, %v", name, err)
 		}
@@ -169,7 +170,7 @@ func netnsIsMulticastEnabled(netns *networkapi.NetNamespace) bool {
 }
 
 func (vmap *nodeVNIDMap) populateVNIDs() error {
-	nets, err := vmap.networkClient.NetworkV1().NetNamespaces().List(metav1.ListOptions{})
+	nets, err := vmap.networkClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
