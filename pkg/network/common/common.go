@@ -224,3 +224,19 @@ func GetHostIPNetworks(skipInterfaces []string) ([]*net.IPNet, []net.IP, error) 
 	}
 	return hostIPNets, hostIPs, kerrors.NewAggregate(errList)
 }
+
+func HSEgressIPsToStrings(ips []networkv1.HostSubnetEgressIP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, string(ip))
+	}
+	return out
+}
+
+func StringsToHSEgressIPs(ips []string) []networkv1.HostSubnetEgressIP {
+	out := make([]networkv1.HostSubnetEgressIP, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, networkv1.HostSubnetEgressIP(ip))
+	}
+	return out
+}
