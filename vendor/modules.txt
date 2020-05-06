@@ -364,7 +364,7 @@ google.golang.org/grpc/tap
 gopkg.in/inf.v0
 # gopkg.in/yaml.v2 v2.2.8
 gopkg.in/yaml.v2
-# k8s.io/api v0.18.2 => github.com/squeed/kubernetes/staging/src/k8s.io/api v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/api v0.18.2 => github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20200504100644-ad077cd883ae
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
 k8s.io/api/admissionregistration/v1
@@ -408,7 +408,7 @@ k8s.io/api/settings/v1alpha1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.18.2 => github.com/squeed/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/apimachinery v0.18.2 => github.com/openshift/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20200504100644-ad077cd883ae
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -467,7 +467,7 @@ k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/netutil
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/apiserver v0.18.2 => github.com/squeed/kubernetes/staging/src/k8s.io/apiserver v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/apiserver v0.18.2 => github.com/openshift/kubernetes/staging/src/k8s.io/apiserver v0.0.0-20200504100644-ad077cd883ae
 k8s.io/apiserver/pkg/admission
 k8s.io/apiserver/pkg/admission/configuration
 k8s.io/apiserver/pkg/admission/initializer
@@ -564,7 +564,7 @@ k8s.io/apiserver/pkg/util/webhook
 k8s.io/apiserver/pkg/util/wsstream
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook
-# k8s.io/cli-runtime v0.0.0 => github.com/squeed/kubernetes/staging/src/k8s.io/cli-runtime v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/cli-runtime v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/cli-runtime v0.0.0-20200504100644-ad077cd883ae
 k8s.io/cli-runtime/pkg/genericclioptions
 k8s.io/cli-runtime/pkg/kustomize
 k8s.io/cli-runtime/pkg/kustomize/k8sdeps
@@ -577,7 +577,7 @@ k8s.io/cli-runtime/pkg/kustomize/k8sdeps/transformer/patch
 k8s.io/cli-runtime/pkg/kustomize/k8sdeps/validator
 k8s.io/cli-runtime/pkg/printers
 k8s.io/cli-runtime/pkg/resource
-# k8s.io/client-go v0.18.2 => github.com/squeed/kubernetes/staging/src/k8s.io/client-go v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/client-go v0.18.2 => github.com/openshift/kubernetes/staging/src/k8s.io/client-go v0.0.0-20200504100644-ad077cd883ae
 k8s.io/client-go/discovery
 k8s.io/client-go/discovery/cached/disk
 k8s.io/client-go/dynamic
@@ -761,10 +761,10 @@ k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/testing
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider v0.0.0 => github.com/squeed/kubernetes/staging/src/k8s.io/cloud-provider v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/cloud-provider v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/cloud-provider v0.0.0-20200504100644-ad077cd883ae
 k8s.io/cloud-provider
 k8s.io/cloud-provider/service/helpers
-# k8s.io/component-base v0.18.2 => github.com/squeed/kubernetes/staging/src/k8s.io/component-base v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/component-base v0.18.2 => github.com/openshift/kubernetes/staging/src/k8s.io/component-base v0.0.0-20200504100644-ad077cd883ae
 k8s.io/component-base/cli/flag
 k8s.io/component-base/config
 k8s.io/component-base/config/v1alpha1
@@ -777,7 +777,7 @@ k8s.io/component-base/metrics/prometheus/version
 k8s.io/component-base/metrics/testutil
 k8s.io/component-base/version
 k8s.io/component-base/version/verflag
-# k8s.io/cri-api v0.0.0 => github.com/squeed/kubernetes/staging/src/k8s.io/cri-api v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/cri-api v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/cri-api v0.0.0-20200504100644-ad077cd883ae
 k8s.io/cri-api/pkg/apis
 k8s.io/cri-api/pkg/apis/runtime/v1alpha2
 # k8s.io/klog v1.0.0
@@ -790,9 +790,9 @@ k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/proto/validation
-# k8s.io/kube-proxy v0.0.0 => github.com/squeed/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/kube-proxy v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20200504100644-ad077cd883ae
 k8s.io/kube-proxy/config/v1alpha1
-# k8s.io/kubectl v0.0.0 => github.com/squeed/kubernetes/staging/src/k8s.io/kubectl v0.0.0-20200504100644-ad077cd883ae
+# k8s.io/kubectl v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/kubectl v0.0.0-20200504100644-ad077cd883ae
 k8s.io/kubectl/pkg/cmd/util
 k8s.io/kubectl/pkg/scheme
 k8s.io/kubectl/pkg/util/interrupt
@@ -801,7 +801,7 @@ k8s.io/kubectl/pkg/util/openapi/validation
 k8s.io/kubectl/pkg/util/templates
 k8s.io/kubectl/pkg/util/term
 k8s.io/kubectl/pkg/validation
-# k8s.io/kubernetes v1.18.2 => github.com/squeed/kubernetes v1.5.0-alpha.0.0.20200504100644-ad077cd883ae
+# k8s.io/kubernetes v1.18.2 => github.com/squeed/kubernetes v1.5.0-alpha.0.0.20200506084014-852c8a7c755f
 k8s.io/kubernetes/cmd/kube-proxy
 k8s.io/kubernetes/cmd/kube-proxy/app
 k8s.io/kubernetes/pkg/api/legacyscheme
