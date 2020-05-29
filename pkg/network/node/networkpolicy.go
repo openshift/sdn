@@ -102,6 +102,9 @@ func (np *networkPolicyPlugin) SupportsVNIDs() bool {
 }
 
 func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
+	np.lock.Lock()
+	defer np.lock.Unlock()
+
 	np.node = node
 	np.vnids = newNodeVNIDMap(np, node.networkClient)
 	if err := np.vnids.Start(node.networkInformers); err != nil {
@@ -134,9 +137,6 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 }
 
 func (np *networkPolicyPlugin) initNamespaces() error {
-	np.lock.Lock()
-	defer np.lock.Unlock()
-
 	inUseVNIDs := np.node.oc.FindPolicyVNIDs()
 
 	namespaces, err := np.node.kClient.CoreV1().Namespaces().List(metav1.ListOptions{})
@@ -149,7 +149,9 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 		npns.gotNamespace = true
 		np.namespacesByName[ns.Name] = npns
 
-		if vnid, err := np.vnids.WaitAndGetVNID(ns.Name); err == nil {
+		// can't call WaitAndGetVNID here, because it calls back in to np
+		// and we hold the lock!
+		if vnid, err := np.vnids.getVNID(ns.Name); err == nil {
 			npns.vnid = vnid
 			npns.inUse = inUseVNIDs.Has(int(vnid))
 			npns.gotNetNamespace = true
@@ -162,7 +164,7 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 		return err
 	}
 	for _, policy := range policies.Items {
-		vnid, err := np.vnids.WaitAndGetVNID(policy.Namespace)
+		vnid, err := np.vnids.getVNID(policy.Namespace)
 		if err != nil {
 			continue
 		}
