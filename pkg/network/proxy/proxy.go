@@ -304,7 +304,7 @@ func (proxy *OsdnProxy) endpointsBlocked(ep *corev1.Endpoints) bool {
 	for _, ss := range ep.Subsets {
 		for _, addr := range ss.Addresses {
 			IP := net.ParseIP(addr.IP)
-			if _, contains := common.ClusterNetworkListContains(proxy.networkInfo.ClusterNetworks, IP); !contains && !proxy.networkInfo.ServiceNetwork.Contains(IP) {
+			if !proxy.networkInfo.PodNetworkContains(IP) && !proxy.networkInfo.ServiceNetworkContains(IP) {
 				if proxy.firewallBlocksIP(ep.Namespace, IP) {
 					klog.Warningf("Service '%s' in namespace '%s' has an Endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
 					return true

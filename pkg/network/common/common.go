@@ -88,6 +88,26 @@ func ParseClusterNetwork(cn *networkv1.ClusterNetwork) (*ParsedClusterNetwork, e
 	return pcn, nil
 }
 
+// PodNetworkContains determines whether pcn's pod network contains ip
+func (pcn *ParsedClusterNetwork) PodNetworkContains(ip net.IP) bool {
+	for _, cn := range pcn.ClusterNetworks {
+		if cn.ClusterCIDR.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ServiceNetworkContains determines whether pcn's service network contains ip
+func (pcn *ParsedClusterNetwork) ServiceNetworkContains(ip net.IP) bool {
+	if pcn.ServiceNetwork != nil {
+		if pcn.ServiceNetwork.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func (pcn *ParsedClusterNetwork) ValidateNodeIP(nodeIP string) error {
 	if nodeIP == "" || nodeIP == "127.0.0.1" {
 		return fmt.Errorf("invalid node IP %q", nodeIP)
@@ -132,7 +152,7 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 		subnetIP, _, _ := net.ParseCIDR(subnet.Subnet)
 		if subnetIP == nil {
 			errList = append(errList, fmt.Errorf("failed to parse network address: %s", subnet.Subnet))
-		} else if _, contains := ClusterNetworkListContains(pcn.ClusterNetworks, subnetIP); !contains {
+		} else if !pcn.PodNetworkContains(subnetIP) {
 			errList = append(errList, fmt.Errorf("existing node subnet: %s is not part of any cluster network CIDR", subnet.Subnet))
 		}
 		if len(errList) >= 10 {
@@ -143,7 +163,11 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 		if pod.Spec.HostNetwork {
 			continue
 		}
-		if _, contains := ClusterNetworkListContains(pcn.ClusterNetworks, net.ParseIP(pod.Status.PodIP)); !contains && pod.Status.PodIP != "" {
+		podIP := net.ParseIP(pod.Status.PodIP)
+		if podIP == nil {
+			continue
+		}
+		if !pcn.PodNetworkContains(podIP) {
 			errList = append(errList, fmt.Errorf("existing pod %s:%s with IP %s is not part of cluster network", pod.Namespace, pod.Name, pod.Status.PodIP))
 			if len(errList) >= 10 {
 				break
@@ -152,7 +176,10 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 	}
 	for _, svc := range services {
 		svcIP := net.ParseIP(svc.Spec.ClusterIP)
-		if svcIP != nil && !pcn.ServiceNetwork.Contains(svcIP) {
+		if svcIP == nil {
+			continue
+		}
+		if !pcn.ServiceNetworkContains(svcIP) {
 			errList = append(errList, fmt.Errorf("existing service %s:%s with IP %s is not part of service network %s", svc.Namespace, svc.Name, svc.Spec.ClusterIP, pcn.ServiceNetwork.String()))
 			if len(errList) >= 10 {
 				break
