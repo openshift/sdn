@@ -3,13 +3,969 @@ diff --no-dereference -N -r current/vendor/github.com/vishvananda/netlink/link_l
 < 			gre.FlowBased = true
 ---
 > 			gre.FlowBased = int8(datum.Value[0]) != 0
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/Godeps/Godeps.json updated/vendor/k8s.io/kubernetes/Godeps/Godeps.json
+1814a1815,1819
+> 			"ImportPath": "github.com/godbus/dbus",
+> 			"Comment": "v3",
+> 			"Rev": "c7fdd8b5cd55e87b4e1f4e372cdb1db61dd6c66f"
+> 		},
+> 		{
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/Godeps/LICENSES updated/vendor/k8s.io/kubernetes/Godeps/LICENSES
+99621,99694c99621,99694
+< 				   Apache License
+<                     Version 2.0, January 2004
+<                 http://www.apache.org/licenses/
+< 
+< 		
+< TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+< 
+< 1. Definitions.
+< 
+< "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+< 
+< "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+< 
+< "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+< 
+< "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+< 
+< "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+< 
+< "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+< 
+< "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+< 
+< "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+< 
+< "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+< 
+< "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+< 
+< 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+< 
+< 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+< 
+< 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+< (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+< (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+< (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+< (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+< 
+< You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+< 
+< 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+< 
+< 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+< 
+< 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+< 
+< 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+< 
+< 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+< 
+< END OF TERMS AND CONDITIONS
+< 
+< APPENDIX: How to apply the Apache License to your work.
+< 
+< To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+< 
+<    Copyright [yyyy] [name of copyright owner]
+< 
+<    Licensed under the Apache License, Version 2.0 (the "License");
+<    you may not use this file except in compliance with the License.
+<    You may obtain a copy of the License at
+< 
+<        http://www.apache.org/licenses/LICENSE-2.0
+< 
+<    Unless required by applicable law or agreed to in writing, software
+<    distributed under the License is distributed on an "AS IS" BASIS,
+<    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+<    implied.
+<    
+<    See the License for the specific language governing permissions and
+<    limitations under the License.
+< 
+< 
+---
+> 				   Apache License
+>                     Version 2.0, January 2004
+>                 http://www.apache.org/licenses/
+> 
+> 		
+> TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+> 
+> 1. Definitions.
+> 
+> "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+> 
+> "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+> 
+> "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+> 
+> "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+> 
+> "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+> 
+> "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+> 
+> "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+> 
+> "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+> 
+> "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+> 
+> "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+> 
+> 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+> 
+> 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+> 
+> 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+> (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+> (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+> (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+> (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+> 
+> You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+> 
+> 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+> 
+> 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+> 
+> 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+> 
+> 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+> 
+> 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+> 
+> END OF TERMS AND CONDITIONS
+> 
+> APPENDIX: How to apply the Apache License to your work.
+> 
+> To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+> 
+>    Copyright [yyyy] [name of copyright owner]
+> 
+>    Licensed under the Apache License, Version 2.0 (the "License");
+>    you may not use this file except in compliance with the License.
+>    You may obtain a copy of the License at
+> 
+>        http://www.apache.org/licenses/LICENSE-2.0
+> 
+>    Unless required by applicable law or agreed to in writing, software
+>    distributed under the License is distributed on an "AS IS" BASIS,
+>    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+>    implied.
+>    
+>    See the License for the specific language governing permissions and
+>    limitations under the License.
+> 
+> 
+99703,99776c99703,99776
+< 				   Apache License
+<                     Version 2.0, January 2004
+<                 http://www.apache.org/licenses/
+< 
+< 		
+< TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+< 
+< 1. Definitions.
+< 
+< "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+< 
+< "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+< 
+< "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+< 
+< "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+< 
+< "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+< 
+< "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+< 
+< "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+< 
+< "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+< 
+< "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+< 
+< "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+< 
+< 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+< 
+< 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+< 
+< 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+< (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+< (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+< (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+< (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+< 
+< You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+< 
+< 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+< 
+< 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+< 
+< 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+< 
+< 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+< 
+< 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+< 
+< END OF TERMS AND CONDITIONS
+< 
+< APPENDIX: How to apply the Apache License to your work.
+< 
+< To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+< 
+<    Copyright [yyyy] [name of copyright owner]
+< 
+<    Licensed under the Apache License, Version 2.0 (the "License");
+<    you may not use this file except in compliance with the License.
+<    You may obtain a copy of the License at
+< 
+<        http://www.apache.org/licenses/LICENSE-2.0
+< 
+<    Unless required by applicable law or agreed to in writing, software
+<    distributed under the License is distributed on an "AS IS" BASIS,
+<    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+<    implied.
+<    
+<    See the License for the specific language governing permissions and
+<    limitations under the License.
+< 
+< 
+---
+> 				   Apache License
+>                     Version 2.0, January 2004
+>                 http://www.apache.org/licenses/
+> 
+> 		
+> TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+> 
+> 1. Definitions.
+> 
+> "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+> 
+> "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+> 
+> "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+> 
+> "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+> 
+> "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+> 
+> "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+> 
+> "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+> 
+> "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+> 
+> "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+> 
+> "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+> 
+> 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+> 
+> 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+> 
+> 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+> (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+> (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+> (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+> (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+> 
+> You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+> 
+> 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+> 
+> 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+> 
+> 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+> 
+> 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+> 
+> 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+> 
+> END OF TERMS AND CONDITIONS
+> 
+> APPENDIX: How to apply the Apache License to your work.
+> 
+> To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+> 
+>    Copyright [yyyy] [name of copyright owner]
+> 
+>    Licensed under the Apache License, Version 2.0 (the "License");
+>    you may not use this file except in compliance with the License.
+>    You may obtain a copy of the License at
+> 
+>        http://www.apache.org/licenses/LICENSE-2.0
+> 
+>    Unless required by applicable law or agreed to in writing, software
+>    distributed under the License is distributed on an "AS IS" BASIS,
+>    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+>    implied.
+>    
+>    See the License for the specific language governing permissions and
+>    limitations under the License.
+> 
+> 
+99785,99858c99785,99858
+< 				   Apache License
+<                     Version 2.0, January 2004
+<                 http://www.apache.org/licenses/
+< 
+< 		
+< TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+< 
+< 1. Definitions.
+< 
+< "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+< 
+< "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+< 
+< "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+< 
+< "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+< 
+< "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+< 
+< "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+< 
+< "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+< 
+< "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+< 
+< "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+< 
+< "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+< 
+< 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+< 
+< 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+< 
+< 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+< (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+< (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+< (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+< (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+< 
+< You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+< 
+< 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+< 
+< 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+< 
+< 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+< 
+< 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+< 
+< 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+< 
+< END OF TERMS AND CONDITIONS
+< 
+< APPENDIX: How to apply the Apache License to your work.
+< 
+< To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+< 
+<    Copyright [yyyy] [name of copyright owner]
+< 
+<    Licensed under the Apache License, Version 2.0 (the "License");
+<    you may not use this file except in compliance with the License.
+<    You may obtain a copy of the License at
+< 
+<        http://www.apache.org/licenses/LICENSE-2.0
+< 
+<    Unless required by applicable law or agreed to in writing, software
+<    distributed under the License is distributed on an "AS IS" BASIS,
+<    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+<    implied.
+<    
+<    See the License for the specific language governing permissions and
+<    limitations under the License.
+< 
+< 
+---
+> 				   Apache License
+>                     Version 2.0, January 2004
+>                 http://www.apache.org/licenses/
+> 
+> 		
+> TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+> 
+> 1. Definitions.
+> 
+> "License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+> 
+> "Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+> 
+> "Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+> 
+> "You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+> 
+> "Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+> 
+> "Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+> 
+> "Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+> 
+> "Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+> 
+> "Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+> 
+> "Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+> 
+> 2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+> 
+> 3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+> 
+> 4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+> (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+> (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+> (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+> (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+> 
+> You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+> 
+> 5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+> 
+> 6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+> 
+> 7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+> 
+> 8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+> 
+> 9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+> 
+> END OF TERMS AND CONDITIONS
+> 
+> APPENDIX: How to apply the Apache License to your work.
+> 
+> To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+> 
+>    Copyright [yyyy] [name of copyright owner]
+> 
+>    Licensed under the Apache License, Version 2.0 (the "License");
+>    you may not use this file except in compliance with the License.
+>    You may obtain a copy of the License at
+> 
+>        http://www.apache.org/licenses/LICENSE-2.0
+> 
+>    Unless required by applicable law or agreed to in writing, software
+>    distributed under the License is distributed on an "AS IS" BASIS,
+>    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or     
+>    implied.
+>    
+>    See the License for the specific language governing permissions and
+>    limitations under the License.
+> 
+> 
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/BUILD updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/BUILD
+76a77
+>             "//pkg/util/dbus:go_default_library",
+82a84
+>             "//pkg/util/dbus:go_default_library",
+88a91
+>             "//pkg/util/dbus:go_default_library",
+94a98
+>             "//pkg/util/dbus:go_default_library",
+100a105
+>             "//pkg/util/dbus:go_default_library",
+106a112
+>             "//pkg/util/dbus:go_default_library",
+112a119
+>             "//pkg/util/dbus:go_default_library",
+118a126
+>             "//pkg/util/dbus:go_default_library",
+124a133
+>             "//pkg/util/dbus:go_default_library",
+130a140
+>             "//pkg/util/dbus:go_default_library",
+166a177
+>             "//pkg/util/iptables:go_default_library",
+169a181
+>             "//pkg/util/iptables:go_default_library",
+172a185
+>             "//pkg/util/iptables:go_default_library",
+175a189
+>             "//pkg/util/iptables:go_default_library",
+178a193
+>             "//pkg/util/iptables:go_default_library",
+181a197
+>             "//pkg/util/iptables:go_default_library",
+184a201
+>             "//pkg/util/iptables:go_default_library",
+187a205
+>             "//pkg/util/iptables:go_default_library",
+190a209
+>             "//pkg/util/iptables:go_default_library",
+193a213
+>             "//pkg/util/iptables:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go
+28c28
+< 	v1 "k8s.io/api/core/v1"
+---
+> 	"k8s.io/api/core/v1"
+41a42
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+83a85
+> 	var dbus utildbus.Interface
+88c90,91
+< 	iptInterface = utiliptables.New(execer, protocol)
+---
+> 	dbus = utildbus.New()
+> 	iptInterface = utiliptables.New(execer, dbus, protocol)
+136c139
+< 	proxyMode := getProxyMode(string(config.Mode), kernelHandler, ipsetInterface, iptables.LinuxKernelCompatTester{})
+---
+> 	proxyMode := getProxyMode(string(config.Mode), iptInterface, kernelHandler, ipsetInterface, iptables.LinuxKernelCompatTester{})
+239a243,244
+> 	iptInterface.AddReloadFunc(proxier.Sync)
+> 
+263c268
+< func getProxyMode(proxyMode string, khandle ipvs.KernelHandler, ipsetver ipvs.IPSetVersioner, kcompat iptables.KernelCompatTester) string {
+---
+> func getProxyMode(proxyMode string, iptver iptables.IPTablesVersioner, khandle ipvs.KernelHandler, ipsetver ipvs.IPSetVersioner, kcompat iptables.KernelCompatTester) string {
+268c273
+< 		return tryIPTablesProxy(kcompat)
+---
+> 		return tryIPTablesProxy(iptver, kcompat)
+270c275
+< 		return tryIPVSProxy(khandle, ipsetver, kcompat)
+---
+> 		return tryIPVSProxy(iptver, khandle, ipsetver, kcompat)
+273c278
+< 	return tryIPTablesProxy(kcompat)
+---
+> 	return tryIPTablesProxy(iptver, kcompat)
+276c281
+< func tryIPVSProxy(khandle ipvs.KernelHandler, ipsetver ipvs.IPSetVersioner, kcompat iptables.KernelCompatTester) string {
+---
+> func tryIPVSProxy(iptver iptables.IPTablesVersioner, khandle ipvs.KernelHandler, ipsetver ipvs.IPSetVersioner, kcompat iptables.KernelCompatTester) string {
+290c295
+< 	return tryIPTablesProxy(kcompat)
+---
+> 	return tryIPTablesProxy(iptver, kcompat)
+293c298
+< func tryIPTablesProxy(kcompat iptables.KernelCompatTester) string {
+---
+> func tryIPTablesProxy(iptver iptables.IPTablesVersioner, kcompat iptables.KernelCompatTester) string {
+295c300
+< 	useIPTablesProxy, err := iptables.CanUseIPTablesProxier(kcompat)
+---
+> 	useIPTablesProxy, err := iptables.CanUseIPTablesProxier(iptver, kcompat)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others_test.go updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_others_test.go
+25a26
+> 	"k8s.io/kubernetes/pkg/util/iptables"
+28,61d28
+< type fakeIPSetVersioner struct {
+< 	version string // what to return
+< 	err     error  // what to return
+< }
+< 
+< func (fake *fakeIPSetVersioner) GetVersion() (string, error) {
+< 	return fake.version, fake.err
+< }
+< 
+< type fakeKernelCompatTester struct {
+< 	ok bool
+< }
+< 
+< func (fake *fakeKernelCompatTester) IsCompatible() error {
+< 	if !fake.ok {
+< 		return fmt.Errorf("error")
+< 	}
+< 	return nil
+< }
+< 
+< // fakeKernelHandler implements KernelHandler.
+< type fakeKernelHandler struct {
+< 	modules       []string
+< 	kernelVersion string
+< }
+< 
+< func (fake *fakeKernelHandler) GetModules() ([]string, error) {
+< 	return fake.modules, nil
+< }
+< 
+< func (fake *fakeKernelHandler) GetKernelVersion() (string, error) {
+< 	return fake.kernelVersion, nil
+< }
+< 
+64,70c31,40
+< 		flag          string
+< 		ipsetVersion  string
+< 		kmods         []string
+< 		kernelVersion string
+< 		kernelCompat  bool
+< 		ipsetError    error
+< 		expected      string
+---
+> 		flag            string
+> 		annotationKey   string
+> 		annotationVal   string
+> 		iptablesVersion string
+> 		ipsetVersion    string
+> 		kmods           []string
+> 		kernelCompat    bool
+> 		iptablesError   error
+> 		ipsetError      error
+> 		expected        string
+76,94c46,88
+< 		{ // flag says iptables, kernel not compatible
+< 			flag:         "iptables",
+< 			kernelCompat: false,
+< 			expected:     proxyModeUserspace,
+< 		},
+< 		{ // flag says iptables, kernel is compatible
+< 			flag:         "iptables",
+< 			kernelCompat: true,
+< 			expected:     proxyModeIPTables,
+< 		},
+< 		{ // detect, kernel not compatible
+< 			flag:         "",
+< 			kernelCompat: false,
+< 			expected:     proxyModeUserspace,
+< 		},
+< 		{ // detect, kernel is compatible
+< 			flag:         "",
+< 			kernelCompat: true,
+< 			expected:     proxyModeIPTables,
+---
+> 		{ // flag says iptables, error detecting version
+> 			flag:          "iptables",
+> 			iptablesError: fmt.Errorf("oops!"),
+> 			expected:      proxyModeUserspace,
+> 		},
+> 		{ // flag says iptables, version too low
+> 			flag:            "iptables",
+> 			iptablesVersion: "0.0.0",
+> 			expected:        proxyModeUserspace,
+> 		},
+> 		{ // flag says iptables, version ok, kernel not compatible
+> 			flag:            "iptables",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    false,
+> 			expected:        proxyModeUserspace,
+> 		},
+> 		{ // flag says iptables, version ok, kernel is compatible
+> 			flag:            "iptables",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    true,
+> 			expected:        proxyModeIPTables,
+> 		},
+> 		{ // detect, error
+> 			flag:          "",
+> 			iptablesError: fmt.Errorf("oops!"),
+> 			expected:      proxyModeUserspace,
+> 		},
+> 		{ // detect, version too low
+> 			flag:            "",
+> 			iptablesVersion: "0.0.0",
+> 			expected:        proxyModeUserspace,
+> 		},
+> 		{ // detect, version ok, kernel not compatible
+> 			flag:            "",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    false,
+> 			expected:        proxyModeUserspace,
+> 		},
+> 		{ // detect, version ok, kernel is compatible
+> 			flag:            "",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    true,
+> 			expected:        proxyModeIPTables,
+103,108c97,102
+< 			flag:          "ipvs",
+< 			kmods:         []string{"ip_vs", "ip_vs_rr", "ip_vs_wrr", "ip_vs_sh", "nf_conntrack"},
+< 			kernelVersion: "4.19",
+< 			ipsetVersion:  "0.0",
+< 			kernelCompat:  true,
+< 			expected:      proxyModeIPTables,
+---
+> 			flag:            "ipvs",
+> 			kmods:           []string{"ip_vs", "ip_vs_rr", "ip_vs_wrr", "ip_vs_sh", "nf_conntrack_ipv4"},
+> 			ipsetVersion:    "0.0",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    true,
+> 			expected:        proxyModeIPTables,
+111,116c105,110
+< 			flag:          "ipvs",
+< 			kmods:         []string{"ip_vs", "ip_vs_rr", "ip_vs_wrr", "ip_vs_sh", "nf_conntrack"},
+< 			kernelVersion: "4.19",
+< 			ipsetVersion:  "a.b.c",
+< 			kernelCompat:  true,
+< 			expected:      proxyModeIPTables,
+---
+> 			flag:            "ipvs",
+> 			kmods:           []string{"ip_vs", "ip_vs_rr", "ip_vs_wrr", "ip_vs_sh", "nf_conntrack_ipv4"},
+> 			ipsetVersion:    "a.b.c",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    true,
+> 			expected:        proxyModeIPTables,
+119,124c113,134
+< 			flag:          "ipvs",
+< 			kmods:         []string{"foo", "bar", "baz"},
+< 			kernelVersion: "4.19",
+< 			ipsetVersion:  ipvs.MinIPSetCheckVersion,
+< 			kernelCompat:  true,
+< 			expected:      proxyModeIPTables,
+---
+> 			flag:            "ipvs",
+> 			kmods:           []string{"foo", "bar", "baz"},
+> 			ipsetVersion:    ipvs.MinIPSetCheckVersion,
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    true,
+> 			expected:        proxyModeIPTables,
+> 		},
+> 		{ // flag says ipvs, required kernel modules are not installed, iptables version too old, fallback on userspace mode
+> 			flag:            "ipvs",
+> 			kmods:           []string{"foo", "bar", "baz"},
+> 			ipsetVersion:    ipvs.MinIPSetCheckVersion,
+> 			iptablesVersion: "0.0.0",
+> 			kernelCompat:    true,
+> 			expected:        proxyModeUserspace,
+> 		},
+> 		{ // flag says ipvs, ipset version too low, iptables version too old, kernel not compatible, fallback on userspace mode
+> 			flag:            "ipvs",
+> 			kmods:           []string{"ip_vs", "ip_vs_rr", "ip_vs_wrr", "ip_vs_sh", "nf_conntrack_ipv4"},
+> 			ipsetVersion:    "0.0",
+> 			iptablesVersion: iptables.MinCheckVersion,
+> 			kernelCompat:    false,
+> 			expected:        proxyModeUserspace,
+127a138
+> 		versioner := &fakeIPTablesVersioner{c.iptablesVersion, c.iptablesError}
+130,134c141,142
+< 		khandler := &fakeKernelHandler{
+< 			modules:       c.kmods,
+< 			kernelVersion: c.kernelVersion,
+< 		}
+< 		r := getProxyMode(c.flag, khandler, ipsetver, kcompater)
+---
+> 		khandler := &fakeKernelHandler{c.kmods}
+> 		r := getProxyMode(c.flag, versioner, khandler, ipsetver, kcompater)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_test.go updated/vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server_test.go
+34a35
+> 	api "k8s.io/kubernetes/pkg/apis/core"
+38a40,89
+> 
+> type fakeNodeInterface struct {
+> 	node api.Node
+> }
+> 
+> func (fake *fakeNodeInterface) Get(hostname string, options metav1.GetOptions) (*api.Node, error) {
+> 	return &fake.node, nil
+> }
+> 
+> type fakeIPTablesVersioner struct {
+> 	version string // what to return
+> 	err     error  // what to return
+> }
+> 
+> func (fake *fakeIPTablesVersioner) GetVersion() (string, error) {
+> 	return fake.version, fake.err
+> }
+> 
+> func (fake *fakeIPTablesVersioner) IsCompatible() error {
+> 	return fake.err
+> }
+> 
+> type fakeIPSetVersioner struct {
+> 	version string // what to return
+> 	err     error  // what to return
+> }
+> 
+> func (fake *fakeIPSetVersioner) GetVersion() (string, error) {
+> 	return fake.version, fake.err
+> }
+> 
+> type fakeKernelCompatTester struct {
+> 	ok bool
+> }
+> 
+> func (fake *fakeKernelCompatTester) IsCompatible() error {
+> 	if !fake.ok {
+> 		return fmt.Errorf("error")
+> 	}
+> 	return nil
+> }
+> 
+> // fakeKernelHandler implements KernelHandler.
+> type fakeKernelHandler struct {
+> 	modules []string
+> }
+> 
+> func (fake *fakeKernelHandler) GetModules() ([]string, error) {
+> 	return fake.modules, nil
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/BUILD updated/vendor/k8s.io/kubernetes/pkg/kubelet/BUILD
+104a105
+>         "//pkg/util/dbus:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/hostport/fake_iptables.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/hostport/fake_iptables.go
+24d23
+< 	"time"
+55a55,58
+> func (f *fakeIPTables) GetVersion() (string, error) {
+> 	return "1.4.21", nil
+> }
+> 
+339c342,345
+< func (f *fakeIPTables) Monitor(canary utiliptables.Chain, tables []utiliptables.Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+---
+> func (f *fakeIPTables) AddReloadFunc(reloadFunc func()) {
+> }
+> 
+> func (f *fakeIPTables) Destroy() {
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/BUILD updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/BUILD
+43a44
+>             "//pkg/util/dbus:go_default_library",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/kubenet_linux.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/dockershim/network/kubenet/kubenet_linux.go
+42a43
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+101a103
+> 	dbus := utildbus.New()
+103c105
+< 	iptInterface := utiliptables.New(execer, protocol)
+---
+> 	iptInterface := utiliptables.New(execer, dbus, protocol)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet.go
+107a108
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+530c531
+< 		iptClient:                               utilipt.New(utilexec.New(), protocol),
+---
+> 		iptClient:                               utilipt.New(utilexec.New(), utildbus.New(), protocol),
+1414c1415
+< 	// Set up iptables util rules
+---
+> 	// Start loop to sync iptables util rules
+1416c1417
+< 		kl.initNetworkUtil()
+---
+> 		go wait.Until(kl.syncNetworkUtil, 1*time.Minute, wait.NeverStop)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_linux.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_linux.go
+23d22
+< 	"time"
+25d23
+< 	"k8s.io/apimachinery/pkg/util/wait"
+29,35d26
+< 
+< func (kl *Kubelet) initNetworkUtil() {
+< 	kl.syncNetworkUtil()
+< 	go kl.iptClient.Monitor(utiliptables.Chain("KUBE-KUBELET-CANARY"),
+< 		[]utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
+< 		kl.syncNetworkUtil, 1*time.Minute, wait.NeverStop)
+< }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_others.go updated/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet_network_others.go
+22c22
+< func (kl *Kubelet) initNetworkUtil() {}
+---
+> func (kl *Kubelet) syncNetworkUtil() {}
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/BUILD updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/BUILD
+23a24
+>         "//staging/src/k8s.io/apimachinery/pkg/util/version:go_default_library",
 diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
 37c37
 < 	v1 "k8s.io/api/core/v1"
 ---
 > 	"k8s.io/api/core/v1"
-1316,1325d1315
+38a39
+> 	utilversion "k8s.io/apimachinery/pkg/util/version"
+53a55,63
+> 	// iptablesMinVersion is the minimum version of iptables for which we will use the Proxier
+> 	// from this package instead of the userspace Proxier.  While most of the
+> 	// features we need were available earlier, the '-C' flag was added more
+> 	// recently.  We use that indirectly in Ensure* functions, and if we don't
+> 	// have it, we have to be extra careful about the exact args we feed in being
+> 	// the same as the args we read back (iptables itself normalizes some args).
+> 	// This is the "new" Proxier, so we require "new" versions of tools.
+> 	iptablesMinVersion = utiliptables.MinCheckVersion
+> 
+75a86,91
+> // IPTablesVersioner can query the current iptables version.
+> type IPTablesVersioner interface {
+> 	// returns "X.Y.Z"
+> 	GetVersion() (string, error)
+> }
+> 
+83c99,120
+< func CanUseIPTablesProxier(kcompat KernelCompatTester) (bool, error) {
+---
+> // instead of the "classic" userspace Proxier.  This is determined by checking
+> // the iptables version and for the existence of kernel features. It may return
+> // an error if it fails to get the iptables version without error, in which
+> // case it will also return false.
+> func CanUseIPTablesProxier(iptver IPTablesVersioner, kcompat KernelCompatTester) (bool, error) {
+> 	minVersion, err := utilversion.ParseGeneric(iptablesMinVersion)
+> 	if err != nil {
+> 		return false, err
+> 	}
+> 	versionString, err := iptver.GetVersion()
+> 	if err != nil {
+> 		return false, err
+> 	}
+> 	version, err := utilversion.ParseGeneric(versionString)
+> 	if err != nil {
+> 		return false, err
+> 	}
+> 	if version.LessThan(minVersion) {
+> 		return false, nil
+> 	}
+> 
+> 	// Check that the kernel supports what we need.
+92a130,132
+> 	// Check for the required sysctls.  We don't care about the value, just
+> 	// that it exists.  If this Proxier is chosen, we'll initialize it as we
+> 	// need.
+183d222
+< 	changesPending  bool
+317,323c356
+< 	// We pass syncPeriod to ipt.Monitor, which will call us only if it needs to.
+< 	// We need to pass *some* maxInterval to NewBoundedFrequencyRunner anyway though.
+< 	// time.Hour is arbitrary.
+< 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.maybeSyncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
+< 	go ipt.Monitor(utiliptables.Chain("KUBE-PROXY-CANARY"),
+< 		[]utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
+< 		proxier.forceSyncProxyRules, syncPeriod, wait.NeverStop)
+---
+> 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
+453d485
+< 	proxier.changesPending = true
+484d515
+< 		proxier.changesPending = true
+501c532
+< 	proxier.forceSyncProxyRules()
+---
+> 	proxier.syncProxyRules()
+525c556
+< 	proxier.forceSyncProxyRules()
+---
+> 	proxier.syncProxyRules()
+615,622d645
+< func (proxier *Proxier) maybeSyncProxyRules() {
+< 	proxier.syncProxyRules(false)
+< }
 < 
+< func (proxier *Proxier) forceSyncProxyRules() {
+< 	proxier.syncProxyRules(true)
+< }
+< 
+626c649
+< func (proxier *Proxier) syncProxyRules(force bool) {
+---
+> func (proxier *Proxier) syncProxyRules() {
+642,650d664
+< 	if !force && !proxier.changesPending {
+< 		// Nothing to do; just update healthz timestamp.
+< 		if proxier.healthzServer != nil {
+< 			proxier.healthzServer.UpdateTimestamp()
+< 		}
+< 		metrics.SyncProxyRulesLastTimestamp.SetToCurrentTime()
+< 		return
+< 	}
+< 
+1313,1322d1326
 < 	// Drop the packets in INVALID state, which would potentially cause
 < 	// unexpected connection reset.
 < 	// https://github.com/kubernetes/kubernetes/issues/74839
@@ -19,3 +975,2067 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/
 < 		"--ctstate", "INVALID",
 < 		"-j", "DROP",
 < 	)
+< 
+1368,1369d1371
+< 	proxier.changesPending = false
+< 
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go
+8c8
+< 	p.forceSyncProxyRules()
+---
+> 	p.syncProxyRules()
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/BUILD
+19a20
+>         "//pkg/util/dbus:all-srcs",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD
+0a1,38
+> package(default_visibility = ["//visibility:public"])
+> 
+> load(
+>     "@io_bazel_rules_go//go:def.bzl",
+>     "go_library",
+>     "go_test",
+> )
+> 
+> go_library(
+>     name = "go_default_library",
+>     srcs = [
+>         "dbus.go",
+>         "doc.go",
+>         "fake_dbus.go",
+>     ],
+>     importpath = "k8s.io/kubernetes/pkg/util/dbus",
+>     deps = ["//vendor/github.com/godbus/dbus:go_default_library"],
+> )
+> 
+> go_test(
+>     name = "go_default_test",
+>     srcs = ["dbus_test.go"],
+>     embed = [":go_default_library"],
+>     deps = ["//vendor/github.com/godbus/dbus:go_default_library"],
+> )
+> 
+> filegroup(
+>     name = "package-srcs",
+>     srcs = glob(["**"]),
+>     tags = ["automanaged"],
+>     visibility = ["//visibility:private"],
+> )
+> 
+> filegroup(
+>     name = "all-srcs",
+>     srcs = [":package-srcs"],
+>     tags = ["automanaged"],
+> )
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus.go
+0a1,133
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> // Interface is an interface that presents a subset of the godbus/dbus API.  Use this
+> // when you want to inject fakeable/mockable D-Bus behavior.
+> type Interface interface {
+> 	// SystemBus returns a connection to the system bus, connecting to it
+> 	// first if necessary
+> 	SystemBus() (Connection, error)
+> 	// SessionBus returns a connection to the session bus, connecting to it
+> 	// first if necessary
+> 	SessionBus() (Connection, error)
+> }
+> 
+> // Connection represents a D-Bus connection
+> type Connection interface {
+> 	// Returns an Object representing the bus itself
+> 	BusObject() Object
+> 
+> 	// Object creates a representation of a remote D-Bus object
+> 	Object(name, path string) Object
+> 
+> 	// Signal registers or unregisters a channel to receive D-Bus signals
+> 	Signal(ch chan<- *godbus.Signal)
+> }
+> 
+> // Object represents a remote D-Bus object
+> type Object interface {
+> 	// Call synchronously calls a D-Bus method
+> 	Call(method string, flags godbus.Flags, args ...interface{}) Call
+> }
+> 
+> // Call represents a pending or completed D-Bus method call
+> type Call interface {
+> 	// Store returns a completed call's return values, or an error
+> 	Store(retvalues ...interface{}) error
+> }
+> 
+> // Implements Interface in terms of actually talking to D-Bus
+> type dbusImpl struct {
+> 	systemBus  *connImpl
+> 	sessionBus *connImpl
+> }
+> 
+> // Implements Connection as a godbus.Conn
+> type connImpl struct {
+> 	conn *godbus.Conn
+> }
+> 
+> // Implements Object as a godbus.Object
+> type objectImpl struct {
+> 	object godbus.BusObject
+> }
+> 
+> // Implements Call as a godbus.Call
+> type callImpl struct {
+> 	call *godbus.Call
+> }
+> 
+> // New returns a new Interface which will use godbus to talk to D-Bus
+> func New() Interface {
+> 	return &dbusImpl{}
+> }
+> 
+> // SystemBus is part of Interface
+> func (db *dbusImpl) SystemBus() (Connection, error) {
+> 	if db.systemBus == nil {
+> 		bus, err := godbus.SystemBus()
+> 		if err != nil {
+> 			return nil, err
+> 		}
+> 		db.systemBus = &connImpl{bus}
+> 	}
+> 
+> 	return db.systemBus, nil
+> }
+> 
+> // SessionBus is part of Interface
+> func (db *dbusImpl) SessionBus() (Connection, error) {
+> 	if db.sessionBus == nil {
+> 		bus, err := godbus.SessionBus()
+> 		if err != nil {
+> 			return nil, err
+> 		}
+> 		db.sessionBus = &connImpl{bus}
+> 	}
+> 
+> 	return db.sessionBus, nil
+> }
+> 
+> // BusObject is part of the Connection interface
+> func (conn *connImpl) BusObject() Object {
+> 	return &objectImpl{conn.conn.BusObject()}
+> }
+> 
+> // Object is part of the Connection interface
+> func (conn *connImpl) Object(name, path string) Object {
+> 	return &objectImpl{conn.conn.Object(name, godbus.ObjectPath(path))}
+> }
+> 
+> // Signal is part of the Connection interface
+> func (conn *connImpl) Signal(ch chan<- *godbus.Signal) {
+> 	conn.conn.Signal(ch)
+> }
+> 
+> // Call is part of the Object interface
+> func (obj *objectImpl) Call(method string, flags godbus.Flags, args ...interface{}) Call {
+> 	return &callImpl{obj.object.Call(method, flags, args...)}
+> }
+> 
+> // Store is part of the Call interface
+> func (call *callImpl) Store(retvalues ...interface{}) error {
+> 	return call.call.Store(retvalues...)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus_test.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/dbus_test.go
+0a1,243
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	"fmt"
+> 	"os"
+> 	"testing"
+> 
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> const (
+> 	DBusNameFlagDoNotQueue uint32 = 1 << (iota + 1)
+> )
+> 
+> const (
+> 	DBusRequestNameReplyPrimaryOwner uint32 = iota + 1
+> 	DBusRequestNameReplyAlreadyOwner
+> )
+> 
+> const (
+> 	DBusReleaseNameReplyReleased uint32 = iota + 1
+> 	DBusReleaseNameReplyNotOwner
+> )
+> 
+> func doDBusTest(t *testing.T, dbus Interface, real bool) {
+> 	bus, err := dbus.SystemBus()
+> 	if err != nil {
+> 		if !real {
+> 			t.Errorf("dbus.SystemBus() failed with fake Interface")
+> 		}
+> 		t.Skipf("D-Bus is not running: %v", err)
+> 	}
+> 	busObj := bus.BusObject()
+> 
+> 	id := ""
+> 	err = busObj.Call("org.freedesktop.DBus.GetId", 0).Store(&id)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if len(id) == 0 {
+> 		t.Errorf("expected non-empty Id, got \"\"")
+> 	}
+> 
+> 	// Switch to the session bus for the rest, since the system bus is more
+> 	// locked down (and thus harder to trick into emitting signals).
+> 
+> 	bus, err = dbus.SessionBus()
+> 	if err != nil {
+> 		if !real {
+> 			t.Errorf("dbus.SystemBus() failed with fake Interface")
+> 		}
+> 		t.Skipf("D-Bus session bus is not available: %v", err)
+> 	}
+> 	busObj = bus.BusObject()
+> 
+> 	name := fmt.Sprintf("io.kubernetes.dbus_test_%d", os.Getpid())
+> 	owner := ""
+> 	err = busObj.Call("org.freedesktop.DBus.GetNameOwner", 0, name).Store(&owner)
+> 	if err == nil {
+> 		t.Errorf("expected '%s' to be un-owned, but found owner %s", name, owner)
+> 	}
+> 	dbuserr, ok := err.(godbus.Error)
+> 	if !ok {
+> 		t.Errorf("expected godbus.Error, but got %#v", err)
+> 	}
+> 	if dbuserr.Name != "org.freedesktop.DBus.Error.NameHasNoOwner" {
+> 		t.Errorf("expected NameHasNoOwner error but got %v", err)
+> 	}
+> 
+> 	sigchan := make(chan *godbus.Signal, 10)
+> 	bus.Signal(sigchan)
+> 
+> 	rule := fmt.Sprintf("type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',sender='org.freedesktop.DBus',arg0='%s'", name)
+> 	err = busObj.Call("org.freedesktop.DBus.AddMatch", 0, rule).Store()
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 
+> 	var ret uint32
+> 	err = busObj.Call("org.freedesktop.DBus.RequestName", 0, name, DBusNameFlagDoNotQueue).Store(&ret)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if ret != DBusRequestNameReplyPrimaryOwner {
+> 		t.Errorf("expected %v, got %v", DBusRequestNameReplyPrimaryOwner, ret)
+> 	}
+> 
+> 	err = busObj.Call("org.freedesktop.DBus.GetNameOwner", 0, name).Store(&owner)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 
+> 	var changedSignal, acquiredSignal, lostSignal *godbus.Signal
+> 
+> 	sig1 := <-sigchan
+> 	sig2 := <-sigchan
+> 	// We get two signals, but the order isn't guaranteed
+> 	if sig1.Name == "org.freedesktop.DBus.NameOwnerChanged" {
+> 		changedSignal = sig1
+> 		acquiredSignal = sig2
+> 	} else {
+> 		acquiredSignal = sig1
+> 		changedSignal = sig2
+> 	}
+> 
+> 	if acquiredSignal.Sender != "org.freedesktop.DBus" || acquiredSignal.Name != "org.freedesktop.DBus.NameAcquired" {
+> 		t.Errorf("expected NameAcquired signal, got %v", acquiredSignal)
+> 	}
+> 	acquiredName := acquiredSignal.Body[0].(string)
+> 	if acquiredName != name {
+> 		t.Errorf("unexpected NameAcquired arguments: %v", acquiredSignal)
+> 	}
+> 
+> 	if changedSignal.Sender != "org.freedesktop.DBus" || changedSignal.Name != "org.freedesktop.DBus.NameOwnerChanged" {
+> 		t.Errorf("expected NameOwnerChanged signal, got %v", changedSignal)
+> 	}
+> 
+> 	changedName := changedSignal.Body[0].(string)
+> 	oldOwner := changedSignal.Body[1].(string)
+> 	newOwner := changedSignal.Body[2].(string)
+> 	if changedName != name || oldOwner != "" || newOwner != owner {
+> 		t.Errorf("unexpected NameOwnerChanged arguments: %v", changedSignal)
+> 	}
+> 
+> 	err = busObj.Call("org.freedesktop.DBus.ReleaseName", 0, name).Store(&ret)
+> 	if err != nil {
+> 		t.Errorf("expected success, got %v", err)
+> 	}
+> 	if ret != DBusReleaseNameReplyReleased {
+> 		t.Errorf("expected %v, got %v", DBusReleaseNameReplyReleased, ret)
+> 	}
+> 
+> 	sig1 = <-sigchan
+> 	sig2 = <-sigchan
+> 	if sig1.Name == "org.freedesktop.DBus.NameOwnerChanged" {
+> 		changedSignal = sig1
+> 		lostSignal = sig2
+> 	} else {
+> 		lostSignal = sig1
+> 		changedSignal = sig2
+> 	}
+> 
+> 	if lostSignal.Sender != "org.freedesktop.DBus" || lostSignal.Name != "org.freedesktop.DBus.NameLost" {
+> 		t.Errorf("expected NameLost signal, got %v", lostSignal)
+> 	}
+> 	lostName := lostSignal.Body[0].(string)
+> 	if lostName != name {
+> 		t.Errorf("unexpected NameLost arguments: %v", lostSignal)
+> 	}
+> 
+> 	if changedSignal.Sender != "org.freedesktop.DBus" || changedSignal.Name != "org.freedesktop.DBus.NameOwnerChanged" {
+> 		t.Errorf("expected NameOwnerChanged signal, got %v", changedSignal)
+> 	}
+> 
+> 	changedName = changedSignal.Body[0].(string)
+> 	oldOwner = changedSignal.Body[1].(string)
+> 	newOwner = changedSignal.Body[2].(string)
+> 	if changedName != name || oldOwner != owner || newOwner != "" {
+> 		t.Errorf("unexpected NameOwnerChanged arguments: %v", changedSignal)
+> 	}
+> 
+> 	if len(sigchan) != 0 {
+> 		t.Errorf("unexpected extra signals (%d)", len(sigchan))
+> 	}
+> 
+> 	// Unregister sigchan
+> 	bus.Signal(sigchan)
+> }
+> 
+> func TestRealDBus(t *testing.T) {
+> 	dbus := New()
+> 	doDBusTest(t, dbus, true)
+> }
+> 
+> func TestFakeDBus(t *testing.T) {
+> 	uniqueName := ":1.1"
+> 	ownedName := ""
+> 
+> 	fakeSystem := NewFakeConnection()
+> 	fakeSystem.SetBusObject(
+> 		func(method string, args ...interface{}) ([]interface{}, error) {
+> 			if method == "org.freedesktop.DBus.GetId" {
+> 				return []interface{}{"foo"}, nil
+> 			}
+> 			return nil, fmt.Errorf("unexpected method call '%s'", method)
+> 		},
+> 	)
+> 
+> 	fakeSession := NewFakeConnection()
+> 	fakeSession.SetBusObject(
+> 		func(method string, args ...interface{}) ([]interface{}, error) {
+> 			if method == "org.freedesktop.DBus.GetNameOwner" {
+> 				checkName := args[0].(string)
+> 				if checkName != ownedName {
+> 					return nil, godbus.Error{Name: "org.freedesktop.DBus.Error.NameHasNoOwner", Body: nil}
+> 				}
+> 				return []interface{}{uniqueName}, nil
+> 			} else if method == "org.freedesktop.DBus.RequestName" {
+> 				reqName := args[0].(string)
+> 				_ = args[1].(uint32)
+> 				if ownedName != "" {
+> 					return []interface{}{DBusRequestNameReplyAlreadyOwner}, nil
+> 				}
+> 				ownedName = reqName
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameAcquired", reqName)
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", reqName, "", uniqueName)
+> 				return []interface{}{DBusRequestNameReplyPrimaryOwner}, nil
+> 			} else if method == "org.freedesktop.DBus.ReleaseName" {
+> 				reqName := args[0].(string)
+> 				if reqName != ownedName {
+> 					return []interface{}{DBusReleaseNameReplyNotOwner}, nil
+> 				}
+> 				ownedName = ""
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", reqName, uniqueName, "")
+> 				fakeSession.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameLost", reqName)
+> 				return []interface{}{DBusReleaseNameReplyReleased}, nil
+> 			} else if method == "org.freedesktop.DBus.AddMatch" {
+> 				return nil, nil
+> 			} else {
+> 				return nil, fmt.Errorf("unexpected method call '%s'", method)
+> 			}
+> 		},
+> 	)
+> 
+> 	dbus := NewFake(fakeSystem, fakeSession)
+> 	doDBusTest(t, dbus, false)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/doc.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/doc.go
+0a1,18
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> // Package dbus provides an injectable interface and implementations for D-Bus communication
+> package dbus // import "k8s.io/kubernetes/pkg/util/dbus"
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/fake_dbus.go updated/vendor/k8s.io/kubernetes/pkg/util/dbus/fake_dbus.go
+0a1,140
+> /*
+> Copyright 2015 The Kubernetes Authors.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+> */
+> 
+> package dbus
+> 
+> import (
+> 	"fmt"
+> 	"sync"
+> 
+> 	godbus "github.com/godbus/dbus"
+> )
+> 
+> // Fake is a simple fake Interface type.
+> type Fake struct {
+> 	systemBus  *FakeConnection
+> 	sessionBus *FakeConnection
+> }
+> 
+> // FakeConnection represents a fake D-Bus connection
+> type FakeConnection struct {
+> 	lock           sync.Mutex
+> 	busObject      *fakeObject
+> 	objects        map[string]*fakeObject
+> 	signalHandlers []chan<- *godbus.Signal
+> }
+> 
+> // FakeHandler is used to handle fake D-Bus method calls
+> type FakeHandler func(method string, args ...interface{}) ([]interface{}, error)
+> 
+> type fakeObject struct {
+> 	handler FakeHandler
+> }
+> 
+> type fakeCall struct {
+> 	ret []interface{}
+> 	err error
+> }
+> 
+> // NewFake returns a new Interface which will fake talking to D-Bus
+> func NewFake(systemBus *FakeConnection, sessionBus *FakeConnection) *Fake {
+> 	return &Fake{systemBus, sessionBus}
+> }
+> 
+> // NewFakeConnection returns a FakeConnection Interface
+> func NewFakeConnection() *FakeConnection {
+> 	return &FakeConnection{
+> 		objects: make(map[string]*fakeObject),
+> 	}
+> }
+> 
+> // SystemBus is part of Interface
+> func (db *Fake) SystemBus() (Connection, error) {
+> 	if db.systemBus != nil {
+> 		return db.systemBus, nil
+> 	}
+> 	return nil, fmt.Errorf("DBus is not running")
+> }
+> 
+> // SessionBus is part of Interface
+> func (db *Fake) SessionBus() (Connection, error) {
+> 	if db.sessionBus != nil {
+> 		return db.sessionBus, nil
+> 	}
+> 	return nil, fmt.Errorf("DBus is not running")
+> }
+> 
+> // BusObject is part of the Connection interface
+> func (conn *FakeConnection) BusObject() Object {
+> 	return conn.busObject
+> }
+> 
+> // Object is part of the Connection interface
+> func (conn *FakeConnection) Object(name, path string) Object {
+> 	return conn.objects[name+path]
+> }
+> 
+> // Signal is part of the Connection interface
+> func (conn *FakeConnection) Signal(ch chan<- *godbus.Signal) {
+> 	conn.lock.Lock()
+> 	defer conn.lock.Unlock()
+> 	for i := range conn.signalHandlers {
+> 		if conn.signalHandlers[i] == ch {
+> 			conn.signalHandlers = append(conn.signalHandlers[:i], conn.signalHandlers[i+1:]...)
+> 			return
+> 		}
+> 	}
+> 	conn.signalHandlers = append(conn.signalHandlers, ch)
+> }
+> 
+> // SetBusObject sets the handler for the BusObject of conn
+> func (conn *FakeConnection) SetBusObject(handler FakeHandler) {
+> 	conn.busObject = &fakeObject{handler}
+> }
+> 
+> // AddObject adds a handler for the Object at name and path
+> func (conn *FakeConnection) AddObject(name, path string, handler FakeHandler) {
+> 	conn.objects[name+path] = &fakeObject{handler}
+> }
+> 
+> // EmitSignal emits a signal on conn
+> func (conn *FakeConnection) EmitSignal(name, path, iface, signal string, args ...interface{}) {
+> 	conn.lock.Lock()
+> 	defer conn.lock.Unlock()
+> 	sig := &godbus.Signal{
+> 		Sender: name,
+> 		Path:   godbus.ObjectPath(path),
+> 		Name:   iface + "." + signal,
+> 		Body:   args,
+> 	}
+> 	for _, ch := range conn.signalHandlers {
+> 		ch <- sig
+> 	}
+> }
+> 
+> // Call is part of the Object interface
+> func (obj *fakeObject) Call(method string, flags godbus.Flags, args ...interface{}) Call {
+> 	ret, err := obj.handler(method, args...)
+> 	return &fakeCall{ret, err}
+> }
+> 
+> // Store is part of the Call interface
+> func (call *fakeCall) Store(retvalues ...interface{}) error {
+> 	if call.err != nil {
+> 		return call.err
+> 	}
+> 	return godbus.Store(call.ret, retvalues...)
+> }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/iptables/BUILD
+19a20
+>         "//pkg/util/dbus:go_default_library",
+22c23
+<         "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+---
+>         "//vendor/github.com/godbus/dbus:go_default_library",
+28a30
+>             "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+39d40
+<         "monitor_test.go",
+44a46
+>             "//pkg/util/dbus:go_default_library",
+46,50d47
+< <<<<<<< HEAD
+< =======
+<             "//staging/src/k8s.io/apimachinery/pkg/util/version:go_default_library",
+<             "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+< >>>>>>> ad7a0eabc... UPSTREAM: 81517: Add iptables.Monitor, use it from kubelet and kube-proxy
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables.go
+27a28
+> 	godbus "github.com/godbus/dbus"
+30d30
+< 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+31a32
+> 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+44a46,47
+> 	// GetVersion returns the "X.Y.Z" version string for iptables.
+> 	GetVersion() (string, error)
+67,77c70,73
+< 	// Monitor detects when the given iptables tables have been flushed by an external
+< 	// tool (e.g. a firewall reload) by creating canary chains and polling to see if
+< 	// they have been deleted. (Specifically, it polls tables[0] every interval until
+< 	// the canary has been deleted from there, then waits a short additional time for
+< 	// the canaries to be deleted from the remaining tables as well. You can optimize
+< 	// the polling by listing a relatively empty table in tables[0]). When a flush is
+< 	// detected, this calls the reloadFunc so the caller can reload their own iptables
+< 	// rules. If it is unable to create the canary chains (either initially or after
+< 	// a reload) it will log an error and stop monitoring.
+< 	// (This function should be called from a goroutine.)
+< 	Monitor(canary Chain, tables []Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{})
+---
+> 	// AddReloadFunc adds a function to call on iptables reload
+> 	AddReloadFunc(reloadFunc func())
+> 	// Destroy cleans up resources used by the Interface
+> 	Destroy()
+128c124
+< var MinCheckVersion = utilversion.MustParseGeneric("1.4.11")
+---
+> const MinCheckVersion = "1.4.11"
+131,134c127,128
+< var WaitMinVersion = utilversion.MustParseGeneric("1.4.20")
+< var WaitSecondsMinVersion = utilversion.MustParseGeneric("1.4.22")
+< var WaitRestoreMinVersion = utilversion.MustParseGeneric("1.6.2")
+< 
+---
+> const WaitMinVersion = "1.4.20"
+> const WaitSecondsMinVersion = "1.4.22"
+143a138
+> 	dbus            utildbus.Interface
+145a141
+> 	hasListener     bool
+148a145,147
+> 
+> 	reloadFuncs []func()
+> 	signal      chan *godbus.Signal
+153,154c152,153
+< func newInternal(exec utilexec.Interface, protocol Protocol, lockfilePath string) Interface {
+< 	version, err := getIPTablesVersion(exec, protocol)
+---
+> func newInternal(exec utilexec.Interface, dbus utildbus.Interface, protocol Protocol, lockfilePath string) Interface {
+> 	vstring, err := getIPTablesVersionString(exec, protocol)
+157c156
+< 		version = MinCheckVersion
+---
+> 		vstring = MinCheckVersion
+165a165
+> 		dbus:            dbus,
+167,169c167,170
+< 		hasCheck:        version.AtLeast(MinCheckVersion),
+< 		waitFlag:        getIPTablesWaitFlag(version),
+< 		restoreWaitFlag: getIPTablesRestoreWaitFlag(version, exec, protocol),
+---
+> 		hasCheck:        getIPTablesHasCheckCommand(vstring),
+> 		hasListener:     false,
+> 		waitFlag:        getIPTablesWaitFlag(vstring),
+> 		restoreWaitFlag: getIPTablesRestoreWaitFlag(exec, protocol),
+176,177c177,185
+< func New(exec utilexec.Interface, protocol Protocol) Interface {
+< 	return newInternal(exec, protocol, "")
+---
+> func New(exec utilexec.Interface, dbus utildbus.Interface, protocol Protocol) Interface {
+> 	return newInternal(exec, dbus, protocol, "")
+> }
+> 
+> // Destroy is part of Interface.
+> func (runner *runner) Destroy() {
+> 	if runner.signal != nil {
+> 		runner.signal <- nil
+> 	}
+185a194,221
+> // Connects to D-Bus and listens for FirewallD start/restart. (On non-FirewallD-using
+> // systems, this is effectively a no-op; we listen for the signals, but they will never be
+> // emitted, so reload() will never be called.)
+> func (runner *runner) connectToFirewallD() {
+> 	bus, err := runner.dbus.SystemBus()
+> 	if err != nil {
+> 		klog.V(1).Infof("Could not connect to D-Bus system bus: %s", err)
+> 		return
+> 	}
+> 	runner.hasListener = true
+> 
+> 	rule := fmt.Sprintf("type='signal',sender='%s',path='%s',interface='%s',member='Reloaded'", firewalldName, firewalldPath, firewalldInterface)
+> 	bus.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
+> 
+> 	rule = fmt.Sprintf("type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',sender='org.freedesktop.DBus',arg0='%s'", firewalldName)
+> 	bus.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
+> 
+> 	runner.signal = make(chan *godbus.Signal, 10)
+> 	bus.Signal(runner.signal)
+> 
+> 	go runner.dbusSignalHandler(bus)
+> }
+> 
+> // GetVersion returns the version string.
+> func (runner *runner) GetVersion() (string, error) {
+> 	return getIPTablesVersionString(runner.exec, runner.protocol)
+> }
+> 
+493,563d528
+< const (
+< 	// Max time we wait for an iptables flush to complete after we notice it has started
+< 	iptablesFlushTimeout = 5 * time.Second
+< 	// How often we poll while waiting for an iptables flush to complete
+< 	iptablesFlushPollTime = 100 * time.Millisecond
+< )
+< 
+< // Monitor is part of Interface
+< func (runner *runner) Monitor(canary Chain, tables []Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+< 	for {
+< 		_ = utilwait.PollImmediateUntil(interval, func() (bool, error) {
+< 			for _, table := range tables {
+< 				if _, err := runner.EnsureChain(table, canary); err != nil {
+< 					klog.Warningf("Could not set up iptables canary %s/%s: %v", string(table), string(canary), err)
+< 					return false, nil
+< 				}
+< 			}
+< 			return true, nil
+< 		}, stopCh)
+< 
+< 		// Poll until stopCh is closed or iptables is flushed
+< 		err := utilwait.PollUntil(interval, func() (bool, error) {
+< 			if exists, err := runner.chainExists(tables[0], canary); exists {
+< 				return false, nil
+< 			} else if isResourceError(err) {
+< 				klog.Warningf("Could not check for iptables canary %s/%s: %v", string(tables[0]), string(canary), err)
+< 				return false, nil
+< 			}
+< 			klog.V(2).Infof("iptables canary %s/%s deleted", string(tables[0]), string(canary))
+< 
+< 			// Wait for the other canaries to be deleted too before returning
+< 			// so we don't start reloading too soon.
+< 			err := utilwait.PollImmediate(iptablesFlushPollTime, iptablesFlushTimeout, func() (bool, error) {
+< 				for i := 1; i < len(tables); i++ {
+< 					if exists, err := runner.chainExists(tables[i], canary); exists || isResourceError(err) {
+< 						return false, nil
+< 					}
+< 				}
+< 				return true, nil
+< 			})
+< 			if err != nil {
+< 				klog.Warning("Inconsistent iptables state detected.")
+< 			}
+< 			return true, nil
+< 		}, stopCh)
+< 
+< 		if err != nil {
+< 			// stopCh was closed
+< 			for _, table := range tables {
+< 				_ = runner.DeleteChain(table, canary)
+< 			}
+< 			return
+< 		}
+< 
+< 		klog.V(2).Infof("Reloading after iptables flush")
+< 		reloadFunc()
+< 	}
+< }
+< 
+< // chainExists is used internally by Monitor; none of the public Interface methods can be
+< // used to distinguish "chain exists" from "chain does not exist" with no side effects
+< func (runner *runner) chainExists(table Table, chain Chain) (bool, error) {
+< 	fullArgs := makeFullArgs(table, chain)
+< 
+< 	runner.mu.Lock()
+< 	defer runner.mu.Unlock()
+< 
+< 	_, err := runner.run(opListChain, fullArgs)
+< 	return err == nil, err
+< }
+< 
+570d534
+< 	opListChain   operation = "-L"
+580,584c544,546
+< // getIPTablesVersion runs "iptables --version" and parses the returned version
+< func getIPTablesVersion(exec utilexec.Interface, protocol Protocol) (*utilversion.Version, error) {
+< 	// this doesn't access mutable state so we don't need to use the interface / runner
+< 	iptablesCmd := iptablesCommand(protocol)
+< 	bytes, err := exec.Command(iptablesCmd, "--version").CombinedOutput()
+---
+> // Checks if iptables has the "-C" flag
+> func getIPTablesHasCheckCommand(vstring string) bool {
+> 	minVersion, err := utilversion.ParseGeneric(MinCheckVersion)
+586,591c548,549
+< 		return nil, err
+< 	}
+< 	versionMatcher := regexp.MustCompile("v([0-9]+(\\.[0-9]+)+)")
+< 	match := versionMatcher.FindStringSubmatch(string(bytes))
+< 	if match == nil {
+< 		return nil, fmt.Errorf("no iptables version found in string: %s", bytes)
+---
+> 		klog.Errorf("MinCheckVersion (%s) is not a valid version string: %v", MinCheckVersion, err)
+> 		return true
+593c551
+< 	version, err := utilversion.ParseGeneric(match[1])
+---
+> 	version, err := utilversion.ParseGeneric(vstring)
+595c553,554
+< 		return nil, fmt.Errorf("iptables version %q is not a valid version string: %v", match[1], err)
+---
+> 		klog.Errorf("vstring (%s) is not a valid version string: %v", vstring, err)
+> 		return true
+597,598c556
+< 
+< 	return version, nil
+---
+> 	return version.AtLeast(minVersion)
+602,608c560,563
+< func getIPTablesWaitFlag(version *utilversion.Version) []string {
+< 	switch {
+< 	case version.AtLeast(WaitSecondsMinVersion):
+< 		return []string{WaitString, WaitSecondsValue}
+< 	case version.AtLeast(WaitMinVersion):
+< 		return []string{WaitString}
+< 	default:
+---
+> func getIPTablesWaitFlag(vstring string) []string {
+> 	version, err := utilversion.ParseGeneric(vstring)
+> 	if err != nil {
+> 		klog.Errorf("vstring (%s) is not a valid version string: %v", vstring, err)
+611d565
+< }
+613,615c567,583
+< // Checks if iptables-restore has a "wait" flag
+< func getIPTablesRestoreWaitFlag(version *utilversion.Version, exec utilexec.Interface, protocol Protocol) []string {
+< 	if version.AtLeast(WaitRestoreMinVersion) {
+---
+> 	minVersion, err := utilversion.ParseGeneric(WaitMinVersion)
+> 	if err != nil {
+> 		klog.Errorf("WaitMinVersion (%s) is not a valid version string: %v", WaitMinVersion, err)
+> 		return nil
+> 	}
+> 	if version.LessThan(minVersion) {
+> 		return nil
+> 	}
+> 
+> 	minVersion, err = utilversion.ParseGeneric(WaitSecondsMinVersion)
+> 	if err != nil {
+> 		klog.Errorf("WaitSecondsMinVersion (%s) is not a valid version string: %v", WaitSecondsMinVersion, err)
+> 		return nil
+> 	}
+> 	if version.LessThan(minVersion) {
+> 		return []string{WaitString}
+> 	} else {
+617a586,603
+> }
+> 
+> // getIPTablesVersionString runs "iptables --version" to get the version string
+> // in the form "X.X.X"
+> func getIPTablesVersionString(exec utilexec.Interface, protocol Protocol) (string, error) {
+> 	// this doesn't access mutable state so we don't need to use the interface / runner
+> 	iptablesCmd := iptablesCommand(protocol)
+> 	bytes, err := exec.Command(iptablesCmd, "--version").CombinedOutput()
+> 	if err != nil {
+> 		return "", err
+> 	}
+> 	versionMatcher := regexp.MustCompile("v([0-9]+(\\.[0-9]+)+)")
+> 	match := versionMatcher.FindStringSubmatch(string(bytes))
+> 	if match == nil {
+> 		return "", fmt.Errorf("no iptables version found in string: %s", bytes)
+> 	}
+> 	return match[1], nil
+> }
+619,620c605,609
+< 	// Older versions may have backported features; if iptables-restore supports
+< 	// --version, assume it also supports --wait
+---
+> // Checks if iptables-restore has a "wait" flag
+> // --wait support landed in v1.6.1+ right before --version support, so
+> // any version of iptables-restore that supports --version will also
+> // support --wait
+> func getIPTablesRestoreWaitFlag(exec utilexec.Interface, protocol Protocol) []string {
+630c619,620
+< 	return []string{WaitString}
+---
+> 
+> 	return []string{WaitString, WaitSecondsValue}
+655a646,701
+> // goroutine to listen for D-Bus signals
+> func (runner *runner) dbusSignalHandler(bus utildbus.Connection) {
+> 	firewalld := bus.Object(firewalldName, firewalldPath)
+> 
+> 	for s := range runner.signal {
+> 		if s == nil {
+> 			// Unregister
+> 			bus.Signal(runner.signal)
+> 			return
+> 		}
+> 
+> 		switch s.Name {
+> 		case "org.freedesktop.DBus.NameOwnerChanged":
+> 			name := s.Body[0].(string)
+> 			new_owner := s.Body[2].(string)
+> 
+> 			if name != firewalldName || len(new_owner) == 0 {
+> 				continue
+> 			}
+> 
+> 			// FirewallD startup (specifically the part where it deletes
+> 			// all existing iptables rules) may not yet be complete when
+> 			// we get this signal, so make a dummy request to it to
+> 			// synchronize.
+> 			firewalld.Call(firewalldInterface+".getDefaultZone", 0)
+> 
+> 			runner.reload()
+> 		case firewalldInterface + ".Reloaded":
+> 			runner.reload()
+> 		}
+> 	}
+> }
+> 
+> // AddReloadFunc is part of Interface
+> func (runner *runner) AddReloadFunc(reloadFunc func()) {
+> 	runner.mu.Lock()
+> 	defer runner.mu.Unlock()
+> 
+> 	// We only need to listen to firewalld if there are Reload functions, so lazy
+> 	// initialize the listener.
+> 	if !runner.hasListener {
+> 		runner.connectToFirewallD()
+> 	}
+> 
+> 	runner.reloadFuncs = append(runner.reloadFuncs, reloadFunc)
+> }
+> 
+> // runs all reload funcs to re-sync iptables rules
+> func (runner *runner) reload() {
+> 	klog.V(1).Infof("reloading iptables rules")
+> 
+> 	for _, f := range runner.reloadFuncs {
+> 		f()
+> 	}
+> }
+> 
+691,703d736
+< }
+< 
+< const iptablesStatusResourceProblem = 4
+< 
+< // isResourceError returns true if the error indicates that iptables ran into a "resource
+< // problem" and was unable to attempt the request. In particular, this will be true if it
+< // times out trying to get the iptables lock.
+< func isResourceError(err error) bool {
+< 	if ee, isExitError := err.(utilexec.ExitError); isExitError {
+< 		return ee.ExitStatus() == iptablesStatusResourceProblem
+< 	} else {
+< 		return false
+< 	}
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables_test.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/iptables_test.go
+28a29
+> 	"time"
+31c32
+< 	utilversion "k8s.io/apimachinery/pkg/util/version"
+---
+> 	"k8s.io/kubernetes/pkg/util/dbus"
+46c47
+< 	version := " v1.4.22"
+---
+> 	version := " v1.9.22"
+56a58,59
+> 			// iptables version  response (for call to runner.GetVersion())
+> 			func() ([]byte, error) { return []byte(iptablesCmd + version), nil },
+62a66
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+65c69,70
+< 	_ = New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+75a81,90
+> 
+> 	_, err := runner.GetVersion()
+> 	if err != nil {
+> 		t.Errorf("%s GetVersion: Expected success, got %v", protoStr, err)
+> 	}
+> 
+> 	// Check that proper iptables version command was used for runner.GetVersion
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll(iptablesCmd, "--version") {
+> 		t.Errorf("%s GetVersion: Expected cmd '%s --version', Got '%s'", protoStr, iptablesCmd, fcmd.CombinedOutputLog[2])
+> 	}
+92a108,109
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+106a124
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+109c127,128
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+118,119c137,138
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("%s new chain: Expected 2 CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("%s new chain: Expected 3 CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+122c141
+< 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll(cmd, "-t", "nat", "-N", "FOOBAR") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll(cmd, "-t", "nat", "-N", "FOOBAR") {
+152a172,173
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+163a185
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+166c188,189
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+172,173c195,196
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+175c198
+< 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll("iptables", "-t", "nat", "-F", "FOOBAR") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-F", "FOOBAR") {
+189a213,214
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+200a226
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+203c229,230
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+209,210c236,237
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+212c239
+< 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll("iptables", "-t", "nat", "-X", "FOOBAR") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-X", "FOOBAR") {
+226a254,255
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+234a264,265
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+239c270,271
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+247,248c279,280
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+250c282
+< 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+259a292,293
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+269a304,305
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+275c311,312
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+283,284c320,321
+< 	if fcmd.CombinedOutputCalls != 3 {
+< 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("expected 4 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+286c323
+< 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[3]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+295a333,334
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+303a343,344
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+308c349,350
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+313,314c355,356
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+322a365,366
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+332a377,378
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+338c384,385
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+343,344c390,391
+< 	if fcmd.CombinedOutputCalls != 3 {
+< 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("expected 4 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+352a400,401
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+360a410,411
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+365c416,417
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+370,371c422,423
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+373c425
+< 	if !sets.NewString(fcmd.CombinedOutputLog[1]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+382a435,436
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+392a447,448
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+398c454,455
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+403,404c460,461
+< 	if fcmd.CombinedOutputCalls != 3 {
+< 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("expected 4 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+406c463
+< 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-D", "OUTPUT", "abc", "123") {
+---
+> 	if !sets.NewString(fcmd.CombinedOutputLog[3]...).HasAll("iptables", "-t", "nat", "-D", "OUTPUT", "abc", "123") {
+415a473,474
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+423a483,484
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+428c489,490
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+433,434c495,496
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+442a505,506
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+452a517,518
+> 			// iptables-restore version check
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+458c524,525
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+463,464c530,531
+< 	if fcmd.CombinedOutputCalls != 3 {
+< 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 4 {
+> 		t.Errorf("expected 4 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+470a538
+> 		Err      bool
+473,477c541,545
+< 		{"iptables v1.4.7", false},
+< 		{"iptables v1.4.11", true},
+< 		{"iptables v1.4.19.1", true},
+< 		{"iptables v2.0.0", true},
+< 		{"total junk", true},
+---
+> 		{"iptables v1.4.7", false, false},
+> 		{"iptables v1.4.11", false, true},
+> 		{"iptables v1.4.19.1", false, true},
+> 		{"iptables v2.0.0", false, true},
+> 		{"total junk", true, false},
+484d551
+< 				func() ([]byte, error) { return []byte(testCase.Version), nil },
+490d556
+< 				func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+493,496c559,567
+< 		ipt := New(&fexec, ProtocolIpv4)
+< 		runner := ipt.(*runner)
+< 		if testCase.Expected != runner.hasCheck {
+< 			t.Errorf("Expected result: %v, Got result: %v", testCase.Expected, runner.hasCheck)
+---
+> 		version, err := getIPTablesVersionString(&fexec, ProtocolIpv4)
+> 		if (err != nil) != testCase.Err {
+> 			t.Errorf("Expected error: %v, Got error: %v", testCase.Err, err)
+> 		}
+> 		if err == nil {
+> 			check := getIPTablesHasCheckCommand(version)
+> 			if testCase.Expected != check {
+> 				t.Errorf("Expected result: %v, Got result: %v", testCase.Expected, check)
+> 			}
+627c698
+< 		result := getIPTablesWaitFlag(utilversion.MustParseGeneric(testCase.Version))
+---
+> 		result := getIPTablesWaitFlag(testCase.Version)
+640c711
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+654c725,726
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+673c745
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+685c757,758
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+707c780
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+719c792,793
+< 	runner := New(&fexec, ProtocolIpv4)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4)
+> 	defer runner.Destroy()
+731a806,919
+> func TestReload(t *testing.T) {
+> 	dbusConn := dbus.NewFakeConnection()
+> 	dbusConn.SetBusObject(func(method string, args ...interface{}) ([]interface{}, error) { return nil, nil })
+> 	dbusConn.AddObject(firewalldName, firewalldPath, func(method string, args ...interface{}) ([]interface{}, error) { return nil, nil })
+> 	fdbus := dbus.NewFake(dbusConn, nil)
+> 
+> 	reloaded := make(chan bool, 2)
+> 
+> 	fcmd := fakeexec.FakeCmd{
+> 		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
+> 			// iptables version check
+> 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+> 
+> 			// first reload
+> 			// EnsureChain
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 			// EnsureRule abc check
+> 			func() ([]byte, error) { return []byte{}, &fakeexec.FakeExitError{Status: 1} },
+> 			// EnsureRule abc
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 
+> 			// second reload
+> 			// EnsureChain
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 			// EnsureRule abc check
+> 			func() ([]byte, error) { return []byte{}, &fakeexec.FakeExitError{Status: 1} },
+> 			// EnsureRule abc
+> 			func() ([]byte, error) { return []byte{}, nil },
+> 		},
+> 	}
+> 	fexec := fakeexec.FakeExec{
+> 		CommandScript: []fakeexec.FakeCommandAction{
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+> 		},
+> 	}
+> 
+> 	runner := New(&fexec, fdbus, ProtocolIpv4)
+> 	defer runner.Destroy()
+> 
+> 	runner.AddReloadFunc(func() {
+> 		exists, err := runner.EnsureChain(TableNAT, Chain("FOOBAR"))
+> 		if err != nil {
+> 			t.Errorf("expected success, got %v", err)
+> 		}
+> 		if exists {
+> 			t.Errorf("expected exists = false")
+> 		}
+> 		reloaded <- true
+> 	})
+> 
+> 	runner.AddReloadFunc(func() {
+> 		exists, err := runner.EnsureRule(Append, TableNAT, ChainOutput, "abc", "123")
+> 		if err != nil {
+> 			t.Errorf("expected success, got %v", err)
+> 		}
+> 		if exists {
+> 			t.Errorf("expected exists = false")
+> 		}
+> 		reloaded <- true
+> 	})
+> 
+> 	dbusConn.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", firewalldName, "", ":1.1")
+> 	<-reloaded
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 5 {
+> 		t.Errorf("expected 5 CombinedOutput() calls total, got %d", fcmd.CombinedOutputCalls)
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[2]...).HasAll("iptables", "-t", "nat", "-N", "FOOBAR") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[2])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[3]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[3])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[4]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[4])
+> 	}
+> 
+> 	go func() { time.Sleep(time.Second / 100); reloaded <- true }()
+> 	dbusConn.EmitSignal(firewalldName, firewalldPath, firewalldInterface, "DefaultZoneChanged", "public")
+> 	dbusConn.EmitSignal("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", "io.k8s.Something", "", ":1.1")
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 5 {
+> 		t.Errorf("Incorrect signal caused a reload")
+> 	}
+> 
+> 	dbusConn.EmitSignal(firewalldName, firewalldPath, firewalldInterface, "Reloaded")
+> 	<-reloaded
+> 	<-reloaded
+> 
+> 	if fcmd.CombinedOutputCalls != 8 {
+> 		t.Errorf("expected 8 CombinedOutput() calls total, got %d", fcmd.CombinedOutputCalls)
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[5]...).HasAll("iptables", "-t", "nat", "-N", "FOOBAR") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[5])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[6]...).HasAll("iptables", "-t", "nat", "-C", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[6])
+> 	}
+> 	if !sets.NewString(fcmd.CombinedOutputLog[7]...).HasAll("iptables", "-t", "nat", "-A", "OUTPUT", "abc", "123") {
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[7])
+> 	}
+> }
+> 
+735a924
+> 	iptablesRestoreCmd := iptablesRestoreCommand(protocol)
+751a941,942
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte(iptablesRestoreCmd + version), nil },
+762a954
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+765c957,958
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+778,779c971,972
+< 	if fcmd.CombinedOutputCalls != 1 {
+< 		t.Errorf("%s: Expected 1 CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 2 {
+> 		t.Errorf("%s: Expected 2 CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+816a1010,1011
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte(iptablesRestoreCmd + version), nil },
+831a1027
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+834c1030,1031
+< 	runner := New(&fexec, protocol)
+---
+> 	runner := New(&fexec, dbus.NewFake(nil, nil), protocol)
+> 	defer runner.Destroy()
+842c1039
+< 	commandSet := sets.NewString(fcmd.CombinedOutputLog[1]...)
+---
+> 	commandSet := sets.NewString(fcmd.CombinedOutputLog[2]...)
+844c1041
+< 		t.Errorf("%s flush, restore: Expected cmd containing '%s -T %s --counters', got '%s'", protoStr, iptablesRestoreCmd, string(TableNAT), fcmd.CombinedOutputLog[1])
+---
+> 		t.Errorf("%s flush, restore: Expected cmd containing '%s -T %s --counters', got '%s'", protoStr, iptablesRestoreCmd, string(TableNAT), fcmd.CombinedOutputLog[2])
+853c1050
+< 	commandSet = sets.NewString(fcmd.CombinedOutputLog[2]...)
+---
+> 	commandSet = sets.NewString(fcmd.CombinedOutputLog[3]...)
+855c1052
+< 		t.Errorf("%s flush, no restore: Expected cmd containing '--noflush' or '--counters', got '%s'", protoStr, fcmd.CombinedOutputLog[2])
+---
+> 		t.Errorf("%s flush, no restore: Expected cmd containing '--noflush' or '--counters', got '%s'", protoStr, fcmd.CombinedOutputLog[3])
+864c1061
+< 	commandSet = sets.NewString(fcmd.CombinedOutputLog[3]...)
+---
+> 	commandSet = sets.NewString(fcmd.CombinedOutputLog[4]...)
+866c1063
+< 		t.Errorf("%s no flush, restore: Expected cmd containing '--noflush' and '--counters', got '%s'", protoStr, fcmd.CombinedOutputLog[3])
+---
+> 		t.Errorf("%s no flush, restore: Expected cmd containing '--noflush' and '--counters', got '%s'", protoStr, fcmd.CombinedOutputLog[4])
+875c1072
+< 	commandSet = sets.NewString(fcmd.CombinedOutputLog[4]...)
+---
+> 	commandSet = sets.NewString(fcmd.CombinedOutputLog[5]...)
+877c1074
+< 		t.Errorf("%s no flush, no restore: Expected cmd containing '%s -T %s --noflush', got '%s'", protoStr, iptablesRestoreCmd, string(TableNAT), fcmd.CombinedOutputLog[4])
+---
+> 		t.Errorf("%s no flush, no restore: Expected cmd containing '%s -T %s --noflush', got '%s'", protoStr, iptablesRestoreCmd, string(TableNAT), fcmd.CombinedOutputLog[5])
+880,881c1077,1078
+< 	if fcmd.CombinedOutputCalls != 5 {
+< 		t.Errorf("%s: Expected 5 total CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 6 {
+> 		t.Errorf("%s: Expected 6 total CombinedOutput() calls, got %d", protoStr, fcmd.CombinedOutputCalls)
+904a1102,1103
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+913a1113
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+916c1116
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+917a1118
+> 	defer runner.Destroy()
+924c1125
+< 	commandSet := sets.NewString(fcmd.CombinedOutputLog[1]...)
+---
+> 	commandSet := sets.NewString(fcmd.CombinedOutputLog[2]...)
+929,930c1130,1131
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+945a1147,1148
+> 			// iptables-restore version check
+> 			func() ([]byte, error) { return []byte("iptables-restore v1.9.22"), nil },
+954a1158
+> 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+957c1161
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+958a1163
+> 	defer runner.Destroy()
+965c1170
+< 	commandSet := sets.NewString(fcmd.CombinedOutputLog[1]...)
+---
+> 	commandSet := sets.NewString(fcmd.CombinedOutputLog[2]...)
+967c1172
+< 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[1])
+---
+> 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[2])
+970,971c1175,1176
+< 	if fcmd.CombinedOutputCalls != 2 {
+< 		t.Errorf("expected 2 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+---
+> 	if fcmd.CombinedOutputCalls != 3 {
+> 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+982c1187
+< // to an old iptables-restore
+---
+> // to a in-compatible iptables-restore
+987c1192
+< 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables v1.9.22"), nil },
+989c1194
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("unrecognized option: --version"), nil },
+1002c1207
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1003a1209
+> 	defer runner.Destroy()
+1014,1015c1220,1221
+< 	if commandSet.HasAll(WaitString) {
+< 		t.Errorf("wrong CombinedOutput() log (unexpected %s option), got %s", WaitString, fcmd.CombinedOutputLog[1])
+---
+> 	if commandSet.HasAll(WaitString, WaitSecondsValue) {
+> 		t.Errorf("wrong CombinedOutput() log (unexpected %s option), got %s", WaitString, fcmd.CombinedOutputLog[2])
+1036c1242
+< 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables v1.9.22"), nil },
+1038c1244
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("unrecognized option: --version"), nil },
+1048c1254
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1049a1256
+> 	defer runner.Destroy()
+1078c1285
+< 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+---
+> 			func() ([]byte, error) { return []byte("iptables v1.9.22"), nil },
+1080c1287
+< 			func() ([]byte, error) { return []byte{}, nil },
+---
+> 			func() ([]byte, error) { return []byte("unrecognized option: --version"), nil },
+1090c1297
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+---
+> 	runner := newInternal(&fexec, dbus.NewFake(nil, nil), ProtocolIpv4, TestLockfilePath)
+1091a1299
+> 	defer runner.Destroy()
+1106,1153d1313
+< 	}
+< }
+< 
+< // TestRestoreAllWaitBackportedIptablesRestore tests that the "wait" flag is passed
+< // to a seemingly-old-but-actually-new iptables-restore
+< func TestRestoreAllWaitBackportedIptablesRestore(t *testing.T) {
+< 	fcmd := fakeexec.FakeCmd{
+< 		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
+< 			// iptables version check
+< 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+< 			// iptables-restore version check
+< 			func() ([]byte, error) { return []byte("iptables v1.4.22"), nil },
+< 			func() ([]byte, error) { return []byte{}, nil },
+< 			func() ([]byte, error) { return nil, &fakeexec.FakeExitError{Status: 1} },
+< 		},
+< 	}
+< 	fexec := fakeexec.FakeExec{
+< 		CommandScript: []fakeexec.FakeCommandAction{
+< 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+< 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+< 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+< 			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+< 		},
+< 	}
+< 	runner := newInternal(&fexec, ProtocolIpv4, TestLockfilePath)
+< 	defer os.Remove(TestLockfilePath)
+< 
+< 	err := runner.RestoreAll([]byte{}, NoFlushTables, RestoreCounters)
+< 	if err != nil {
+< 		t.Fatalf("expected success, got %v", err)
+< 	}
+< 
+< 	commandSet := sets.NewString(fcmd.CombinedOutputLog[2]...)
+< 	if !commandSet.HasAll("iptables-restore", "--counters", "--noflush") {
+< 		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[2])
+< 	}
+< 	if !commandSet.HasAll(WaitString) {
+< 		t.Errorf("wrong CombinedOutput() log (expected %s option), got %s", WaitString, fcmd.CombinedOutputLog[1])
+< 	}
+< 
+< 	if fcmd.CombinedOutputCalls != 3 {
+< 		t.Errorf("expected 3 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+< 	}
+< 
+< 	// Failure.
+< 	err = runner.Restore(TableNAT, []byte{}, FlushTables, RestoreCounters)
+< 	if err == nil {
+< 		t.Errorf("expected failure")
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/monitor_test.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/monitor_test.go
+1,338d0
+< // +build linux
+< 
+< /*
+< Copyright 2019 The Kubernetes Authors.
+< 
+< Licensed under the Apache License, Version 2.0 (the "License");
+< you may not use this file except in compliance with the License.
+< You may obtain a copy of the License at
+< 
+<     http://www.apache.org/licenses/LICENSE-2.0
+< 
+< Unless required by applicable law or agreed to in writing, software
+< distributed under the License is distributed on an "AS IS" BASIS,
+< WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+< See the License for the specific language governing permissions and
+< limitations under the License.
+< */
+< 
+< package iptables
+< 
+< import (
+< 	"context"
+< 	"fmt"
+< 	"io"
+< 	"sync"
+< 	"sync/atomic"
+< 	"testing"
+< 	"time"
+< 
+< 	"k8s.io/apimachinery/pkg/util/sets"
+< 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+< 	"k8s.io/utils/exec"
+< )
+< 
+< // We can't use the normal FakeExec because we don't know precisely how many times the
+< // Monitor thread will do its checks, and we don't know precisely how its iptables calls
+< // will interleave with the main thread's. So we use our own fake Exec implementation that
+< // implements a minimal iptables interface. This will need updates as iptables.runner
+< // changes its use of Exec.
+< type monitorFakeExec struct {
+< 	sync.Mutex
+< 
+< 	tables map[string]sets.String
+< 
+< 	block      bool
+< 	wasBlocked bool
+< }
+< 
+< func newMonitorFakeExec() *monitorFakeExec {
+< 	tables := make(map[string]sets.String)
+< 	tables["mangle"] = sets.NewString()
+< 	tables["filter"] = sets.NewString()
+< 	tables["nat"] = sets.NewString()
+< 	return &monitorFakeExec{tables: tables}
+< }
+< 
+< func (mfe *monitorFakeExec) blockIPTables(block bool) {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 
+< 	mfe.block = block
+< }
+< 
+< func (mfe *monitorFakeExec) getWasBlocked() bool {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 
+< 	wasBlocked := mfe.wasBlocked
+< 	mfe.wasBlocked = false
+< 	return wasBlocked
+< }
+< 
+< func (mfe *monitorFakeExec) Command(cmd string, args ...string) exec.Cmd {
+< 	return &monitorFakeCmd{mfe: mfe, cmd: cmd, args: args}
+< }
+< 
+< func (mfe *monitorFakeExec) CommandContext(ctx context.Context, cmd string, args ...string) exec.Cmd {
+< 	return mfe.Command(cmd, args...)
+< }
+< 
+< func (mfe *monitorFakeExec) LookPath(file string) (string, error) {
+< 	return file, nil
+< }
+< 
+< type monitorFakeCmd struct {
+< 	mfe  *monitorFakeExec
+< 	cmd  string
+< 	args []string
+< }
+< 
+< func (mfc *monitorFakeCmd) CombinedOutput() ([]byte, error) {
+< 	if mfc.cmd == cmdIPTablesRestore {
+< 		// Only used for "iptables-restore --version", and the result doesn't matter
+< 		return []byte{}, nil
+< 	} else if mfc.cmd != cmdIPTables {
+< 		panic("bad command " + mfc.cmd)
+< 	}
+< 
+< 	if len(mfc.args) == 1 && mfc.args[0] == "--version" {
+< 		return []byte("iptables v1.6.2"), nil
+< 	}
+< 
+< 	if len(mfc.args) != 6 || mfc.args[0] != WaitString || mfc.args[1] != WaitSecondsValue || mfc.args[4] != "-t" {
+< 		panic(fmt.Sprintf("bad args %#v", mfc.args))
+< 	}
+< 	op := operation(mfc.args[2])
+< 	chainName := mfc.args[3]
+< 	tableName := mfc.args[5]
+< 
+< 	mfc.mfe.Lock()
+< 	defer mfc.mfe.Unlock()
+< 
+< 	table := mfc.mfe.tables[tableName]
+< 	if table == nil {
+< 		return []byte{}, fmt.Errorf("no such table %q", tableName)
+< 	}
+< 
+< 	// For ease-of-testing reasons, blockIPTables blocks create and list, but not delete
+< 	if mfc.mfe.block && op != opDeleteChain {
+< 		mfc.mfe.wasBlocked = true
+< 		return []byte{}, exec.CodeExitError{Code: 4, Err: fmt.Errorf("could not get xtables.lock, etc")}
+< 	}
+< 
+< 	switch op {
+< 	case opCreateChain:
+< 		if !table.Has(chainName) {
+< 			table.Insert(chainName)
+< 		}
+< 		return []byte{}, nil
+< 	case opListChain:
+< 		if table.Has(chainName) {
+< 			return []byte{}, nil
+< 		} else {
+< 			return []byte{}, fmt.Errorf("no such chain %q", chainName)
+< 		}
+< 	case opDeleteChain:
+< 		table.Delete(chainName)
+< 		return []byte{}, nil
+< 	default:
+< 		panic("should not be reached")
+< 	}
+< }
+< 
+< func (mfc *monitorFakeCmd) SetStdin(in io.Reader) {
+< 	// Used by getIPTablesRestoreVersionString(), can be ignored
+< }
+< 
+< func (mfc *monitorFakeCmd) Run() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Output() ([]byte, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetDir(dir string) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetStdout(out io.Writer) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetStderr(out io.Writer) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) SetEnv(env []string) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) StdoutPipe() (io.ReadCloser, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) StderrPipe() (io.ReadCloser, error) {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Start() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Wait() error {
+< 	panic("should not be reached")
+< }
+< func (mfc *monitorFakeCmd) Stop() {
+< 	panic("should not be reached")
+< }
+< 
+< func TestIPTablesMonitor(t *testing.T) {
+< 	mfe := newMonitorFakeExec()
+< 	ipt := New(mfe, ProtocolIpv4)
+< 
+< 	var reloads uint32
+< 	stopCh := make(chan struct{})
+< 
+< 	canary := Chain("MONITOR-TEST-CANARY")
+< 	tables := []Table{TableMangle, TableFilter, TableNAT}
+< 	go ipt.Monitor(canary, tables, func() {
+< 		if !ensureNoChains(mfe) {
+< 			t.Errorf("reload called while canaries still exist")
+< 		}
+< 		atomic.AddUint32(&reloads, 1)
+< 	}, 100*time.Millisecond, stopCh)
+< 
+< 	// Monitor should create canary chains quickly
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	if err := waitForReloads(&reloads, 0); err != nil {
+< 		t.Errorf("got unexpected reloads: %v", err)
+< 	}
+< 
+< 	// If we delete all of the chains, it should reload
+< 	ipt.DeleteChain(TableMangle, canary)
+< 	ipt.DeleteChain(TableFilter, canary)
+< 	ipt.DeleteChain(TableNAT, canary)
+< 
+< 	if err := waitForReloads(&reloads, 1); err != nil {
+< 		t.Errorf("got unexpected number of reloads after flush: %v", err)
+< 	}
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	// If we delete two chains, it should not reload yet
+< 	ipt.DeleteChain(TableMangle, canary)
+< 	ipt.DeleteChain(TableFilter, canary)
+< 
+< 	if err := waitForNoReload(&reloads, 1); err != nil {
+< 		t.Errorf("got unexpected number of reloads after partial flush: %v", err)
+< 	}
+< 
+< 	// Now ensure that "iptables -L" will get an error about the xtables.lock, and
+< 	// delete the last chain. The monitor should not reload, because it can't actually
+< 	// tell if the chain was deleted or not.
+< 	mfe.blockIPTables(true)
+< 	ipt.DeleteChain(TableNAT, canary)
+< 	if err := waitForBlocked(mfe); err != nil {
+< 		t.Errorf("failed waiting for monitor to be blocked from monitoring: %v", err)
+< 	}
+< 
+< 	// After unblocking the monitor, it should now reload
+< 	mfe.blockIPTables(false)
+< 
+< 	if err := waitForReloads(&reloads, 2); err != nil {
+< 		t.Errorf("got unexpected number of reloads after slow flush: %v", err)
+< 	}
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	// If we close the stop channel, it should stop running
+< 	close(stopCh)
+< 
+< 	if err := waitForNoReload(&reloads, 2); err != nil {
+< 		t.Errorf("got unexpected number of reloads after stop: %v", err)
+< 	}
+< 	if !ensureNoChains(mfe) {
+< 		t.Errorf("canaries still exist after stopping monitor")
+< 	}
+< 
+< 	// If we create a new monitor while the iptables lock is held, it will
+< 	// retry creating canaries until it succeeds
+< 
+< 	stopCh = make(chan struct{})
+< 	_ = mfe.getWasBlocked()
+< 	mfe.blockIPTables(true)
+< 	go ipt.Monitor(canary, tables, func() {
+< 		if !ensureNoChains(mfe) {
+< 			t.Errorf("reload called while canaries still exist")
+< 		}
+< 		atomic.AddUint32(&reloads, 1)
+< 	}, 100*time.Millisecond, stopCh)
+< 
+< 	// Monitor should not have created canaries yet
+< 	if !ensureNoChains(mfe) {
+< 		t.Errorf("canary created while iptables blocked")
+< 	}
+< 
+< 	if err := waitForBlocked(mfe); err != nil {
+< 		t.Errorf("failed waiting for monitor to fail creating canaries: %v", err)
+< 	}
+< 
+< 	mfe.blockIPTables(false)
+< 	if err := waitForChains(mfe, canary, tables); err != nil {
+< 		t.Errorf("failed to create iptables canaries: %v", err)
+< 	}
+< 
+< 	close(stopCh)
+< }
+< 
+< func waitForChains(mfe *monitorFakeExec, canary Chain, tables []Table) error {
+< 	return utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 		mfe.Lock()
+< 		defer mfe.Unlock()
+< 
+< 		for _, table := range tables {
+< 			if !mfe.tables[string(table)].Has(string(canary)) {
+< 				return false, nil
+< 			}
+< 		}
+< 		return true, nil
+< 	})
+< }
+< 
+< func ensureNoChains(mfe *monitorFakeExec) bool {
+< 	mfe.Lock()
+< 	defer mfe.Unlock()
+< 	return mfe.tables["mangle"].Len() == 0 &&
+< 		mfe.tables["filter"].Len() == 0 &&
+< 		mfe.tables["nat"].Len() == 0
+< }
+< 
+< func waitForReloads(reloads *uint32, expected uint32) error {
+< 	if atomic.LoadUint32(reloads) < expected {
+< 		utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 			return atomic.LoadUint32(reloads) >= expected, nil
+< 		})
+< 	}
+< 	got := atomic.LoadUint32(reloads)
+< 	if got != expected {
+< 		return fmt.Errorf("expected %d, got %d", expected, got)
+< 	}
+< 	return nil
+< }
+< 
+< func waitForNoReload(reloads *uint32, expected uint32) error {
+< 	utilwait.PollImmediate(50*time.Millisecond, 250*time.Millisecond, func() (bool, error) {
+< 		return atomic.LoadUint32(reloads) > expected, nil
+< 	})
+< 
+< 	got := atomic.LoadUint32(reloads)
+< 	if got != expected {
+< 		return fmt.Errorf("expected %d, got %d", expected, got)
+< 	}
+< 	return nil
+< }
+< 
+< func waitForBlocked(mfe *monitorFakeExec) error {
+< 	return utilwait.PollImmediate(100*time.Millisecond, time.Second, func() (bool, error) {
+< 		blocked := mfe.getWasBlocked()
+< 		return blocked, nil
+< 	})
+< }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/iptables/testing/fake.go updated/vendor/k8s.io/kubernetes/pkg/util/iptables/testing/fake.go
+23d22
+< 	"time"
+50a50,53
+> func (*FakeIPTables) GetVersion() (string, error) {
+> 	return "0.0.0", nil
+> }
+> 
+97,99d99
+< 
+< func (f *FakeIPTables) Monitor(canary iptables.Chain, tables []iptables.Table, reloadFunc func(), interval time.Duration, stopCh <-chan struct{}) {
+< }
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/test/e2e/network/networking.go updated/vendor/k8s.io/kubernetes/test/e2e/network/networking.go
+22d21
+< 	"strings"
+25d23
+< 	utilwait "k8s.io/apimachinery/pkg/util/wait"
+237,320d234
+< 		})
+< 
+< 		It("should recreate its iptables rules if they are deleted [Disruptive]", func() {
+< 			framework.SkipUnlessProviderIs(framework.ProvidersWithSSH...)
+< 			framework.SkipUnlessSSHKeyPresent()
+< 
+< 			hosts, err := framework.NodeSSHHosts(f.ClientSet)
+< 			framework.ExpectNoError(err, "failed to find external/internal IPs for every node")
+< 			if len(hosts) == 0 {
+< 				framework.Failf("No ssh-able nodes")
+< 			}
+< 			host := hosts[0]
+< 
+< 			ns := f.Namespace.Name
+< 			numPods, servicePort := 3, defaultServeHostnameServicePort
+< 			svc := "iptables-flush-test"
+< 
+< 			defer func() {
+< 				framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc))
+< 			}()
+< 			podNames, svcIP, err := framework.StartServeHostnameService(f.ClientSet, f.InternalClientset, getServeHostnameService(svc), ns, numPods)
+< 			framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc, ns)
+< 
+< 			// Ideally we want to reload the system firewall, but we don't necessarily
+< 			// know how to do that on this system ("firewall-cmd --reload"? "systemctl
+< 			// restart iptables"?). So instead we just manually delete all "KUBE-"
+< 			// chains.
+< 
+< 			By("dumping iptables rules on a node")
+< 			result, err := framework.SSH("sudo iptables-save", host, framework.TestContext.Provider)
+< 			if err != nil || result.Code != 0 {
+< 				framework.LogSSHResult(result)
+< 				framework.Failf("couldn't dump iptable rules: %v", err)
+< 			}
+< 
+< 			// All the commands that delete rules have to come before all the commands
+< 			// that delete chains, since the chains can't be deleted while there are
+< 			// still rules referencing them.
+< 			var deleteRuleCmds, deleteChainCmds []string
+< 			table := ""
+< 			for _, line := range strings.Split(result.Stdout, "\n") {
+< 				if strings.HasPrefix(line, "*") {
+< 					table = line[1:]
+< 				} else if table == "" {
+< 					continue
+< 				}
+< 
+< 				// Delete jumps from non-KUBE chains to KUBE chains
+< 				if !strings.HasPrefix(line, "-A KUBE-") && strings.Contains(line, "-j KUBE-") {
+< 					deleteRuleCmds = append(deleteRuleCmds, fmt.Sprintf("sudo iptables -t %s -D %s || true", table, line[3:]))
+< 				}
+< 				// Flush and delete all KUBE chains
+< 				if strings.HasPrefix(line, ":KUBE-") {
+< 					chain := strings.Split(line, " ")[0][1:]
+< 					deleteRuleCmds = append(deleteRuleCmds, fmt.Sprintf("sudo iptables -t %s -F %s || true", table, chain))
+< 					deleteChainCmds = append(deleteChainCmds, fmt.Sprintf("sudo iptables -t %s -X %s || true", table, chain))
+< 				}
+< 			}
+< 			cmd := strings.Join(append(deleteRuleCmds, deleteChainCmds...), "\n")
+< 
+< 			By("deleting all KUBE-* iptables chains")
+< 			result, err = framework.SSH(cmd, host, framework.TestContext.Provider)
+< 			if err != nil || result.Code != 0 {
+< 				framework.LogSSHResult(result)
+< 				framework.Failf("couldn't delete iptable rules: %v", err)
+< 			}
+< 
+< 			By("verifying that kube-proxy rules are eventually recreated")
+< 			framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(f.ClientSet, ns, host, podNames, svcIP, servicePort))
+< 
+< 			By("verifying that kubelet rules are eventually recreated")
+< 			err = utilwait.PollImmediate(framework.Poll, framework.RestartNodeReadyAgainTimeout, func() (bool, error) {
+< 				result, err = framework.SSH("sudo iptables-save -t nat", host, framework.TestContext.Provider)
+< 				if err != nil || result.Code != 0 {
+< 					framework.LogSSHResult(result)
+< 					return false, err
+< 				}
+< 
+< 				if strings.Contains(result.Stdout, "\n-A KUBE-MARK-DROP ") {
+< 					return true, nil
+< 				}
+< 				return false, nil
+< 			})
+< 			framework.ExpectNoError(err, "kubelet did not recreate its iptables rules")
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/test/e2e/network/service.go updated/vendor/k8s.io/kubernetes/test/e2e/network/service.go
+410a411,422
+> 
+> 		By("Removing iptable rules")
+> 		result, err := framework.SSH(`
+> 			sudo iptables -t nat -F KUBE-SERVICES || true;
+> 			sudo iptables -t nat -F KUBE-PORTALS-HOST || true;
+> 			sudo iptables -t nat -F KUBE-PORTALS-CONTAINER || true`, host, framework.TestContext.Provider)
+> 		if err != nil || result.Code != 0 {
+> 			framework.LogSSHResult(result)
+> 			framework.Failf("couldn't remove iptable rules: %v", err)
+> 		}
+> 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames1, svc1IP, servicePort))
+> 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
