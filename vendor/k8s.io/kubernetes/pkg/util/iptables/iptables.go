@@ -397,14 +397,11 @@ func (runner *runner) restoreInternal(args []string, data []byte, flush FlushFla
 	}
 
 	// run the command and return the output or an error including the output and error
-	myCmd := runner.exec.Command(cmdIPTables, "-S")
-	myCmd.SetStdin(bytes.NewBuffer(data))
-	c, err2 := myCmd.CombinedOutput()
-	if err2 == nil {
-		klog.Errorf("KEYWORD---DUMP OF IPTABLES--\n%s\n---END OF DUMP---", c)
-	}
-	if err2 != nil {
-		klog.Errorf("KEYWORD: NOT AS GOOD %v -- %s --", err2, c)
+	myCmd1 := runner.exec.Command(cmdIPTables, "-S")
+	myCmd1.SetStdin(bytes.NewBuffer(data))
+	d, err3 := myCmd1.CombinedOutput()
+	if err3 != nil {
+		klog.Errorf("KEYWORD: NOT AS GOOD %v -- %s --", err3, d)
 	}
 	fullArgs := append(runner.restoreWaitFlag, args...)
 	iptablesRestoreCmd := iptablesRestoreCommand(runner.protocol)
@@ -413,11 +410,14 @@ func (runner *runner) restoreInternal(args []string, data []byte, flush FlushFla
 	cmd.SetStdin(bytes.NewBuffer(data))
 	b, err := cmd.CombinedOutput()
 	if err != nil {
+		if err3 == nil {
+			klog.Errorf("KEYWORD---DUMP OF IPTABLES before restore --\n%s\n---END OF DUMP before restore ---", d)
+		}
 		myCmd := runner.exec.Command(cmdIPTables, "-S")
 		myCmd.SetStdin(bytes.NewBuffer(data))
 		c, err2 := myCmd.CombinedOutput()
 		if err2 == nil {
-			klog.Errorf("KEYWORD---DUMP OF IPTABLES--\n%s\n---END OF DUMP---", c)
+			klog.Errorf("KEYWORD---DUMP OF IPTABLES after restore --\n%s\n---END OF DUMP after ---", c)
 		}
 		if err2 != nil {
 			klog.Errorf("KEYWORD: NOT AS GOOD %v -- %s --", err, c)
