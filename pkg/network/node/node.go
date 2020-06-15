@@ -133,6 +133,8 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
+		minOvsVersion = "2.6.0"
+		useConnTrack = true
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
