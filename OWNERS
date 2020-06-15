@@ -1,5 +1,8 @@
 reviewers:
+  - abhat
   - alexanderConstantinescu
+  - aojea
+  - danielmellado
   - danwinship
   - dcbw
   - JacobTanenbaum
@@ -7,7 +10,9 @@ reviewers:
   - pecameron
   - rcarrillocruz
   - squeed
+  - tssurya
 approvers:
+  - abhat
   - danwinship
   - dcbw
   - knobunc
