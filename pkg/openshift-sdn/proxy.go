@@ -59,17 +59,19 @@ func (sdn *OpenShiftSDN) initProxy() error {
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
 func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
-	protocol := utiliptables.ProtocolIpv4
 	bindAddr := net.ParseIP(sdn.ProxyConfig.BindAddress)
-	if bindAddr.To4() == nil {
-		protocol = utiliptables.ProtocolIpv6
-	}
 	nodeAddr := bindAddr
-	if nodeAddr.Equal(net.IPv4zero) {
+
+	if nodeAddr.IsUnspecified() {
 		nodeAddr = net.ParseIP(sdn.nodeIP)
 		if nodeAddr == nil {
 			klog.Fatalf("Unable to parse node IP %q", sdn.nodeIP)
 		}
+	}
+
+	protocol := utiliptables.ProtocolIpv4
+	if nodeAddr.To4() == nil {
+		protocol = utiliptables.ProtocolIpv6
 	}
 
 	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
