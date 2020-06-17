@@ -397,7 +397,8 @@ func (runner *runner) restoreInternal(args []string, data []byte, flush FlushFla
 	}
 
 	// run the command and return the output or an error including the output and error
-	myCmd1 := runner.exec.Command(cmdIPTables, "-S")
+	//myCmd1 := runner.exec.Command(cmdIPTables, "-S")
+	myCmd1 := runner.exec.Command(cmdIPTablesSave)
 	myCmd1.SetStdin(bytes.NewBuffer(data))
 	d, err3 := myCmd1.CombinedOutput()
 	if err3 != nil {
@@ -413,7 +414,8 @@ func (runner *runner) restoreInternal(args []string, data []byte, flush FlushFla
 		if err3 == nil {
 			klog.Errorf("KEYWORD---DUMP OF IPTABLES before restore --\n%s\n---END OF DUMP before restore ---", d)
 		}
-		myCmd := runner.exec.Command(cmdIPTables, "-S")
+		//myCmd := runner.exec.Command(cmdIPTables, "-S")
+		myCmd := runner.exec.Command(cmdIPTablesSave)
 		myCmd.SetStdin(bytes.NewBuffer(data))
 		c, err2 := myCmd.CombinedOutput()
 		if err2 == nil {
