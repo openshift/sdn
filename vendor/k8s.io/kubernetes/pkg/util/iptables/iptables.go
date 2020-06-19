@@ -415,15 +415,15 @@ func (runner *runner) restoreInternal(args []string, data []byte, flush FlushFla
 			klog.Errorf("KEYWORD---DUMP OF IPTABLES before restore --\n%s\n---END OF DUMP before restore ---", d)
 		}
 		//myCmd := runner.exec.Command(cmdIPTables, "-S")
-		myCmd := runner.exec.Command(cmdIPTablesSave)
-		myCmd.SetStdin(bytes.NewBuffer(data))
-		c, err2 := myCmd.CombinedOutput()
-		if err2 == nil {
-			klog.Errorf("KEYWORD---DUMP OF IPTABLES after restore --\n%s\n---END OF DUMP after ---", c)
-		}
-		if err2 != nil {
-			klog.Errorf("KEYWORD: NOT AS GOOD %v -- %s --", err, c)
-		}
+		//		myCmd := runner.exec.Command(cmdIPTablesSave)
+		//		myCmd.SetStdin(bytes.NewBuffer(data))
+		//		c, err2 := myCmd.CombinedOutput()
+		//		if err2 == nil {
+		//			klog.Errorf("KEYWORD---DUMP OF IPTABLES after restore --\n%s\n---END OF DUMP after ---", c)
+		//		}
+		//		if err2 != nil {
+		//			klog.Errorf("KEYWORD: NOT AS GOOD %v -- %s --", err, c)
+		//		}
 		return fmt.Errorf("%v (%s)", err, b)
 	}
 	return nil

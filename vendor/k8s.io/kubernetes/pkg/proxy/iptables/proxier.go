@@ -1540,11 +1540,13 @@ func (proxier *Proxier) syncProxyRules() {
 	proxier.iptablesData.Write(proxier.natChains.Bytes())
 	proxier.iptablesData.Write(proxier.natRules.Bytes())
 
-	//klog.V(2).Infof("Restoring iptables rules: %s", proxier.iptablesData.Bytes())
-	//iptables_dump := proxier.iptablesData.Bytes()
+	klog.V(5).Infof("Restoring iptables rules: %s", proxier.iptablesData.Bytes())
+	iptables_dump := proxier.iptablesData.Bytes()
 	err = proxier.iptables.RestoreAll(proxier.iptablesData.Bytes(), utiliptables.NoFlushTables, utiliptables.RestoreCounters)
 	if err != nil {
 		//klog.Errorf("___---^^^ iptablesData.Bytes() ^^^---___\n%s\n ___---^^^ end of iptablesData.Bytes() ^^^---___", iptables_dump)
+
+		klog.V(2).Infof("\nRestoring iptables rules: %s\n", iptables_dump)
 
 		klog.Errorf("Failed to execute iptables-restore: %v", err)
 		metrics.IptablesRestoreFailuresTotal.Inc()
