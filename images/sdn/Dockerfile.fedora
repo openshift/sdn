@@ -1,32 +1,38 @@
 # This can be used to build images for testing
-
-FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.13 AS builder
-WORKDIR /go/src/github.com/openshift/sdn
-COPY . .
-RUN make build --warn-undefined-variables
-
-FROM fedora:30
-COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node
-COPY --from=builder /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller
-COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
-COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
+FROM fedora:32
 
 RUN INSTALL_PKGS=" \
       openvswitch container-selinux socat ethtool nmap-ncat \
       libmnl libnetfilter_conntrack conntrack-tools \
       libnfnetlink iproute bridge-utils procps-ng \
       iputils binutils xz \
+      golang procps gdb \
       " && \
     yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
     mkdir -p /etc/sysconfig/cni/net.d && \
     yum clean all && rm -rf /var/cache/*
 
+WORKDIR /go/src/github.com/openshift/sdn
+
+COPY . .
 COPY ./images/iptables-scripts/iptables /usr/sbin/
 COPY ./images/iptables-scripts/iptables-save /usr/sbin/
 COPY ./images/iptables-scripts/iptables-restore /usr/sbin/
 COPY ./images/iptables-scripts/ip6tables /usr/sbin/
 COPY ./images/iptables-scripts/ip6tables-save /usr/sbin/
 COPY ./images/iptables-scripts/ip6tables-restore /usr/sbin/
+
+RUN go build -mod=vendor github.com/openshift/sdn/cmd/network-controller && \
+    go build -mod=vendor github.com/openshift/sdn/cmd/openshift-sdn && \
+    go build -mod=vendor github.com/openshift/sdn/cmd/sdn-cni-plugin && \
+    go build -mod=vendor github.com/containernetworking/plugins/plugins/ipam/host-local && \
+    go build -mod=vendor k8s.io/kubernetes/cmd/kube-proxy
+
+RUN mkdir -p /opt/cni/bin /usr/bin/cni && \
+    cp /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node && \
+    cp /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller && \
+    cp /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn && \
+    cp /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
 LABEL io.k8s.display-name="OpenShift SDN" \
       io.k8s.description="This is a component of OpenShift and contains the default SDN implementation." \
