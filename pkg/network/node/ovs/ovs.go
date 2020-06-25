@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"k8s.io/klog"
+	"time"
 
 	utilversion "k8s.io/apimachinery/pkg/util/version"
+	utilwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
 	"k8s.io/utils/exec"
 )
 
@@ -100,6 +101,7 @@ type Transaction interface {
 const (
 	OVS_OFCTL = "ovs-ofctl"
 	OVS_VSCTL = "ovs-vsctl"
+	RETRIES   = 10
 )
 
 // ovsExec implements ovs.Interface via calls to ovs-ofctl and ovs-vsctl
@@ -424,9 +426,19 @@ func (tx *ovsExecTx) DeleteFlows(flow string, args ...interface{}) {
 }
 
 func (tx *ovsExecTx) Commit() error {
-	err := tx.ovsif.bundle(tx.flows)
-
-	// Reset flow context
-	tx.flows = []string{}
-	return err
+	defer func() {
+		tx.flows = []string{}
+	}()
+	backoff := utilwait.Backoff{
+		Duration: 500 * time.Millisecond,
+		Factor:   1.25,
+		Steps:    RETRIES,
+	}
+	return utilwait.ExponentialBackoff(backoff, func() (bool, error) {
+		err := tx.ovsif.bundle(tx.flows)
+		if err == nil {
+			return true, nil
+		}
+		return false, nil
+	})
 }
