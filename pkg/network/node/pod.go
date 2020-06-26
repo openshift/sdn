@@ -15,6 +15,7 @@ import (
 	networkv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -272,7 +273,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		}
 		if err != nil {
 			klog.Warningf("CNI_ADD %s failed: %v", pk, err)
-			PodOperationsErrors.WithLabelValues(PodOperationSetup).Inc()
+			metrics.PodOperationsErrors.WithLabelValues(metrics.PodOperationSetup).Inc()
 			result.Err = err
 		}
 	case cniserver.CNI_UPDATE:
@@ -295,7 +296,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		result.Err = m.podHandler.teardown(request)
 		if result.Err != nil {
 			klog.Warningf("CNI_DEL %s failed: %v", pk, result.Err)
-			PodOperationsErrors.WithLabelValues(PodOperationTeardown).Inc()
+			metrics.PodOperationsErrors.WithLabelValues(metrics.PodOperationTeardown).Inc()
 		}
 	default:
 		result.Err = fmt.Errorf("unhandled CNI request %v", request.Command)
@@ -458,7 +459,7 @@ func podIsExited(p *kcontainer.Pod) bool {
 
 // Set up all networking (host/container veth, OVS flows, IPAM, loopback, etc)
 func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *runningPod, error) {
-	defer PodOperationsLatency.WithLabelValues(PodOperationSetup).Observe(sinceInMicroseconds(time.Now()))
+	defer metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationSetup).Observe(metrics.SinceInMicroseconds(time.Now()))
 
 	// Release any IPAM allocations if the setup failed
 	var success bool
@@ -520,7 +521,7 @@ func (m *podManager) update(req *cniserver.PodRequest) (uint32, error) {
 
 // Clean up all pod networking (clear OVS flows, release IPAM lease, remove host/container veth)
 func (m *podManager) teardown(req *cniserver.PodRequest) error {
-	defer PodOperationsLatency.WithLabelValues(PodOperationTeardown).Observe(sinceInMicroseconds(time.Now()))
+	defer metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationTeardown).Observe(metrics.SinceInMicroseconds(time.Now()))
 
 	errList := []error{}
 
