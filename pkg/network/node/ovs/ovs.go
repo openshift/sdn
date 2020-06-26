@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
@@ -79,6 +81,9 @@ type Interface interface {
 
 	// NewTransaction begins a new OVS transaction.
 	NewTransaction() Transaction
+
+	// UpdateOVSMetrics runs a Dumpflows transaction and sets the gauge with the existing amount of flows
+	UpdateOVSMetrics()
 }
 
 // Transaction manages a single set of OVS flow modifications
@@ -405,6 +410,15 @@ func (ovsif *ovsExec) bundle(flows []string) error {
 	return err
 }
 
+func (ovsif *ovsExec) UpdateOVSMetrics() {
+	flows, err := ovsif.DumpFlows("")
+	if err == nil {
+		metrics.OVSFlows.Set(float64(len(flows)))
+	} else {
+		utilruntime.HandleError(fmt.Errorf("failed to dump OVS flows for metrics: %v", err))
+	}
+}
+
 // ovsExecTx implements ovs.Transaction and maintains current flow context
 type ovsExecTx struct {
 	ovsif *ovsExec
@@ -437,8 +451,10 @@ func (tx *ovsExecTx) Commit() error {
 	return utilwait.ExponentialBackoff(backoff, func() (bool, error) {
 		err := tx.ovsif.bundle(tx.flows)
 		if err == nil {
+			metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationSuccess).Inc()
 			return true, nil
 		}
+		metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationFailure).Inc()
 		return false, nil
 	})
 }

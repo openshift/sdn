@@ -14,6 +14,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
+	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -184,7 +185,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		egressIP:         newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
 	}
 
-	RegisterMetrics()
+	metrics.RegisterMetrics()
 
 	return plugin, nil
 }
@@ -406,7 +407,8 @@ func (node *OsdnNode) Start() error {
 
 	go kwait.Forever(node.policy.SyncVNIDRules, time.Hour)
 	go kwait.Forever(func() {
-		gatherPeriodicMetrics(node.oc.ovs)
+		metrics.GatherPeriodicMetrics()
+		node.oc.ovs.UpdateOVSMetrics()
 	}, time.Minute*2)
 
 	return nil
