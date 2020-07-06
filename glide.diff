@@ -113,9 +113,17 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/kubelet/kubelet
 ---
 > func (kl *Kubelet) syncNetworkUtil() {}
 diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
+35c35
+< 	v1 "k8s.io/api/core/v1"
+---
+> 	"k8s.io/api/core/v1"
 191d190
 < 	changesPending       bool
-327,333c326
+193d191
+< 	syncPeriod           time.Duration
+305d302
+< 		syncPeriod:               syncPeriod,
+329,335c326
 < 	// We pass syncPeriod to ipt.Monitor, which will call us only if it needs to.
 < 	// We need to pass *some* maxInterval to NewBoundedFrequencyRunner anyway though.
 < 	// time.Hour is arbitrary.
@@ -125,23 +133,23 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/
 < 		proxier.forceSyncProxyRules, syncPeriod, wait.NeverStop)
 ---
 > 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
-465d457
+467d457
 < 	proxier.changesPending = true
-500d491
+502d491
 < 		proxier.changesPending = true
-525c516
+527c516
 < 	proxier.forceSyncProxyRules()
 ---
 > 	proxier.syncProxyRules()
-557c548
+559c548
 < 	proxier.forceSyncProxyRules()
 ---
 > 	proxier.syncProxyRules()
-593c584
+595c584
 < 	proxier.forceSyncProxyRules()
 ---
 > 	proxier.syncProxyRules()
-683,690d673
+685,692d673
 < func (proxier *Proxier) maybeSyncProxyRules() {
 < 	proxier.syncProxyRules(false)
 < }
@@ -150,11 +158,11 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/
 < 	proxier.syncProxyRules(true)
 < }
 < 
-694c677
+696c677
 < func (proxier *Proxier) syncProxyRules(force bool) {
 ---
 > func (proxier *Proxier) syncProxyRules() {
-704,712d686
+706,714d686
 < 	if !force && !proxier.changesPending {
 < 		// Nothing to do; just update healthz timestamp.
 < 		if proxier.healthzServer != nil {
@@ -164,7 +172,17 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/
 < 		return
 < 	}
 < 
-1456,1457d1429
+743,750d714
+< 	success := false
+< 	defer func() {
+< 		if !success {
+< 			klog.Infof("Sync failed; retrying in %s", proxier.syncPeriod)
+< 			proxier.syncRunner.RetryAfter(proxier.syncPeriod)
+< 		}
+< 	}()
+< 
+1466,1468d1429
+< 	success = true
 < 	proxier.changesPending = false
 < 
 diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go updated/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier_openshift.go
@@ -175,6 +193,396 @@ diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/proxy/iptables/
 diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/BUILD
 19a20
 >         "//pkg/util/dbus:all-srcs",
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/async/bounded_frequency_runner.go updated/vendor/k8s.io/kubernetes/pkg/util/async/bounded_frequency_runner.go
+43,46d42
+< 
+< 	retry     chan struct{} // schedule a retry
+< 	retryMu   sync.Mutex    // guards retryTime
+< 	retryTime time.Time     // when to retry
+79,81d74
+< 	// Remaining returns the time until the timer will go off (if it is running).
+< 	Remaining() time.Duration
+< 
+91,96c84
+< 	timer *time.Timer
+< 	next  time.Time
+< }
+< 
+< func (rt *realTimer) C() <-chan time.Time {
+< 	return rt.timer.C
+---
+> 	*time.Timer
+99,101c87,88
+< func (rt *realTimer) Reset(d time.Duration) bool {
+< 	rt.next = time.Now().Add(d)
+< 	return rt.timer.Reset(d)
+---
+> func (rt realTimer) C() <-chan time.Time {
+> 	return rt.Timer.C
+104,108c91
+< func (rt *realTimer) Stop() bool {
+< 	return rt.timer.Stop()
+< }
+< 
+< func (rt *realTimer) Now() time.Time {
+---
+> func (rt realTimer) Now() time.Time {
+112,116c95
+< func (rt *realTimer) Remaining() time.Duration {
+< 	return rt.next.Sub(time.Now())
+< }
+< 
+< func (rt *realTimer) Since(t time.Time) time.Duration {
+---
+> func (rt realTimer) Since(t time.Time) time.Duration {
+120c99
+< func (rt *realTimer) Sleep(d time.Duration) {
+---
+> func (rt realTimer) Sleep(d time.Duration) {
+124c103
+< var _ timer = &realTimer{}
+---
+> var _ timer = realTimer{}
+156,157c135,136
+< 	timer := &realTimer{timer: time.NewTimer(0)} // will tick immediately
+< 	<-timer.C()                                  // consume the first tick
+---
+> 	timer := realTimer{Timer: time.NewTimer(0)} // will tick immediately
+> 	<-timer.C()                                 // consume the first tick
+176d154
+< 		retry:       make(chan struct{}, 1),
+204,205d181
+< 		case <-bfr.retry:
+< 			bfr.doRetry()
+226,255d201
+< // RetryAfter ensures that the function will run again after no later than interval. This
+< // can be called from inside a run of the BoundedFrequencyRunner's function, or
+< // asynchronously.
+< func (bfr *BoundedFrequencyRunner) RetryAfter(interval time.Duration) {
+< 	// This could be called either with or without bfr.mu held, so we can't grab that
+< 	// lock, and therefore we can't update the timer directly.
+< 
+< 	// If the Loop thread is currently running fn then it may be a while before it
+< 	// processes our retry request. But we want to retry at interval from now, not at
+< 	// interval from "whenever doRetry eventually gets called". So we convert to
+< 	// absolute time.
+< 	retryTime := bfr.timer.Now().Add(interval)
+< 
+< 	// We can't just write retryTime to a channel because there could be multiple
+< 	// RetryAfter calls before Loop gets a chance to read from the channel. So we
+< 	// record the soonest requested retry time in bfr.retryTime and then only signal
+< 	// the Loop thread once, just like Run does.
+< 	bfr.retryMu.Lock()
+< 	defer bfr.retryMu.Unlock()
+< 	if !bfr.retryTime.IsZero() && bfr.retryTime.Before(retryTime) {
+< 		return
+< 	}
+< 	bfr.retryTime = retryTime
+< 
+< 	select {
+< 	case bfr.retry <- struct{}{}:
+< 	default:
+< 	}
+< }
+< 
+265,285d210
+< func (bfr *BoundedFrequencyRunner) doRetry() {
+< 	bfr.mu.Lock()
+< 	defer bfr.mu.Unlock()
+< 	bfr.retryMu.Lock()
+< 	defer bfr.retryMu.Unlock()
+< 
+< 	if bfr.retryTime.IsZero() {
+< 		return
+< 	}
+< 
+< 	// Timer wants an interval not an absolute time, so convert retryTime back now
+< 	retryInterval := bfr.retryTime.Sub(bfr.timer.Now())
+< 	bfr.retryTime = time.Time{}
+< 	if retryInterval < bfr.timer.Remaining() {
+< 		klog.V(3).Infof("%s: retrying in %v", bfr.name, retryInterval)
+< 		bfr.timer.Stop()
+< 		bfr.timer.Reset(retryInterval)
+< 	}
+< }
+< 
+< // assumes the lock is not held
+301,303c226,229
+< 	elapsed := bfr.timer.Since(bfr.lastRun)   // how long since last run
+< 	nextPossible := bfr.minInterval - elapsed // time to next possible run
+< 	nextScheduled := bfr.timer.Remaining()    // time to next scheduled run
+---
+> 
+> 	elapsed := bfr.timer.Since(bfr.lastRun)    // how long since last run
+> 	nextPossible := bfr.minInterval - elapsed  // time to next possible run
+> 	nextScheduled := bfr.maxInterval - elapsed // time to next periodic run
+306,307d231
+< 	// It's hard to avoid race conditions in the unit tests unless we always reset
+< 	// the timer here, even when it's unchanged
+309c233,237
+< 		nextScheduled = nextPossible
+---
+> 		// Set the timer for ASAP, but don't drain here.  Assuming Loop is running,
+> 		// it might get a delivery in the mean time, but that is OK.
+> 		bfr.timer.Stop()
+> 		bfr.timer.Reset(nextPossible)
+> 		klog.V(3).Infof("%s: throttled, scheduling run in %v", bfr.name, nextPossible)
+311,312d238
+< 	bfr.timer.Stop()
+< 	bfr.timer.Reset(nextScheduled)
+diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/async/bounded_frequency_runner_test.go updated/vendor/k8s.io/kubernetes/pkg/util/async/bounded_frequency_runner_test.go
+27,29c27,28
+< 	lock    sync.Mutex
+< 	run     bool
+< 	retryFn func()
+---
+> 	lock sync.Mutex
+> 	run  bool
+36,40d34
+< 
+< 	if r.retryFn != nil {
+< 		r.retryFn()
+< 		r.retryFn = nil
+< 	}
+51,56d44
+< func (r *receiver) setRetryFn(retryFn func()) {
+< 	r.lock.Lock()
+< 	defer r.lock.Unlock()
+< 	r.retryFn = retryFn
+< }
+< 
+67,70c55,57
+< 	lock    sync.Mutex
+< 	now     time.Time
+< 	timeout time.Time
+< 	active  bool
+---
+> 	lock   sync.Mutex
+> 	now    time.Time
+> 	active bool
+77c64
+< 		now:     time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+---
+> 		now:     time.Date(2000, 0, 0, 0, 0, 0, 0, time.UTC),
+94d80
+< 	ft.timeout = ft.now.Add(in)
+121,127d106
+< func (ft *fakeTimer) Remaining() time.Duration {
+< 	ft.lock.Lock()
+< 	defer ft.lock.Unlock()
+< 
+< 	return ft.timeout.Sub(ft.now)
+< }
+< 
+136c115,117
+< 	// ft.advance grabs ft.lock
+---
+> 	ft.lock.Lock()
+> 	defer ft.lock.Unlock()
+> 
+146,149c127,135
+< 	if ft.active && !ft.now.Before(ft.timeout) {
+< 		ft.active = false
+< 		ft.c <- ft.timeout
+< 	}
+---
+> }
+> 
+> // send a timer tick.
+> func (ft *fakeTimer) tick() {
+> 	ft.lock.Lock()
+> 	defer ft.lock.Unlock()
+> 
+> 	ft.active = false
+> 	ft.c <- ft.now
+190,195d175
+< func waitForRunWithRetry(name string, t *testing.T, timer *fakeTimer, obj *receiver, expectNext time.Duration) {
+< 	// It will first get reset as with a normal run, and then get set again
+< 	waitForRun(name, t, timer, obj)
+< 	waitForReset(name, t, timer, obj, false, expectNext)
+< }
+< 
+200,210d179
+< func waitForNothing(name string, t *testing.T, timer *fakeTimer, obj *receiver) {
+< 	select {
+< 	case <-timer.c:
+< 		t.Fatalf("%s: unexpected timer tick", name)
+< 	case upd := <-timer.updated:
+< 		t.Fatalf("%s: unexpected timer update %v", name, upd)
+< 	default:
+< 	}
+< 	checkReceiver(name, t, obj, false)
+< }
+< 
+240c209
+< 	// Do the deferred run
+---
+> 	// Run again, once minInterval has passed (race with timer).
+241a211
+> 	runner.Run()
+244c214,215
+< 	// Try again immediately
+---
+> 	// Run again, before minInterval expires.
+> 	// rel=0ms
+253c224
+< 	// Ensure that we don't run again early
+---
+> 	// Let the timer tick prematurely.
+255c226,227
+< 	waitForNothing("premature", t, timer, obj)
+---
+> 	timer.tick()
+> 	waitForDefer("premature tick", t, timer, obj, 1*time.Millisecond)
+257c229
+< 	// Do the deferred run
+---
+> 	// Let the timer tick.
+259c231,232
+< 	waitForRun("third run", t, timer, obj)
+---
+> 	timer.tick()
+> 	waitForRun("first tick", t, timer, obj)
+261,267c234,237
+< 	// Let minInterval pass, but there are no runs queued
+< 	timer.advance(1 * time.Second) // rel=1000ms
+< 	waitForNothing("minInterval", t, timer, obj)
+< 
+< 	// Let maxInterval pass
+< 	timer.advance(9 * time.Second) // rel=10000ms
+< 	waitForRun("maxInterval", t, timer, obj)
+---
+> 	// Let the timer tick.
+> 	timer.advance(10 * time.Second) // rel=10000ms
+> 	timer.tick()
+> 	waitForRun("second tick", t, timer, obj)
+272c242
+< 	waitForDefer("too soon after maxInterval run", t, timer, obj, 999*time.Millisecond)
+---
+> 	waitForDefer("too soon after tick", t, timer, obj, 999*time.Millisecond)
+274c244
+< 	// Let minInterval pass
+---
+> 	// Let the timer tick.
+276c246,247
+< 	waitForRun("fourth run", t, timer, obj)
+---
+> 	timer.tick()
+> 	waitForRun("third tick", t, timer, obj)
+321,322c292
+< 	// Advance timer enough to replenish bursts, but not enough to be minInterval
+< 	// after the last run
+---
+> 	// Run again, once burst has replenished.
+324d293
+< 	waitForNothing("not minInterval", t, timer, obj)
+338c307
+< 	// Advance and do the deferred run
+---
+> 	// Run again, once burst has replenished.
+339a309
+> 	runner.Run()
+351c321
+< 	// Wait until minInterval after the last run
+---
+> 	// Let the timer tick.
+353c323,324
+< 	waitForRun("seventh run", t, timer, obj)
+---
+> 	timer.tick()
+> 	waitForRun("first tick", t, timer, obj)
+355c326
+< 	// Wait for maxInterval
+---
+> 	// Let the timer tick.
+357,440c328,329
+< 	waitForRun("maxInterval", t, timer, obj)
+< 
+< 	// Clean up.
+< 	stop <- struct{}{}
+< }
+< 
+< func Test_BoundedFrequencyRunnerRetryAfter(t *testing.T) {
+< 	obj := &receiver{}
+< 	timer := newFakeTimer()
+< 	runner := construct("test-runner", obj.F, minInterval, maxInterval, 1, timer)
+< 	stop := make(chan struct{})
+< 
+< 	var upd timerUpdate
+< 
+< 	// Start.
+< 	go runner.Loop(stop)
+< 	upd = <-timer.updated // wait for initial time to be set to max
+< 	checkTimer("init", t, upd, true, maxInterval)
+< 	checkReceiver("init", t, obj, false)
+< 
+< 	// Run once, immediately, and queue a retry
+< 	// rel=0ms
+< 	obj.setRetryFn(func() { runner.RetryAfter(5 * time.Second) })
+< 	runner.Run()
+< 	waitForRunWithRetry("first run", t, timer, obj, 5*time.Second)
+< 
+< 	// Nothing happens...
+< 	timer.advance(time.Second) // rel=1000ms
+< 	waitForNothing("minInterval, nothing queued", t, timer, obj)
+< 
+< 	// After retryInterval, function is called
+< 	timer.advance(4 * time.Second) // rel=5000ms
+< 	waitForRun("retry", t, timer, obj)
+< 
+< 	// Run again, before minInterval expires.
+< 	timer.advance(499 * time.Millisecond) // rel=499ms
+< 	runner.Run()
+< 	waitForDefer("too soon after retry", t, timer, obj, 501*time.Millisecond)
+< 
+< 	// Do the deferred run, queue another retry after it returns
+< 	timer.advance(501 * time.Millisecond) // rel=1000ms
+< 	runner.RetryAfter(5 * time.Second)
+< 	waitForRunWithRetry("second run", t, timer, obj, 5*time.Second)
+< 
+< 	// Wait for minInterval to pass
+< 	timer.advance(time.Second) // rel=1000ms
+< 	waitForNothing("minInterval, nothing queued", t, timer, obj)
+< 
+< 	// Now do another run
+< 	runner.Run()
+< 	waitForRun("third run", t, timer, obj)
+< 
+< 	// Retry was cancelled because we already ran
+< 	timer.advance(4 * time.Second)
+< 	waitForNothing("retry cancelled", t, timer, obj)
+< 
+< 	// Run, queue a retry from a goroutine
+< 	obj.setRetryFn(func() {
+< 		go func() {
+< 			time.Sleep(100 * time.Millisecond)
+< 			runner.RetryAfter(5 * time.Second)
+< 		}()
+< 	})
+< 	runner.Run()
+< 	waitForRunWithRetry("fourth run", t, timer, obj, 5*time.Second)
+< 
+< 	// Call Run again before minInterval passes
+< 	timer.advance(100 * time.Millisecond) // rel=100ms
+< 	runner.Run()
+< 	waitForDefer("too soon after fourth run", t, timer, obj, 900*time.Millisecond)
+< 
+< 	// Deferred run will run after minInterval passes
+< 	timer.advance(900 * time.Millisecond) // rel=1000ms
+< 	waitForRun("fifth run", t, timer, obj)
+< 
+< 	// Retry was cancelled because we already ran
+< 	timer.advance(4 * time.Second) // rel=4s since run, 5s since RetryAfter
+< 	waitForNothing("retry cancelled", t, timer, obj)
+< 
+< 	// Rerun happens after maxInterval
+< 	timer.advance(5 * time.Second) // rel=9s since run, 10s since RetryAfter
+< 	waitForNothing("premature", t, timer, obj)
+< 	timer.advance(time.Second) // rel=10s since run
+< 	waitForRun("maxInterval", t, timer, obj)
+---
+> 	timer.tick()
+> 	waitForRun("second tick", t, timer, obj)
 diff --no-dereference -N -r current/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD updated/vendor/k8s.io/kubernetes/pkg/util/dbus/BUILD
 0a1,38
 > package(default_visibility = ["//visibility:public"])
