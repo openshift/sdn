@@ -95,7 +95,6 @@ type OsdnNode struct {
 	localGatewayCIDR string
 	localIP          string
 	hostName         string
-	useConnTrack     bool
 	masqueradeBit    uint32
 
 	// Synchronizes operations on egressPolicies
@@ -126,7 +125,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	var policy osdnPolicy
 	var pluginId int
 	var minOvsVersion string
-	var useConnTrack bool
 	switch strings.ToLower(networkInfo.PluginName) {
 	case networkutils.SingleTenantPluginName:
 		policy = NewSingleTenantPlugin()
@@ -137,13 +135,11 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
-		minOvsVersion = "2.6.0"
-		useConnTrack = true
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
 	}
 
-	if useConnTrack && c.ProxyMode == kubeproxyconfig.ProxyModeUserspace {
+	if c.ProxyMode == kubeproxyconfig.ProxyModeUserspace {
 		return nil, fmt.Errorf("%q plugin is not compatible with proxy-mode %q", networkInfo.PluginName, c.ProxyMode)
 	}
 
@@ -153,7 +149,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	oc := NewOVSController(ovsif, pluginId, useConnTrack, c.NodeIP)
+	oc := NewOVSController(ovsif, pluginId, c.NodeIP)
 
 	masqBit := uint32(0)
 	if c.MasqueradeBit != nil {
@@ -175,7 +171,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		podManager:       newPodManager(c.KClient, policy, networkInfo.MTU, oc),
 		localIP:          c.NodeIP,
 		hostName:         c.NodeName,
-		useConnTrack:     useConnTrack,
 		ipt:              c.IPTables,
 		masqueradeBit:    masqBit,
 		egressPolicies:   make(map[uint32][]networkapi.EgressNetworkPolicy),
@@ -347,7 +342,7 @@ func (node *OsdnNode) Start() error {
 		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
 
-	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, node.networkInfo.VXLANPort, node.masqueradeBit)
 	if err = node.nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
 	}
@@ -370,9 +365,6 @@ func (node *OsdnNode) Start() error {
 		if err := node.egressIP.Start(node.networkInformers, node.nodeIPTables); err != nil {
 			return err
 		}
-	}
-	if !node.useConnTrack {
-		node.watchServices()
 	}
 
 	existingPodSandboxes, err := node.getSDNPodSandboxes()

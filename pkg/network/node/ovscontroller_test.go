@@ -22,7 +22,7 @@ import (
 
 func setupOVSController(t *testing.T) (ovs.Interface, *ovsController, []string) {
 	ovsif := ovs.NewFake(Br0)
-	oc := NewOVSController(ovsif, 0, true, "172.17.0.4")
+	oc := NewOVSController(ovsif, 0, "172.17.0.4")
 	oc.tunMAC = "c6:ac:2c:13:48:4b"
 	err := oc.SetupOVS([]string{"10.128.0.0/14"}, "172.30.0.0/16", "10.128.0.0/23", "10.128.0.1", 1450, 4789)
 	if err != nil {
@@ -802,7 +802,7 @@ func TestAlreadySetUp(t *testing.T) {
 		if err := ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13"); err != nil {
 			t.Fatalf("(%d) unexpected error from AddBridge: %v", i, err)
 		}
-		oc := NewOVSController(ovsif, 0, true, "172.17.0.4")
+		oc := NewOVSController(ovsif, 0, "172.17.0.4")
 		/* In order to test AlreadySetUp the vxlan port has to be added, we are not testing AddPort here */
 		_, err := ovsif.AddPort("vxlan0", 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`, fmt.Sprintf("options:dst_port=%d", 4789))
 		if err != nil {
