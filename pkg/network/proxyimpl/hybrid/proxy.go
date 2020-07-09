@@ -57,6 +57,7 @@ type HybridProxier struct {
 func NewHybridProxier(
 	mainProxy RunnableProxy,
 	unidlingProxy RunnableProxy,
+	syncPeriod time.Duration,
 	minSyncPeriod time.Duration,
 	serviceLister corev1listers.ServiceLister,
 ) (*HybridProxier, error) {
@@ -70,7 +71,7 @@ func NewHybridProxier(
 		switchedToUserspace: make(map[types.NamespacedName]bool),
 	}
 
-	p.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", p.syncProxyRules, minSyncPeriod, time.Hour, 4)
+	p.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", p.syncProxyRules, minSyncPeriod, syncPeriod, 4)
 
 	// Hackery abound: we want to make sure that changes are applied
 	// to both proxies at approximately the same time. That means that we
