@@ -109,7 +109,7 @@ func TestTransactionSuccess(t *testing.T) {
 	ensureTestResults(t, fexec)
 
 	// Test Failed transaction
-	for i := 0; i < RETRIES; i++ {
+	for i := 0; i < ovsBackoff.Steps; i++ {
 		fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", fmt.Errorf("Something bad happened"))
 	}
 	otx = ovsif.NewTransaction()
@@ -126,7 +126,7 @@ func TestTransactionSuccess(t *testing.T) {
 	ensureInputFlows(t, fakeCmd, expectedInputFlows)
 
 	// Test a couple of failed transaction, but that finally pass
-	for i := 0; i < RETRIES-1; i++ {
+	for i := 0; i < ovsBackoff.Steps-1; i++ {
 		fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", fmt.Errorf("Something bad happened"))
 	}
 	fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", nil)
