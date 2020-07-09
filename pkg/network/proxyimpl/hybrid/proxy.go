@@ -71,7 +71,7 @@ func NewHybridProxier(
 		switchedToUserspace: make(map[types.NamespacedName]bool),
 	}
 
-	p.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", p.syncProxyRules, minSyncPeriod, syncPeriod, 4)
+	p.syncRunner = async.NewBoundedFrequencyRunner("hybrid-sync-runner", p.syncProxyRules, minSyncPeriod, syncPeriod, 4)
 
 	// Hackery abound: we want to make sure that changes are applied
 	// to both proxies at approximately the same time. That means that we

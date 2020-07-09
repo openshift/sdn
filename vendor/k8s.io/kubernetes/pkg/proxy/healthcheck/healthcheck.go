@@ -28,7 +28,7 @@ import (
 	"github.com/lithammer/dedent"
 	"k8s.io/klog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -339,6 +339,7 @@ func (h healthzHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 	resp.Header().Set("Content-Type", "application/json")
 	if !lastUpdated.IsZero() && currentTime.After(lastUpdated.Add(h.hs.healthTimeout)) {
+		klog.V(2).Infof("Service unavailable lastUpdated: %q currentTime: %q", lastUpdated, currentTime)
 		resp.WriteHeader(http.StatusServiceUnavailable)
 	} else {
 		resp.WriteHeader(http.StatusOK)

@@ -613,10 +613,12 @@ func (proxier *Proxier) appendServiceCommentLocked(args []string, svcName string
 }
 
 func (proxier *Proxier) maybeSyncProxyRules() {
+	klog.V(2).Info("maybeSyncProxyRules")
 	proxier.syncProxyRules(false)
 }
 
 func (proxier *Proxier) forceSyncProxyRules() {
+	klog.V(2).Info("forceSyncProxyRules")
 	proxier.syncProxyRules(true)
 }
 
