@@ -106,8 +106,13 @@ type Transaction interface {
 const (
 	OVS_OFCTL = "ovs-ofctl"
 	OVS_VSCTL = "ovs-vsctl"
-	RETRIES   = 10
 )
+
+var ovsBackoff utilwait.Backoff = utilwait.Backoff{
+	Duration: 500 * time.Millisecond,
+	Factor:   1.25,
+	Steps:    10,
+}
 
 // ovsExec implements ovs.Interface via calls to ovs-ofctl and ovs-vsctl
 type ovsExec struct {
@@ -189,7 +194,17 @@ func (ovsif *ovsExec) execWithStdin(cmd string, stdinArgs []string, args ...stri
 }
 
 func (ovsif *ovsExec) exec(cmd string, args ...string) (string, error) {
-	return ovsif.execWithStdin(cmd, nil, args...)
+	var output string
+	var err error
+	return output, utilwait.ExponentialBackoff(ovsBackoff, func() (bool, error) {
+		output, err = ovsif.execWithStdin(cmd, nil, args...)
+		if err == nil {
+			metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationSuccess).Inc()
+			return true, nil
+		}
+		metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationFailure).Inc()
+		return false, nil
+	})
 }
 
 func validateColumns(columns ...string) error {
@@ -443,12 +458,7 @@ func (tx *ovsExecTx) Commit() error {
 	defer func() {
 		tx.flows = []string{}
 	}()
-	backoff := utilwait.Backoff{
-		Duration: 500 * time.Millisecond,
-		Factor:   1.25,
-		Steps:    RETRIES,
-	}
-	return utilwait.ExponentialBackoff(backoff, func() (bool, error) {
+	return utilwait.ExponentialBackoff(ovsBackoff, func() (bool, error) {
 		err := tx.ovsif.bundle(tx.flows)
 		if err == nil {
 			metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationSuccess).Inc()
