@@ -71,7 +71,7 @@ func (oc *ovsController) AlreadySetUp(vxlanPort uint32) bool {
 }
 
 func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway string, mtu uint32, vxlanPort uint32) error {
-	err := oc.ovs.DeleteBridge(true)
+	err := oc.ovs.DeleteBridge()
 	if err != nil {
 		return err
 	}
