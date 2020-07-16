@@ -163,7 +163,7 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
-	proxyInitChan := make(chan bool)
+	proxyInitChan := make(chan struct{})
 	sdn.runProxy(proxyInitChan)
 	sdn.informers.start(stopCh)
 

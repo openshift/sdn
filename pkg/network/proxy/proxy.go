@@ -63,7 +63,7 @@ type OsdnProxy struct {
 
 	// waitChan will be closed when both services and endpoints have
 	// been synced in the proxy
-	waitChan        chan<- bool
+	waitChan        chan<- struct{}
 	servicesSynced  bool
 	endpointsSynced bool
 
@@ -92,7 +92,7 @@ func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) error {
+func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- struct{}) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error

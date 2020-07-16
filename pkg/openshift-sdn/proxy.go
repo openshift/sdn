@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
+
+	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/klog"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,8 +36,6 @@ import (
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
-	"k8s.io/component-base/metrics/legacyregistry"
-	"k8s.io/klog"
 )
 
 // readProxyConfig reads the proxy config from a file
@@ -58,7 +60,7 @@ func (sdn *OpenShiftSDN) initProxy() error {
 
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
-func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
+func (sdn *OpenShiftSDN) runProxy(readyCh chan struct{}) {
 	bindAddr := net.ParseIP(sdn.ProxyConfig.BindAddress)
 	nodeAddr := bindAddr
 
@@ -84,7 +86,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	iptInterface := utiliptables.New(execer, protocol)
 
 	var proxier proxy.Provider
-	var healthzServer healthcheck.ProxierHealthUpdater
+	var proxyHealthUpdater healthcheck.ProxierHealthUpdater
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
@@ -92,8 +94,9 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			UID:       types.UID(sdn.nodeName),
 			Namespace: "",
 		}
-		healthzServer = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+		proxyHealthUpdater = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
 	}
+	readyNotifier := newReadyNotifier(proxyHealthUpdater, readyCh)
 
 	enableUnidling := false
 	var err error
@@ -126,7 +129,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.nodeName,
 			nodeAddr,
 			recorder,
-			healthzServer,
+			readyNotifier,
 			sdn.ProxyConfig.NodePortAddresses,
 		)
 		metrics.RegisterMetrics()
@@ -198,7 +201,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 	)
 	// customized handling registration that inserts a filter if needed
-	if err := sdn.OsdnProxy.Start(proxier, waitChan); err != nil {
+	if err := sdn.OsdnProxy.Start(proxier, readyNotifier.SDNReady()); err != nil {
 		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
 	}
 	proxier = sdn.OsdnProxy
@@ -211,7 +214,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// Start up healthz server
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
-		healthzServer.Run()
+		proxyHealthUpdater.Run()
 	}
 
 	// Start up a metrics server if requested
@@ -235,4 +238,72 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	// periodically sync k8s iptables rules
 	go utilwait.Forever(proxier.SyncLoop, 0)
 	klog.Infof("Started Kubernetes Proxy on %s", sdn.ProxyConfig.BindAddress)
+}
+
+// readyNotifier closes readyCh after sdnCh has been closed and then Update()
+// has been called once more.
+type readyNotifier struct {
+	updater healthcheck.ProxierHealthUpdater
+	sdnCh   chan struct{}
+
+	lock    sync.Mutex
+	proxyCh chan struct{}
+}
+
+// newReadyNotifier closes ch once the sdnCh has been closed (by a caller) and then updater.Updated() has been invoked
+// at least once.
+func newReadyNotifier(updater healthcheck.ProxierHealthUpdater, readyCh chan struct{}) *readyNotifier {
+	sdnCh := make(chan struct{})
+	proxyCh := make(chan struct{})
+	n := &readyNotifier{
+		updater: updater,
+		sdnCh:   sdnCh,
+		proxyCh: proxyCh,
+	}
+	// when both channels have closed, we closed ready and are done
+	go utilwait.Until(func() {
+		<-sdnCh
+		<-proxyCh
+		close(readyCh)
+		klog.Infof("DEBUG: Closed the SDN ready channel")
+	}, time.Second, readyCh)
+	return n
+}
+
+func (p *readyNotifier) QueuedUpdate() {
+	if p.updater == nil {
+		return
+	}
+	p.updater.QueuedUpdate()
+}
+
+func (p *readyNotifier) proxyClosed() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.proxyCh != nil {
+		close(p.proxyCh)
+		p.proxyCh = nil
+		klog.Infof("DEBUG: Closed the proxy ready channel")
+	} else {
+		klog.Infof("DEBUG: Closed the proxy ready channel (already closed)")
+	}
+}
+
+func (p *readyNotifier) Updated() {
+	p.proxyClosed()
+	if p.updater == nil {
+		return
+	}
+	p.updater.Updated()
+}
+
+func (p *readyNotifier) Run() {
+	if p.updater == nil {
+		return
+	}
+	p.updater.Run()
+}
+
+func (p *readyNotifier) SDNReady() chan<- struct{} {
+	return p.sdnCh
 }
