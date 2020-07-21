@@ -109,12 +109,32 @@ func TestTransactionSuccess(t *testing.T) {
 	ensureTestResults(t, fexec)
 
 	// Test Failed transaction
-	fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", fmt.Errorf("Something bad happened"))
+	for i := 0; i < ovsBackoff.Steps; i++ {
+		fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", fmt.Errorf("Something bad happened"))
+	}
 	otx = ovsif.NewTransaction()
 	otx.AddFlow("flow1")
 	otx.DeleteFlows("flow2")
 	if err = otx.Commit(); err == nil {
 		t.Fatalf("Failed to get expected error")
+	}
+	ensureTestResults(t, fexec)
+	expectedInputFlows = []string{
+		"flow add flow1",
+		"flow delete flow2",
+	}
+	ensureInputFlows(t, fakeCmd, expectedInputFlows)
+
+	// Test a couple of failed transaction, but that finally pass
+	for i := 0; i < ovsBackoff.Steps-1; i++ {
+		fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", fmt.Errorf("Something bad happened"))
+	}
+	fakeCmd = addTestResult(t, fexec, "ovs-ofctl -O OpenFlow13 bundle br0 -", "", nil)
+	otx = ovsif.NewTransaction()
+	otx.AddFlow("flow1")
+	otx.DeleteFlows("flow2")
+	if err = otx.Commit(); err != nil {
+		t.Fatalf("Unexpected error from command: %v", err)
 	}
 	ensureTestResults(t, fexec)
 	expectedInputFlows = []string{
