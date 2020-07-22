@@ -41,7 +41,7 @@ func (fake *ovsFake) AddBridge(properties ...string) error {
 	return nil
 }
 
-func (fake *ovsFake) DeleteBridge(ifExists bool) error {
+func (fake *ovsFake) DeleteBridge() error {
 	fake.ports = nil
 	fake.flows = nil
 	return nil
