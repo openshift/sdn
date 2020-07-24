@@ -3,7 +3,6 @@ package common
 import (
 	"net"
 	"sync"
-	"time"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
@@ -97,62 +96,29 @@ func (e *EgressDNS) Delete(policy networkv1.EgressNetworkPolicy) {
 	}
 }
 
-func (e *EgressDNS) Update(dns string) (bool, error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-
-	return e.dns.Update(dns)
-}
-
-func (e *EgressDNS) Sync() {
-	var duration time.Duration
-	for {
-		tm, dnsName, updates, ok := e.GetNextQueryTime()
-		if !ok {
-			duration = 30 * time.Minute
-		} else {
-			now := time.Now()
-			if tm.After(now) {
-				// Item needs to wait for this duration before it can be processed
-				duration = tm.Sub(now)
-			} else {
-				changed, err := e.Update(dnsName)
-				if err != nil {
-					utilruntime.HandleError(err)
-				}
-
-				if changed {
-					e.Updates <- updates
-				}
-				continue
-			}
-		}
-
-		// Wait for the given duration or till something got added
-		select {
-		case <-e.added:
-		case <-time.After(duration):
-		}
+func (e *EgressDNS) HandleNameUpdates() {
+	klog.V(2).Info("HandleNameUpdates Called")
+	for update := range e.dns.Updates {
+		klog.V(2).Infof("HandleNameUpdates got update for: %s", update)
+		e.updateName(update)
 	}
 }
 
-func (e *EgressDNS) GetNextQueryTime() (time.Time, string, []EgressDNSUpdate, bool) {
+func (e EgressDNS) updateName(dnsName string) {
+	klog.V(2).Info("updateName: acquiring lock")
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	policyUpdates := make([]EgressDNSUpdate, 0)
-	tm, dnsName, timeSet := e.dns.GetNextQueryTime()
-	if !timeSet {
-		return tm, dnsName, nil, timeSet
-	}
 
+	klog.V(2).Infof("Got update for: %s", dnsName)
 	if uids, exists := e.dnsNamesToPolicies[dnsName]; exists {
 		for uid := range uids {
+			klog.V(2).Infof("Adding uid %v because %s", uid, dnsName)
 			policyUpdates = append(policyUpdates, EgressDNSUpdate{ktypes.UID(uid), e.namespaces[ktypes.UID(uid)]})
 		}
-	} else {
-		klog.V(5).Infof("Didn't find any entry for dns name: %s in the dns map.", dnsName)
+		e.Updates <- policyUpdates
 	}
-	return tm, dnsName, policyUpdates, timeSet
+
 }
 
 func (e *EgressDNS) GetIPs(dnsName string) []net.IP {

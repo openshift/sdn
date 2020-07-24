@@ -116,12 +116,14 @@ func (plugin *OsdnNode) UpdateEgressNetworkPolicyVNID(namespace string, oldVnid,
 }
 
 func (plugin *OsdnNode) syncEgressDNSPolicyRules() {
-	go utilwait.Forever(plugin.egressDNS.Sync, 0)
-
+	go plugin.egressDNS.HandleNameUpdates()
 	for {
+		klog.V(2).Info("Waiting for egressDNS updates")
 		policyUpdates := <-plugin.egressDNS.Updates
+		klog.V(2).Info("Waiting for egressDNS updates")
+
 		for _, policyUpdate := range policyUpdates {
-			klog.V(5).Infof("Egress dns sync: updating policy: %v", policyUpdate.UID)
+			klog.V(2).Infof("Egress dns sync: updating policy: %v", policyUpdate.UID)
 			vnid, err := plugin.policy.GetVNID(policyUpdate.Namespace)
 			if err != nil {
 				klog.Warningf("Could not find netid for namespace %q: %v", policyUpdate.Namespace, err)
@@ -132,6 +134,7 @@ func (plugin *OsdnNode) syncEgressDNSPolicyRules() {
 				plugin.egressPoliciesLock.Lock()
 				defer plugin.egressPoliciesLock.Unlock()
 
+				klog.V(2).Infof("Updating egressNetworkPolicy for vnid: %d", vnid)
 				plugin.updateEgressNetworkPolicyRules(vnid)
 			}()
 		}
