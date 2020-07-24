@@ -213,6 +213,9 @@ func (fake *ovsFake) NewTransaction() Transaction {
 	return &ovsFakeTx{fake: fake, flows: []string{}}
 }
 
+func (fake *ovsFake) UpdateOVSMetrics() {
+}
+
 // sort.Interface support
 type ovsFlows []OvsFlow
 
