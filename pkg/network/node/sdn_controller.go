@@ -12,7 +12,6 @@ import (
 
 	"github.com/openshift/sdn/pkg/network/common"
 
-	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/sysctl"
@@ -208,19 +207,5 @@ func (plugin *OsdnNode) updateEgressNetworkPolicyRules(vnid uint32) {
 	namespaces := plugin.policy.GetNamespaces(vnid)
 	if err := plugin.oc.UpdateEgressNetworkPolicyRules(policies, vnid, namespaces, plugin.egressDNS); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error updating OVS flows for EgressNetworkPolicy: %v", err))
-	}
-}
-
-func (plugin *OsdnNode) AddServiceRules(service *corev1.Service, netID uint32) {
-	klog.V(5).Infof("AddServiceRules for %v", service)
-	if err := plugin.oc.AddServiceRules(service, netID); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error adding OVS flows for service %v, netid %d: %v", service, netID, err))
-	}
-}
-
-func (plugin *OsdnNode) DeleteServiceRules(service *corev1.Service) {
-	klog.V(5).Infof("DeleteServiceRules for %v", service)
-	if err := plugin.oc.DeleteServiceRules(service); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error deleting OVS flows for service %v: %v", service, err))
 	}
 }

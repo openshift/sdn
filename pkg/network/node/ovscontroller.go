@@ -16,7 +16,6 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/ovs"
 
-	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -144,7 +143,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 		otx.AddFlow("table=30, priority=100, arp, nw_dst=%s, actions=goto_table:50", clusterCIDR)
 	}
 	otx.AddFlow("table=30, priority=300, ip, nw_dst=%s, actions=output:2", localSubnetGateway)
-	otx.AddFlow("table=30, priority=100, ip, nw_dst=%s, actions=goto_table:60", serviceNetworkCIDR)
+	otx.AddFlow("table=30, priority=100, ip, nw_dst=%s, actions=output:2", serviceNetworkCIDR)
 	otx.AddFlow("table=30, priority=300, ip, nw_dst=%s, ct_state=+rpl, actions=ct(nat,table=70)", localSubnetCIDR)
 	otx.AddFlow("table=30, priority=200, ip, nw_dst=%s, actions=goto_table:70", localSubnetCIDR)
 	for _, clusterCIDR := range clusterNetworkCIDR {
@@ -167,9 +166,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// eg, "table=50, priority=100, arp, nw_dst=${remote_subnet_cidr}, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31], set_field:${remote_node_ip}->tun_dst,output:1"
 	otx.AddFlow("table=50, priority=0, actions=drop")
 
-	// Table 60: IP to service from pod
-	otx.AddFlow("table=60, priority=200, actions=output:2")
-	otx.AddFlow("table=60, priority=0, actions=drop")
+	// Table 60: was "IP to service from pod" in the multitenant plugin but it's removed now.
 
 	// Table 70: IP to local container: vnid/port mappings; filled in by setupPodFlows
 	// eg, "table=70, priority=100, ip, nw_dst=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG1[], load:${ovs_port}->NXM_NX_REG2[], goto_table:80"
@@ -569,49 +566,6 @@ func (oc *ovsController) DeleteHostSubnetRules(subnet *networkapi.HostSubnet) er
 	return otx.Commit()
 }
 
-func (oc *ovsController) AddServiceRules(service *corev1.Service, netID uint32) error {
-	otx := oc.ovs.NewTransaction()
-
-	action := fmt.Sprintf(", priority=100, actions=load:%d->NXM_NX_REG1[], load:2->NXM_NX_REG2[], goto_table:80", netID)
-
-	// Add blanket rule allowing subsequent IP fragments
-	otx.AddFlow(generateBaseServiceRule(service.Spec.ClusterIP) + ", ip_frag=later" + action)
-
-	for _, port := range service.Spec.Ports {
-		baseRule, err := generateBaseAddServiceRule(service.Spec.ClusterIP, port.Protocol, int(port.Port))
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Error creating OVS flow for service %v, netid %d: %v", service, netID, err))
-		}
-		otx.AddFlow(baseRule + action)
-	}
-
-	return otx.Commit()
-}
-
-func (oc *ovsController) DeleteServiceRules(service *corev1.Service) error {
-	otx := oc.ovs.NewTransaction()
-	otx.DeleteFlows(generateBaseServiceRule(service.Spec.ClusterIP))
-	return otx.Commit()
-}
-
-func generateBaseServiceRule(IP string) string {
-	return fmt.Sprintf("table=60, ip, nw_dst=%s", IP)
-}
-
-func generateBaseAddServiceRule(IP string, protocol corev1.Protocol, port int) (string, error) {
-	var dst string
-	if protocol == corev1.ProtocolUDP {
-		dst = fmt.Sprintf(", udp, udp_dst=%d", port)
-	} else if protocol == corev1.ProtocolTCP {
-		dst = fmt.Sprintf(", tcp, tcp_dst=%d", port)
-	} else if protocol == corev1.ProtocolSCTP {
-		dst = fmt.Sprintf(", sctp, sctp_dst=%d", port)
-	} else {
-		return "", fmt.Errorf("unhandled protocol %v", protocol)
-	}
-	return generateBaseServiceRule(IP) + dst, nil
-}
-
 func (oc *ovsController) UpdateLocalMulticastFlows(vnid uint32, enabled bool, ofports []int) error {
 	otx := oc.ovs.NewTransaction()
 
@@ -695,9 +649,9 @@ func (oc *ovsController) findInUseAndPolicyVNIDs() (sets.Int, sets.Int) {
 			continue
 		}
 
-		// A VNID is in use if there is a table 60 (services) or 70 (pods) flow that
+		// A VNID is in use if there is a table 70 (pods) flow that
 		// loads that VNID into reg1 for later comparison.
-		if parsed.Table == 60 || parsed.Table == 70 {
+		if parsed.Table == 70 {
 			// Can't use FindAction here since there may be multiple "load"s
 			for _, action := range parsed.Actions {
 				if action.Name != "load" || strings.Index(action.Value, "REG1") == -1 {

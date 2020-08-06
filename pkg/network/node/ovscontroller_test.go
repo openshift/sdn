@@ -13,7 +13,6 @@ import (
 	networkapi "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/node/ovs"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -102,67 +101,6 @@ func assertFlowChanges(origFlows, newFlows []string, changes ...flowChange) erro
 		return fmt.Errorf("unexpected additional changes to flows")
 	}
 	return nil
-}
-
-func TestOVSService(t *testing.T) {
-	ovsif, oc, origFlows := setupOVSController(t)
-
-	svc := corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "service",
-		},
-		Spec: corev1.ServiceSpec{
-			ClusterIP: "172.30.99.99",
-			Ports: []corev1.ServicePort{
-				{Protocol: corev1.ProtocolTCP, Port: 80},
-				{Protocol: corev1.ProtocolTCP, Port: 443},
-			},
-		},
-	}
-	err := oc.AddServiceRules(&svc, 42)
-	if err != nil {
-		t.Fatalf("Unexpected error adding service rules: %v", err)
-	}
-
-	flows, err := ovsif.DumpFlows("")
-	if err != nil {
-		t.Fatalf("Unexpected error dumping flows: %v", err)
-	}
-	err = assertFlowChanges(origFlows, flows,
-		flowChange{
-			kind:    flowAdded,
-			match:   []string{"table=60", "ip_frag", "42->NXM_NX_REG1"},
-			noMatch: []string{"tcp"},
-		},
-		flowChange{
-			kind:  flowAdded,
-			match: []string{"table=60", "nw_dst=172.30.99.99", "tcp_dst=80", "42->NXM_NX_REG1"},
-		},
-		flowChange{
-			kind:  flowAdded,
-			match: []string{"table=60", "nw_dst=172.30.99.99", "tcp_dst=443", "42->NXM_NX_REG1"},
-		},
-	)
-	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
-	}
-
-	err = oc.DeleteServiceRules(&svc)
-	if err != nil {
-		t.Fatalf("Unexpected error deleting service rules: %v", err)
-	}
-	flows, err = ovsif.DumpFlows("")
-	if err != nil {
-		t.Fatalf("Unexpected error dumping flows: %v", err)
-	}
-	err = assertFlowChanges(origFlows, flows) // no changes
-
-	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
-	}
 }
 
 const (
@@ -827,18 +765,8 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		unused []int
 	}{
 		{
-			/* VNID 0 is never unused, even if there are no table 60/70 rules for it */
+			/* VNID 0 is never unused, even if there are no table 70 rules for it */
 			flows: []string{
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.156.103,nw_frag=later actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.156.103,tp_dst=5454 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
@@ -853,44 +781,9 @@ func TestFindUnusedVNIDs(t *testing.T) {
 			unused: []int{},
 		},
 		{
-			/* Both VNIDs have 1 pod and 1 service, so they stay */
+			/* Both VNIDs have 1 pod, so they stay */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.156.103,nw_frag=later actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.156.103,tp_dst=5454 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
-				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
-				"table=70,priority=0 actions=drop",
-				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=200,reg0=0 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=200,reg1=0 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=100,reg0=0x55fac,reg1=0x55fac actions=output:NXM_NX_REG2[]",
-				"table=80,priority=100,reg0=0xcb81e9,reg1=0xcb81e9 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=0 actions=drop",
-			},
-			policy: []int{0x0, 0x55fac, 0xcb81e9},
-			unused: []int{},
-		},
-		{
-			/* 0xcb81e9 has just a pod, 0x55fac has just a service, both stay */
-			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -906,15 +799,6 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		{
 			/* 0xcb81e9 gets GCed, 0x55fac stays */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -924,18 +808,12 @@ func TestFindUnusedVNIDs(t *testing.T) {
 				"table=80,priority=100,reg0=0xcb81e9,reg1=0xcb81e9 actions=output:NXM_NX_REG2[]",
 				"table=80,priority=0 actions=drop",
 			},
-			policy: []int{0x0, 0x55fac, 0xcb81e9},
+			policy: []int{0x0, 0x55fac},
 			unused: []int{0xcb81e9},
 		},
 		{
 			/* Both get GCed */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
 				"table=80,priority=200,reg0=0 actions=output:NXM_NX_REG2[]",
@@ -944,21 +822,12 @@ func TestFindUnusedVNIDs(t *testing.T) {
 				"table=80,priority=100,reg0=0xcb81e9,reg1=0xcb81e9 actions=output:NXM_NX_REG2[]",
 				"table=80,priority=0 actions=drop",
 			},
-			policy: []int{0x0, 0x55fac, 0xcb81e9},
+			policy: []int{0x0},
 			unused: []int{0x55fac, 0xcb81e9},
 		},
 		{
 			/* Invalid state; we lost the 0x55fac policy rules somehow. But we should still notice that 0xcb81e9 is unused. */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -967,7 +836,7 @@ func TestFindUnusedVNIDs(t *testing.T) {
 				"table=80,priority=100,reg0=0xcb81e9,reg1=0xcb81e9 actions=output:NXM_NX_REG2[]",
 				"table=80,priority=0 actions=drop",
 			},
-			policy: []int{0x0, 0xcb81e9},
+			policy: []int{0x0},
 			unused: []int{0xcb81e9},
 		},
 	}
@@ -1006,8 +875,6 @@ func TestFindPolicyVNIDs(t *testing.T) {
 		{
 			// Namespaces without any rule on table 80 must be present.
 			flows: []string{
-				"table=60, priority=200 actions=output:tun0",
-				"table=60, priority=0 actions=drop",
 				"table=70, priority=100,ip,nw_dst=10.129.0.52 actions=load:0x2bd973->NXM_NX_REG1[],load:0x15->NXM_NX_REG2[],goto_table:80",
 				"table=70, priority=100,ip,nw_dst=10.129.0.53 actions=load:0x0->NXM_NX_REG1[],load:0x16->NXM_NX_REG2[],goto_table:80",
 				"table=70, priority=0 actions=drop",
@@ -1031,8 +898,6 @@ func TestFindPolicyVNIDs(t *testing.T) {
 		{
 			// All tests combined
 			flows: []string{
-				"table=60, priority=200 actions=output:tun0",
-				"table=60, priority=0 actions=drop",
 				"table=70, priority=100,ip,nw_dst=10.129.0.52 actions=load:0x2bd973->NXM_NX_REG1[],load:0x15->NXM_NX_REG2[],goto_table:80",
 				"table=70, priority=100,ip,nw_dst=10.129.0.54 actions=load:0x58bb64->NXM_NX_REG1[],load:0x17->NXM_NX_REG2[],goto_table:80",
 				"table=70, priority=0 actions=drop",

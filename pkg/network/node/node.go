@@ -23,15 +23,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
-	kapi "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/iptables"
@@ -502,61 +499,6 @@ func (node *OsdnNode) GetRunningPods(namespace string) ([]corev1.Pod, error) {
 		}
 	}
 	return pods, nil
-}
-
-func isServiceChanged(oldsvc, newsvc *corev1.Service) bool {
-	if len(oldsvc.Spec.Ports) == len(newsvc.Spec.Ports) {
-		for i := range oldsvc.Spec.Ports {
-			if oldsvc.Spec.Ports[i].Protocol != newsvc.Spec.Ports[i].Protocol ||
-				oldsvc.Spec.Ports[i].Port != newsvc.Spec.Ports[i].Port {
-				return true
-			}
-		}
-		return false
-	}
-	return true
-}
-
-func (node *OsdnNode) watchServices() {
-	funcs := common.InformerFuncs(&kapi.Service{}, node.handleAddOrUpdateService, node.handleDeleteService)
-	node.kubeInformers.Core().V1().Services().Informer().AddEventHandler(funcs)
-}
-
-func (node *OsdnNode) handleAddOrUpdateService(obj, oldObj interface{}, eventType watch.EventType) {
-	serv := obj.(*corev1.Service)
-	// Ignore headless/external services
-	if !helper.IsServiceIPSet(serv) {
-		return
-	}
-
-	klog.V(5).Infof("Watch %s event for Service %q", eventType, serv.Name)
-	oldServ, exists := oldObj.(*corev1.Service)
-	if exists {
-		if !isServiceChanged(oldServ, serv) {
-			return
-		}
-		node.DeleteServiceRules(oldServ)
-	}
-
-	netid, err := node.policy.GetVNID(serv.Namespace)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Skipped adding service rules for serviceEvent: %v, Error: %v", eventType, err))
-		return
-	}
-
-	node.AddServiceRules(serv, netid)
-	node.policy.EnsureVNIDRules(netid)
-}
-
-func (node *OsdnNode) handleDeleteService(obj interface{}) {
-	serv := obj.(*corev1.Service)
-	// Ignore headless/external services
-	if !helper.IsServiceIPSet(serv) {
-		return
-	}
-
-	klog.V(5).Infof("Watch %s event for Service %q", watch.Deleted, serv.Name)
-	node.DeleteServiceRules(serv)
 }
 
 func (node *OsdnNode) ReloadIPTables() error {
