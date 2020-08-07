@@ -9,6 +9,7 @@ import (
 
 	"k8s.io/klog"
 
+	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
@@ -112,7 +113,7 @@ func (vmap *nodeVNIDMap) WaitAndGetVNID(name string) (uint32, error) {
 		// We may find netid when we check with api server but we will
 		// still treat this as an error if we don't find it in vnid map.
 		// So that we can imply insufficient timeout if we see many VnidNotFoundErrors.
-		VnidNotFoundErrors.Inc()
+		metrics.VnidNotFoundErrors.Inc()
 
 		netns, err := vmap.networkClient.NetworkV1().NetNamespaces().Get(name, metav1.GetOptions{})
 		if err != nil {

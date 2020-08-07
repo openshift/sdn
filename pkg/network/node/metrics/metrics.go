@@ -1,6 +1,6 @@
 // +build linux
 
-package node
+package metrics
 
 import (
 	"fmt"
@@ -15,21 +15,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-
-	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
 
 const (
-	SDNNamespace = "openshift"
-	SDNSubsystem = "sdn"
+	hostLocalDataDir = "/var/lib/cni/networks"
+	SDNNamespace     = "openshift"
+	SDNSubsystem     = "sdn"
 
 	OVSFlowsKey                 = "ovs_flows"
+	OVSOperationsKey            = "ovs_operations"
 	ARPCacheAvailableEntriesKey = "arp_cache_entries"
 	PodIPsKey                   = "pod_ips"
 	PodOperationsErrorsKey      = "pod_operations_errors"
 	PodOperationsLatencyKey     = "pod_operations_latency"
 	VnidNotFoundErrorsKey       = "vnid_not_found_errors"
 
+	// OVS Operation result type
+	OVSOperationSuccess = "success"
+	OVSOperationFailure = "failure"
 	// Pod Operation types
 	PodOperationSetup    = "setup"
 	PodOperationTeardown = "teardown"
@@ -43,6 +46,15 @@ var (
 			Name:      OVSFlowsKey,
 			Help:      "Number of Open vSwitch flows",
 		},
+	)
+	OVSOperationsResult = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: SDNNamespace,
+			Subsystem: SDNSubsystem,
+			Name:      OVSOperationsKey,
+			Help:      "Cumulative number of OVS operations by result type",
+		},
+		[]string{"result_type"},
 	)
 
 	ARPCacheAvailableEntries = prometheus.NewGauge(
@@ -106,6 +118,7 @@ var registerMetrics sync.Once
 func RegisterMetrics() {
 	registerMetrics.Do(func() {
 		prometheus.MustRegister(OVSFlows)
+		prometheus.MustRegister(OVSOperationsResult)
 		prometheus.MustRegister(ARPCacheAvailableEntries)
 		prometheus.MustRegister(PodIPs)
 		prometheus.MustRegister(PodOperationsErrors)
@@ -114,24 +127,15 @@ func RegisterMetrics() {
 	})
 }
 
-// Gets the time since the specified start in microseconds.
-func sinceInMicroseconds(start time.Time) float64 {
+// SinceInMicroseconds gets the time since the specified start in microseconds.
+func SinceInMicroseconds(start time.Time) float64 {
 	return float64(time.Since(start) / time.Microsecond)
 }
 
-func gatherPeriodicMetrics(ovs ovs.Interface) {
-	updateOVSMetrics(ovs)
+// GatherPeriodicMetrics is used to periodically gather metrics.
+func GatherPeriodicMetrics() {
 	updateARPMetrics()
 	updatePodIPMetrics()
-}
-
-func updateOVSMetrics(ovs ovs.Interface) {
-	flows, err := ovs.DumpFlows("")
-	if err == nil {
-		OVSFlows.Set(float64(len(flows)))
-	} else {
-		utilruntime.HandleError(fmt.Errorf("failed to dump OVS flows for metrics: %v", err))
-	}
 }
 
 func updateARPMetrics() {
