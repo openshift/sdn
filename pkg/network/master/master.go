@@ -114,7 +114,7 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 	}
 
 	eim := newEgressIPManager()
-	eim.Start(master.networkClient, master.hostSubnetInformer, master.netNamespaceInformer)
+	eim.Start(master.networkClient, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
