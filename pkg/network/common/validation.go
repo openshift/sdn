@@ -121,6 +121,7 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 	}
 }
 
+// ValidateHostSubnet checks if the system-maintained fields of hostsubnet are valid.
 func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
@@ -142,18 +143,6 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	// In theory this has to be IPv4, but it's possible some clusters might be limping along with IPv6 values?
 	if net.ParseIP(hs.HostIP) == nil {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("hostIP"), hs.HostIP, "invalid IP address"))
-	}
-
-	for i, egressIP := range hs.EgressIPs {
-		if _, err := validateIPv4(string(egressIP)); err != nil {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("egressIPs").Index(i), egressIP, err.Error()))
-		}
-	}
-
-	for i, egressCIDR := range hs.EgressCIDRs {
-		if _, err := validateCIDRv4(string(egressCIDR)); err != nil {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("egressCIDRs").Index(i), egressCIDR, err.Error()))
-		}
 	}
 
 	if len(allErrs) > 0 {
