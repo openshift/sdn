@@ -49,9 +49,10 @@ func newEgressIPManager() *egressIPManager {
 	return eim
 }
 
-func (eim *egressIPManager) Start(networkClient networkclient.Interface, hostSubnetInformer networkinformers.HostSubnetInformer, netNamespaceInformer networkinformers.NetNamespaceInformer) {
+func (eim *egressIPManager) Start(networkClient networkclient.Interface, hostSubnetInformer networkinformers.HostSubnetInformer, netNamespaceInformer networkinformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
 	eim.networkClient = networkClient
 	eim.hostSubnetInformer = hostSubnetInformer
+	eim.nodeInformer = nodeInformer
 	eim.tracker.Start(hostSubnetInformer, netNamespaceInformer)
 }
 
@@ -163,6 +164,16 @@ func (eim *egressIPManager) poll(stop chan struct{}) {
 	}
 }
 
+func isNodeConditionGood(cond v1.NodeCondition) bool {
+	isNodeGood := true
+	if cond.Type == v1.NodeReady {
+		if cond.Status == v1.ConditionFalse || cond.Status == v1.ConditionUnknown {
+			isNodeGood = false
+		}
+	}
+	return isNodeGood
+}
+
 func (eim *egressIPManager) check(retrying bool) (bool, error) {
 	var timeout time.Duration
 	if retrying {
@@ -183,12 +194,12 @@ func (eim *egressIPManager) check(retrying bool) (bool, error) {
 		}
 
 		for _, cond := range nn.Status.Conditions {
-			if cond.Type == v1.TaintNodeNotReady {
-				klog.Warningf("Node %s is not Ready", node.ip)
+			if !isNodeConditionGood(cond) {
+				klog.Warningf("Node %s is not Ready", node.name)
 				node.offline = true
 				eim.tracker.SetNodeOffline(node.ip, true)
 				// Return when there's a not Ready node
-				return true, nil
+				return false, nil
 			}
 		}
 
