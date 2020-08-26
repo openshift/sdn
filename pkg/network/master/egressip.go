@@ -164,14 +164,16 @@ func (eim *egressIPManager) poll(stop chan struct{}) {
 	}
 }
 
-func isNodeConditionGood(cond v1.NodeCondition) bool {
-	isNodeGood := true
-	if cond.Type == v1.NodeReady {
-		if cond.Status == v1.ConditionFalse || cond.Status == v1.ConditionUnknown {
-			isNodeGood = false
+func nodeIsReady(node *v1.Node) bool {
+	nodeReady := true
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady {
+			if cond.Status == v1.ConditionFalse || cond.Status == v1.ConditionUnknown {
+				nodeReady = false
+			}
 		}
 	}
-	return isNodeGood
+	return nodeReady
 }
 
 func (eim *egressIPManager) check(retrying bool) (bool, error) {
@@ -190,17 +192,15 @@ func (eim *egressIPManager) check(retrying bool) (bool, error) {
 
 		nn, err := eim.nodeInformer.Lister().Get(node.name)
 		if err != nil {
-			klog.Warningf("Couldn't get node %s ", node.ip)
+			return false, err
 		}
 
-		for _, cond := range nn.Status.Conditions {
-			if !isNodeConditionGood(cond) {
-				klog.Warningf("Node %s is not Ready", node.name)
-				node.offline = true
-				eim.tracker.SetNodeOffline(node.ip, true)
-				// Return when there's a not Ready node
-				return false, nil
-			}
+		if !nodeIsReady(nn) {
+			klog.Warningf("Node %s is not Ready", node.name)
+			node.offline = true
+			eim.tracker.SetNodeOffline(node.ip, true)
+			// Return when there's a not Ready node
+			return false, nil
 		}
 
 		online := eim.tracker.Ping(node.ip, timeout)
