@@ -152,6 +152,29 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	}
 }
 
+// ValidateHostSubnetEgress checks if the user-maintained fields of hostsubnet are valid.
+func ValidateHostSubnetEgress(hs *networkapi.HostSubnet) error {
+	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
+
+	for i, egressIP := range hs.EgressIPs {
+		if _, err := validateIPv4(string(egressIP)); err != nil {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("egressIPs").Index(i), egressIP, err.Error()))
+		}
+	}
+
+	for i, egressCIDR := range hs.EgressCIDRs {
+		if _, err := validateCIDRv4(string(egressCIDR)); err != nil {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("egressCIDRs").Index(i), egressCIDR, err.Error()))
+		}
+	}
+
+	if len(allErrs) > 0 {
+		return allErrs.ToAggregate()
+	}
+
+	return nil
+}
+
 func cidrsOverlap(cidr1, cidr2 *net.IPNet) bool {
 	return cidr1.Contains(cidr2.IP) || cidr2.Contains(cidr1.IP)
 }
