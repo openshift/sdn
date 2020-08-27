@@ -18,6 +18,7 @@ approvers:
   - knobunc
   - rcarrillocruz
   - squeed
+  - alexanderConstantinescu
 
 # Bugzilla info
 component: Networking
