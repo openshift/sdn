@@ -179,6 +179,11 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 	hs := obj.(*networkv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
+	if err := ValidateHostSubnetEgress(hs); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err))
+		return
+	}
+
 	eit.UpdateHostSubnetEgress(hs)
 }
 

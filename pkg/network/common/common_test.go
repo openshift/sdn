@@ -7,6 +7,7 @@ import (
 
 	networkapi "github.com/openshift/api/network/v1"
 	kapi "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
@@ -267,6 +268,65 @@ func TestParseClusterNetwork(t *testing.T) {
 			}
 		} else {
 			if !strings.Contains(err.Error(), test.err) {
+				t.Fatalf("test %q: error did not match %q: %v", test.name, test.err, err)
+			}
+		}
+	}
+}
+
+func TestValidateHostSubnetEgress(t *testing.T) {
+	tests := []struct {
+		name string
+		hs   networkapi.HostSubnet
+		err  string
+	}{
+		{
+			name: "valid egress ip",
+			hs: networkapi.HostSubnet{
+				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
+				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
+			},
+			err: "",
+		},
+		{
+			name: "valid egress cidr",
+			hs: networkapi.HostSubnet{
+				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
+				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
+			},
+			err: "",
+		},
+		{
+			name: "invalid CIDR address",
+			hs: networkapi.HostSubnet{
+				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.80/27"},
+				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
+			},
+			err: "Invalid",
+		},
+		{
+			name: "invalid egress ip",
+			hs: networkapi.HostSubnet{
+				EgressIPs:   []networkapi.HostSubnetEgressIP{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
+				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.64/27"},
+				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
+			},
+			err: "Invalid",
+		},
+	}
+	for _, test := range tests {
+		err := ValidateHostSubnetEgress(&test.hs)
+		if err == nil {
+			if len(test.err) > 0 {
+				t.Fatalf("test %q unexpectedly did not get an error", test.name)
+			}
+		} else {
+			if test.err != "" && !strings.Contains(err.Error(), test.err) {
+				t.Fatalf("test %q: error did not match %q: %v", test.name, test.err, err)
+			} else if test.err == "" {
 				t.Fatalf("test %q: error did not match %q: %v", test.name, test.err, err)
 			}
 		}
