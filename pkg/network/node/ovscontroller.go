@@ -95,7 +95,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	otx := oc.ovs.NewTransaction()
 
 	// Table 0: initial dispatch based on in_port
-	otx.AddFlow("table=0, priority=300, ip, ct_state=-trk, actions=ct(table=0)")
+	otx.AddFlow("table=0, priority=1000, ip, ct_state=-trk, actions=ct(table=0)")
 	// vxlan0
 	for _, clusterCIDR := range clusterNetworkCIDR {
 		otx.AddFlow("table=0, priority=200, in_port=1, arp, nw_src=%s, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10", clusterCIDR, localSubnetCIDR)
