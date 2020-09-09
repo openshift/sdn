@@ -1,0 +1,6 @@
+sphinx>=2.0.0,!=2.1.0 # BSD
+recommonmark>=0.6.0 # MIT
+sphinx-rtd-theme>=0.5.0 # MIT
+sphinx-tabs>=1.2.1 # MIT
+# releasenotes
+reno>=3.1.0 # Apache-2.0
