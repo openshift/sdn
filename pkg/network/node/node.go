@@ -134,6 +134,10 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
+		// Userspace proxy is incompatible with conntrack.
+		if c.ProxyMode != kubeproxyconfig.ProxyModeUserspace {
+			useConnTrack = true
+		}
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
