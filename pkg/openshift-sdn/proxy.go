@@ -109,9 +109,15 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
 		}
 
-		localDetector, err := proxyutiliptables.NewDetectLocalByCIDR(sdn.ProxyConfig.ClusterCIDR, iptInterface)
-		if err != nil {
-			klog.Fatalf("Unable to configure local traffic detector: %v", err)
+		var localDetector proxyutiliptables.LocalTrafficDetector
+		if sdn.ProxyConfig.ClusterCIDR == "" {
+			klog.Warningf("Kubeproxy does not support multiple cluster CIDRs, configuring no-op local traffic detector")
+			localDetector = proxyutiliptables.NewNoOpLocalDetector()
+		} else {
+			localDetector, err = proxyutiliptables.NewDetectLocalByCIDR(sdn.ProxyConfig.ClusterCIDR, iptInterface)
+			if err != nil {
+				klog.Fatalf("Unable to configure local traffic detector: %v", err)
+			}
 		}
 
 		proxier, err = iptables.NewProxier(
