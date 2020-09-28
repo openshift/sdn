@@ -29,6 +29,7 @@ require (
 )
 
 replace (
+	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/certifi/gocertifi => github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2
 	github.com/containernetworking/cni => github.com/containernetworking/cni v0.6.0-rc1
 	github.com/containernetworking/plugins => github.com/containernetworking/plugins v0.6.0
