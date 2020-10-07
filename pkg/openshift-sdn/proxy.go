@@ -59,6 +59,12 @@ func (sdn *OpenShiftSDN) initProxy() error {
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
 func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
+	if string(sdn.ProxyConfig.Mode) == "disabled" {
+		klog.Warningf("Built-in kube-proxy is disabled")
+		close(waitChan)
+		return
+	}
+
 	bindAddr := net.ParseIP(sdn.ProxyConfig.BindAddress)
 	nodeAddr := bindAddr
 

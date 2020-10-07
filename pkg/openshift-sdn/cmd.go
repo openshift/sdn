@@ -189,8 +189,10 @@ func (sdn *OpenShiftSDN) reloadIPTables() {
 	if err := sdn.OsdnNode.ReloadIPTables(); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Reloading openshift node iptables rules failed: %v", err))
 	}
-	if err := sdn.OsdnProxy.ReloadIPTables(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Reloading openshift proxy iptables rules failed: %v", err))
+	if sdn.OsdnProxy != nil {
+		if err := sdn.OsdnProxy.ReloadIPTables(); err != nil {
+			utilruntime.HandleError(fmt.Errorf("Reloading openshift proxy iptables rules failed: %v", err))
+		}
 	}
 }
 
