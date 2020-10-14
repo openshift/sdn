@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/openshift/sdn/pkg/network/common"
 

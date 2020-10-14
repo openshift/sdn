@@ -10,7 +10,7 @@ import (
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/exec"
 )
 

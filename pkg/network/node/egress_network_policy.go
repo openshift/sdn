@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	networkapi "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
