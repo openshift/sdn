@@ -121,6 +121,7 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 	}
 }
 
+// ValidateHostSubnet checks if the system-maintained fields of hostsubnet are valid.
 func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
@@ -144,6 +145,17 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("hostIP"), hs.HostIP, "invalid IP address"))
 	}
 
+	if len(allErrs) > 0 {
+		return allErrs.ToAggregate()
+	} else {
+		return nil
+	}
+}
+
+// ValidateHostSubnetEgress checks if the user-maintained fields of hostsubnet are valid.
+func ValidateHostSubnetEgress(hs *networkapi.HostSubnet) error {
+	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
+
 	for i, egressIP := range hs.EgressIPs {
 		if _, err := validateIPv4(string(egressIP)); err != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("egressIPs").Index(i), egressIP, err.Error()))
@@ -158,9 +170,9 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 
 	if len(allErrs) > 0 {
 		return allErrs.ToAggregate()
-	} else {
-		return nil
 	}
+
+	return nil
 }
 
 func cidrsOverlap(cidr1, cidr2 *net.IPNet) bool {
