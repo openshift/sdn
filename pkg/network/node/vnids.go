@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

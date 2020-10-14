@@ -33,7 +33,7 @@ import (
 	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
 	"k8s.io/component-base/metrics/legacyregistry"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // readProxyConfig reads the proxy config from a file

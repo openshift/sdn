@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
