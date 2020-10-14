@@ -1132,7 +1132,7 @@ func (proxier *Proxier) syncProxyRules() {
 				klog.Errorf("Failed to cast BaseEndpointInfo %q", e.String())
 				continue
 			}
-			if !ep.IsLocal {
+			if !ep.Local {
 				continue
 			}
 			epIP := ep.IP()
@@ -1980,7 +1980,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 	}
 
 	for _, epInfo := range endpoints {
-		if epInfo.GetIsLocal() && epInfo.IsTerminating() {
+		if epInfo.IsLocal() && epInfo.IsTerminating() {
 			if !epInfo.IsReady() {
 				localNotReadyTerminatingEndpoints.Insert(epInfo.String())
 			} else {
@@ -1995,7 +1995,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 		}
 
 		// skip adding endpoint to "all ready endpoints" if service requests node local and endpoint is not local
-		if onlyNodeLocalEndpoints && !epInfo.GetIsLocal() {
+		if onlyNodeLocalEndpoints && !epInfo.IsLocal() {
 			continue
 		}
 

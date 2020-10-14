@@ -47,8 +47,8 @@ var supportedEndpointSliceAddressTypes = sets.NewString(
 // defined by the proxier if needed.
 type BaseEndpointInfo struct {
 	Endpoint string // TODO: should be an endpointString type
-	// IsLocal indicates whether the endpoint is running in same host as kube-proxy.
-	IsLocal bool
+	// Local indicates whether the endpoint is running in same host as kube-proxy.
+	Local bool
 	// Ready indicates whether an endpoint is ready to serve traffic
 	Ready bool
 	// Terminating is true if the endpoint is terminating.
@@ -74,9 +74,9 @@ func (info *BaseEndpointInfo) IsTerminating() bool {
 	return info.Terminating
 }
 
-// GetIsLocal is part of proxy.Endpoint interface.
-func (info *BaseEndpointInfo) GetIsLocal() bool {
-	return info.IsLocal
+// IsLocal is part of proxy.Endpoint interface.
+func (info *BaseEndpointInfo) IsLocal() bool {
+	return info.Local
 }
 
 // GetTopology returns the topology information of the endpoint.
@@ -96,7 +96,7 @@ func (info *BaseEndpointInfo) Port() (int, error) {
 
 // Equal is part of proxy.Endpoint interface.
 func (info *BaseEndpointInfo) Equal(other Endpoint) bool {
-	return info.String() == other.String() && info.GetIsLocal() == other.GetIsLocal()
+	return info.String() == other.String() && info.IsLocal() == other.IsLocal()
 }
 
 func newBaseEndpointInfo(IP string, port int, isLocal bool, topology map[string]string, ready bool, terminating bool) *BaseEndpointInfo {
@@ -104,7 +104,7 @@ func newBaseEndpointInfo(IP string, port int, isLocal bool, topology map[string]
 		Endpoint:    net.JoinHostPort(IP, strconv.Itoa(port)),
 		Ready:       ready,
 		Terminating: terminating,
-		IsLocal:     isLocal,
+		Local:       isLocal,
 		Topology:    topology,
 	}
 }
@@ -459,7 +459,7 @@ func (em EndpointsMap) getLocalReadyEndpointIPs() map[types.NamespacedName]sets.
 	localIPs := make(map[types.NamespacedName]sets.String)
 	for svcPortName, epList := range em {
 		for _, ep := range epList {
-			if ep.GetIsLocal() && ep.IsReady() && !ep.IsTerminating() {
+			if ep.IsLocal() && ep.IsReady() && !ep.IsTerminating() {
 				nsn := svcPortName.NamespacedName
 				if localIPs[nsn] == nil {
 					localIPs[nsn] = sets.NewString()

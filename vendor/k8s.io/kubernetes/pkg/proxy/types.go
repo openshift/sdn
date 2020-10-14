@@ -93,8 +93,8 @@ type Endpoint interface {
 	IsReady() bool
 	// IsTerminating returns true if an endpoint is terminating
 	IsTerminating() bool
-	// GetIsLocal returns true if the endpoint is running in same host as kube-proxy, otherwise returns false.
-	GetIsLocal() bool
+	// IsLocal returns true if the endpoint is running in same host as kube-proxy, otherwise returns false.
+	IsLocal() bool
 	// GetTopology returns the topology information of the endpoint.
 	GetTopology() map[string]string
 	// IP returns IP part of the endpoint.

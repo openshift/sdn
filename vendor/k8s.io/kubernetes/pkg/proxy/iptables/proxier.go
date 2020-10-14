@@ -158,7 +158,7 @@ func (e *endpointsInfo) Equal(other proxy.Endpoint) bool {
 		return false
 	}
 	return e.Endpoint == o.Endpoint &&
-		e.IsLocal == o.IsLocal &&
+		e.Local == o.Local &&
 		e.protocol == o.protocol &&
 		e.chainName == o.chainName
 }
@@ -976,7 +976,7 @@ func (proxier *Proxier) syncProxyRules() {
 		localReadyTerminatingEndpoints := []proxy.Endpoint{}
 
 		for _, endpoint := range allEndpoints {
-			if endpoint.GetIsLocal() && endpoint.IsTerminating() {
+			if endpoint.IsLocal() && endpoint.IsTerminating() {
 				if !endpoint.IsReady() {
 					localNotReadyTerminatingEndpoints = append(localNotReadyTerminatingEndpoints, endpoint)
 				} else {
@@ -990,7 +990,7 @@ func (proxier *Proxier) syncProxyRules() {
 			}
 
 			// skip adding endpoint to "all ready endpoints" if service requests node local and endpoint is not local
-			if svcInfo.OnlyNodeLocalEndpoints() && !endpoint.GetIsLocal() {
+			if svcInfo.OnlyNodeLocalEndpoints() && !endpoint.IsLocal() {
 				continue
 			}
 
@@ -1374,7 +1374,7 @@ func (proxier *Proxier) syncProxyRules() {
 		localEndpointChains := make([]utiliptables.Chain, 0)
 		for i, endpointChain := range endpointChains {
 			// Write ingress loadbalancing & DNAT rules only for services that request OnlyLocal traffic.
-			if svcInfo.OnlyNodeLocalEndpoints() && endpoints[i].IsLocal {
+			if svcInfo.OnlyNodeLocalEndpoints() && endpoints[i].Local {
 				localEndpointChains = append(localEndpointChains, endpointChains[i])
 			}
 
