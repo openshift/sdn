@@ -61,6 +61,7 @@ func (sdn *OpenShiftSDN) initProxy() error {
 func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if string(sdn.ProxyConfig.Mode) == "disabled" {
 		klog.Warningf("Built-in kube-proxy is disabled")
+		sdn.startMetricsServer()
 		close(waitChan)
 		return
 	}
@@ -227,24 +228,30 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 
 	// Start up a metrics server if requested
-	if len(sdn.ProxyConfig.MetricsBindAddress) > 0 {
-		mux := mux.NewPathRecorderMux("kube-proxy")
-		mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
-		})
-		mux.Handle("/metrics", legacyregistry.Handler())
-		if sdn.ProxyConfig.EnableProfiling {
-			routes.Profiling{}.Install(mux)
-		}
-		go utilwait.Until(func() {
-			err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
-			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
-			}
-		}, 5*time.Second, utilwait.NeverStop)
-	}
+	sdn.startMetricsServer()
 
 	// periodically sync k8s iptables rules
 	go utilwait.Forever(proxier.SyncLoop, 0)
 	klog.Infof("Started Kubernetes Proxy on %s", sdn.ProxyConfig.BindAddress)
+}
+
+func (sdn *OpenShiftSDN) startMetricsServer() {
+	if sdn.ProxyConfig.MetricsBindAddress == "" {
+		return
+	}
+
+	mux := mux.NewPathRecorderMux("kube-proxy")
+	mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
+	})
+	mux.Handle("/metrics", legacyregistry.Handler())
+	if sdn.ProxyConfig.EnableProfiling {
+		routes.Profiling{}.Install(mux)
+	}
+	go utilwait.Until(func() {
+		err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
+		}
+	}, 5*time.Second, utilwait.NeverStop)
 }
