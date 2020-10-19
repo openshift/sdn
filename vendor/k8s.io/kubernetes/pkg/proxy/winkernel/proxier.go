@@ -32,7 +32,7 @@ import (
 	"github.com/Microsoft/hcsshim/hcn"
 
 	"github.com/davecgh/go-spew/spew"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"

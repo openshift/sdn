@@ -32,7 +32,7 @@ import (
 	"k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/promise/lockingpromise"
 	"k8s.io/apiserver/pkg/util/flowcontrol/metrics"
 	"k8s.io/apiserver/pkg/util/shufflesharding"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const nsTimeFmt = "2006-01-02 15:04:05.000000000"
