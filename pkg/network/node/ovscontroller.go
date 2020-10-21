@@ -36,7 +36,7 @@ const (
 	Vxlan0 = "vxlan0"
 
 	// rule versioning; increment each time flow rules change
-	ruleVersion = 7
+	ruleVersion = 8
 
 	ruleVersionTable = 253
 )
@@ -98,7 +98,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 
 	// Table 0: initial dispatch based on in_port
 	if oc.useConnTrack {
-		otx.AddFlow("table=0, priority=300, ip, ct_state=-trk, actions=ct(table=0)")
+		otx.AddFlow("table=0, priority=1000, ip, ct_state=-trk, actions=ct(table=0)")
 	}
 	// vxlan0
 	for _, clusterCIDR := range clusterNetworkCIDR {
