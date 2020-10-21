@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 
 	"github.com/sirupsen/logrus"
 )

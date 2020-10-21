@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"

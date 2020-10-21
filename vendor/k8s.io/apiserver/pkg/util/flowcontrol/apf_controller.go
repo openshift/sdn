@@ -45,7 +45,7 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 
 	fctypesv1a1 "k8s.io/api/flowcontrol/v1alpha1"
 	fcclientv1a1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1alpha1"

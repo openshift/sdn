@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 // WordSepNormalizeFunc changes all flags that contain "_" separators

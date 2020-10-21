@@ -43,7 +43,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/scale"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 	utilexec "k8s.io/utils/exec"
 )
 

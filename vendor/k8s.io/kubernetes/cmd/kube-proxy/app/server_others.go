@@ -64,7 +64,7 @@ import (
 	"k8s.io/utils/exec"
 	utilsnet "k8s.io/utils/net"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 // timeoutForNodePodCIDR is the time to wait for allocators to assign a PodCIDR to the

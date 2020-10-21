@@ -28,7 +28,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 const (

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 // Specified a policy for garbage collecting containers.

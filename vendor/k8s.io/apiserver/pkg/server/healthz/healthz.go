@@ -30,7 +30,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/server/httplog"
 	"k8s.io/client-go/informers"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 // HealthChecker is a named healthz checker.

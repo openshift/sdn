@@ -32,7 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 // resourceVersionGetter is an interface used to get resource version from events.

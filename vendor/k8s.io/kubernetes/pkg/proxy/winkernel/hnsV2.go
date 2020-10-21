@@ -23,7 +23,7 @@ import (
 	"fmt"
 
 	"github.com/Microsoft/hcsshim/hcn"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 
 	"strings"
 )
