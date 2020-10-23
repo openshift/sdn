@@ -91,7 +91,7 @@ func (hcs *server) SyncServices(newServices map[types.NamespacedName]uint16) err
 	// Add any that are needed.
 	for nsn, port := range newServices {
 		if hcs.services[nsn] != nil {
-			klog.V(3).Infof("Existing healthcheck %q on port %d", nsn.String(), port)
+			klog.V(2).Infof("Existing healthcheck %q on port %d", nsn.String(), port)
 			continue
 		}
 
@@ -120,12 +120,12 @@ func (hcs *server) SyncServices(newServices map[types.NamespacedName]uint16) err
 
 		go func(nsn types.NamespacedName, svc *hcInstance) {
 			// Serve() will exit when the listener is closed.
-			klog.V(3).Infof("Starting goroutine for healthcheck %q on port %d", nsn.String(), svc.port)
+			klog.V(2).Infof("Starting goroutine for healthcheck %q on port %d", nsn.String(), svc.port)
 			if err := svc.server.Serve(svc.listener); err != nil {
-				klog.V(3).Infof("Healthcheck %q closed: %v", nsn.String(), err)
+				klog.V(2).Infof("Healthcheck %q closed: %v", nsn.String(), err)
 				return
 			}
-			klog.V(3).Infof("Healthcheck %q closed", nsn.String())
+			klog.V(2).Infof("Healthcheck %q closed", nsn.String())
 		}(nsn, svc)
 	}
 	return nil
@@ -181,10 +181,10 @@ func (hcs *server) SyncEndpoints(newEndpoints map[types.NamespacedName]int) erro
 
 	for nsn, count := range newEndpoints {
 		if hcs.services[nsn] == nil {
-			klog.V(3).Infof("Not saving endpoints for unknown healthcheck %q", nsn.String())
+			klog.V(2).Infof("Not saving endpoints for unknown healthcheck %q", nsn.String())
 			continue
 		}
-		klog.V(3).Infof("Reporting %d endpoints for healthcheck %q", count, nsn.String())
+		klog.V(2).Infof("Reporting %d endpoints for healthcheck %q", count, nsn.String())
 		hcs.services[nsn].endpoints = count
 	}
 	for nsn, hci := range hcs.services {

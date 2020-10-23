@@ -462,6 +462,7 @@ func (em EndpointsMap) getLocalReadyEndpointIPs() map[types.NamespacedName]sets.
 	localIPs := make(map[types.NamespacedName]sets.String)
 	for svcPortName, epList := range em {
 		for _, ep := range epList {
+			klog.V(2).Infof("svc %s address=%s IsLocal=%t IsReady=%t IsTerminating=%t", svcPortName.NamespacedName, ep.IP(), ep.IsLocal(), ep.IsReady(), ep.IsTerminating())
 			if ep.IsLocal() && ep.IsReady() && !ep.IsTerminating() {
 				nsn := svcPortName.NamespacedName
 				if localIPs[nsn] == nil {
