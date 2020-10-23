@@ -96,7 +96,10 @@ func (info *BaseEndpointInfo) Port() (int, error) {
 
 // Equal is part of proxy.Endpoint interface.
 func (info *BaseEndpointInfo) Equal(other Endpoint) bool {
-	return info.String() == other.String() && info.IsLocal() == other.IsLocal()
+	return info.String() == other.String() &&
+		info.IsLocal() == other.IsLocal() &&
+		info.IsReady() == other.IsReady() &&
+		info.IsTerminating() == other.IsTerminating()
 }
 
 func newBaseEndpointInfo(IP string, port int, isLocal bool, topology map[string]string, ready bool, terminating bool) *BaseEndpointInfo {

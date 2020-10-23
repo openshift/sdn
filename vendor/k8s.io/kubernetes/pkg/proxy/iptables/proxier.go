@@ -159,6 +159,8 @@ func (e *endpointsInfo) Equal(other proxy.Endpoint) bool {
 	}
 	return e.Endpoint == o.Endpoint &&
 		e.Local == o.Local &&
+		e.Ready == o.Ready &&
+		e.Terminating == o.Terminating &&
 		e.protocol == o.protocol &&
 		e.chainName == o.chainName
 }
