@@ -971,48 +971,41 @@ func (proxier *Proxier) syncProxyRules() {
 		protocol := strings.ToLower(string(svcInfo.Protocol()))
 		svcNameString := svcInfo.serviceNameString
 
-		allEndpoints := proxier.endpointsMap[svcName]
-
 		readyEndpoints := []proxy.Endpoint{}
+		haveLocalReadyNonterminatingEndpoint := false
 		localNotReadyTerminatingEndpoints := []proxy.Endpoint{}
 		localReadyTerminatingEndpoints := []proxy.Endpoint{}
-
-		for _, endpoint := range allEndpoints {
+		for _, endpoint := range proxier.endpointsMap[svcName] {
 			if endpoint.IsLocal() && endpoint.IsTerminating() {
-				if !endpoint.IsReady() {
-					localNotReadyTerminatingEndpoints = append(localNotReadyTerminatingEndpoints, endpoint)
-				} else {
+				if endpoint.IsReady() {
 					localReadyTerminatingEndpoints = append(localReadyTerminatingEndpoints, endpoint)
+				} else {
+					localNotReadyTerminatingEndpoints = append(localNotReadyTerminatingEndpoints, endpoint)
 				}
 			}
 
-			// skip adding endpoint to "all ready endpoints" if not ready or terminating
 			if !endpoint.IsReady() || endpoint.IsTerminating() {
 				continue
 			}
 
-			// skip adding endpoint to "all ready endpoints" if service requests node local and endpoint is not local
-			if svcInfo.OnlyNodeLocalEndpoints() && !endpoint.IsLocal() {
-				continue
+			if endpoint.IsLocal() {
+				haveLocalReadyNonterminatingEndpoint = true
 			}
 
 			readyEndpoints = append(readyEndpoints, endpoint)
 		}
 
-		hasEndpoints := len(readyEndpoints) > 0
-
-		// if node local only and there are no ready endpoints, fall back to any
-		// ready/unready terminating endpoints
-		if svcInfo.OnlyNodeLocalEndpoints() && len(readyEndpoints) == 0 {
+		// If the service is node local only and there are no local
+		// ready nonterminating endpoints, add any local ready/unready
+		// terminating endpoints.
+		if !haveLocalReadyNonterminatingEndpoint && svcInfo.OnlyNodeLocalEndpoints() {
 			if len(localReadyTerminatingEndpoints) > 0 {
-				readyEndpoints = localReadyTerminatingEndpoints
-				hasEndpoints = true
+				readyEndpoints = append(readyEndpoints, localReadyTerminatingEndpoints...)
 			} else if len(localNotReadyTerminatingEndpoints) > 0 {
-				readyEndpoints = localNotReadyTerminatingEndpoints
-				hasEndpoints = true
+				readyEndpoints = append(readyEndpoints, localNotReadyTerminatingEndpoints...)
 			}
-
 		}
+		allEndpoints := readyEndpoints
 
 		// Service Topology will not be enabled in the following cases:
 		// 1. externalTrafficPolicy=Local (mutually exclusive with service topology).
@@ -1020,9 +1013,10 @@ func (proxier *Proxier) syncProxyRules() {
 		// 3. EndpointSlice is not enabled (service topology depends on endpoint slice
 		// to get topology information).
 		if !svcInfo.OnlyNodeLocalEndpoints() && utilfeature.DefaultFeatureGate.Enabled(features.ServiceTopology) && utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
-			readyEndpoints = proxy.FilterTopologyEndpoint(proxier.nodeLabels, svcInfo.TopologyKeys(), allEndpoints)
-			hasEndpoints = len(readyEndpoints) > 0
+			allEndpoints = proxy.FilterTopologyEndpoint(proxier.nodeLabels, svcInfo.TopologyKeys(), allEndpoints)
 		}
+
+		hasEndpoints := len(allEndpoints) > 0
 
 		svcChain := svcInfo.servicePortChainName
 		if hasEndpoints {
@@ -1335,7 +1329,7 @@ func (proxier *Proxier) syncProxyRules() {
 		endpoints = endpoints[:0]
 		endpointChains = endpointChains[:0]
 		var endpointChain utiliptables.Chain
-		for _, ep := range readyEndpoints {
+		for _, ep := range allEndpoints {
 			epInfo, ok := ep.(*endpointsInfo)
 			if !ok {
 				klog.Errorf("Failed to cast endpointsInfo %q", ep.String())
