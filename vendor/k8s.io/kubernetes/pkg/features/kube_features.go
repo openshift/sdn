@@ -586,7 +586,13 @@ const (
 	//
 	// Enables usage of any object for volume data source in PVCs
 	AnyVolumeDataSource featuregate.Feature = "AnyVolumeDataSource"
-)
+
+	// owner: @andrewsykim
+	// alpha: v1.20
+	//
+	// Enable Terminating condition in Endpoint Slices.
+	EndpointSliceTerminatingCondition featuregate.Feature = "EndpointSliceTerminatingCondition"
+ )
 
 func init() {
 	runtime.Must(utilfeature.DefaultMutableFeatureGate.Add(defaultKubernetesFeatureGates))
@@ -666,6 +672,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSlice:                                  {Default: true, PreRelease: featuregate.Beta},
 	EndpointSliceProxying:                          {Default: false, PreRelease: featuregate.Alpha},
+	EndpointSliceTerminatingCondition:              {Default: false, PreRelease: featuregate.Alpha},
 	EvenPodsSpread:                                 {Default: true, PreRelease: featuregate.Beta},
 	StartupProbe:                                   {Default: true, PreRelease: featuregate.Beta},
 	AllowInsecureBackendProxy:                      {Default: true, PreRelease: featuregate.Beta},
