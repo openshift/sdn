@@ -1,0 +1,113 @@
+diff --no-dereference -N -r current/vendor/k8s.io/apimachinery/pkg/apis/meta/v1/types.go updated/vendor/k8s.io/apimachinery/pkg/apis/meta/v1/types.go
+876,878d875
+< 	// CauseTypeResourceVersionTooLarge is used to report that the requested resource version
+< 	// is newer than the data observed by the API server, so the request cannot be served.
+< 	CauseTypeResourceVersionTooLarge CauseType = "ResourceVersionTooLarge"
+diff --no-dereference -N -r current/vendor/k8s.io/apiserver/pkg/storage/errors.go updated/vendor/k8s.io/apiserver/pkg/storage/errors.go
+180,185c180
+< 	err.ErrStatus.Details.Causes = []metav1.StatusCause{
+< 		{
+< 			Type:    metav1.CauseTypeResourceVersionTooLarge,
+< 			Message: tooLargeResourceVersionCauseMsg,
+< 		},
+< 	}
+---
+> 	err.ErrStatus.Details.Causes = []metav1.StatusCause{{Message: tooLargeResourceVersionCauseMsg}}
+194c189,199
+< 	return errors.HasStatusCause(err, metav1.CauseTypeResourceVersionTooLarge)
+---
+> 	switch t := err.(type) {
+> 	case errors.APIStatus:
+> 		if d := t.Status().Details; d != nil {
+> 			for _, cause := range d.Causes {
+> 				if cause.Message == tooLargeResourceVersionCauseMsg {
+> 					return true
+> 				}
+> 			}
+> 		}
+> 	}
+> 	return false
+diff --no-dereference -N -r current/vendor/k8s.io/client-go/tools/cache/reflector.go updated/vendor/k8s.io/client-go/tools/cache/reflector.go
+85,87c85,87
+< 	// isLastSyncResourceVersionUnavailable is true if the previous list or watch request with
+< 	// lastSyncResourceVersion failed with an "expired" or "too large resource version" error.
+< 	isLastSyncResourceVersionUnavailable bool
+---
+> 	// isLastSyncResourceVersionGone is true if the previous list or watch request with lastSyncResourceVersion
+> 	// failed with an HTTP 410 (Gone) status code.
+> 	isLastSyncResourceVersionGone bool
+259,261c259,261
+< 			if isExpiredError(err) || isTooLargeResourceVersionError(err) {
+< 				r.setIsLastSyncResourceVersionUnavailable(true)
+< 				// Retry immediately if the resource version used to list is unavailable.
+---
+> 			if isExpiredError(err) {
+> 				r.setIsLastSyncResourceVersionExpired(true)
+> 				// Retry immediately if the resource version used to list is expired.
+263,266c263,265
+< 				// continuation pages, but the pager might not be enabled, the full list might fail because the
+< 				// resource version it is listing at is expired or the cache may not yet be synced to the provided
+< 				// resource version. So we need to fallback to resourceVersion="" in all to recover and ensure
+< 				// the reflector makes forward progress.
+---
+> 				// continuation pages, but the pager might not be enabled, or the full list might fail because the
+> 				// resource version it is listing at is expired, so we need to fallback to resourceVersion="" in all
+> 				// to recover and ensure the reflector makes forward progress.
+296c295
+< 		r.setIsLastSyncResourceVersionUnavailable(false) // list was successful
+---
+> 		r.setIsLastSyncResourceVersionExpired(false) // list was successful
+374c373
+< 				// Don't set LastSyncResourceVersionUnavailable - LIST call with ResourceVersion=RV already
+---
+> 				// Don't set LastSyncResourceVersionExpired - LIST call with ResourceVersion=RV already
+400c399
+< 					// Don't set LastSyncResourceVersionUnavailable - LIST call with ResourceVersion=RV already
+---
+> 					// Don't set LastSyncResourceVersionExpired - LIST call with ResourceVersion=RV already
+523c522
+< 	if r.isLastSyncResourceVersionUnavailable {
+---
+> 	if r.isLastSyncResourceVersionGone {
+525c524
+< 		// if the lastSyncResourceVersion is unavailable, we set ResourceVersion="" and list again to re-establish reflector
+---
+> 		// if the lastSyncResourceVersion is expired, we set ResourceVersion="" and list again to re-establish reflector
+537,539c536,538
+< // setIsLastSyncResourceVersionUnavailable sets if the last list or watch request with lastSyncResourceVersion returned
+< // "expired" or "too large resource version" error.
+< func (r *Reflector) setIsLastSyncResourceVersionUnavailable(isUnavailable bool) {
+---
+> // setIsLastSyncResourceVersionExpired sets if the last list or watch request with lastSyncResourceVersion returned a
+> // expired error: HTTP 410 (Gone) Status Code.
+> func (r *Reflector) setIsLastSyncResourceVersionExpired(isExpired bool) {
+542c541
+< 	r.isLastSyncResourceVersionUnavailable = isUnavailable
+---
+> 	r.isLastSyncResourceVersionGone = isExpired
+551,575d549
+< }
+< 
+< func isTooLargeResourceVersionError(err error) bool {
+< 	if apierrors.HasStatusCause(err, metav1.CauseTypeResourceVersionTooLarge) {
+< 		return true
+< 	}
+< 	// In Kubernetes 1.17.0-1.18.5, the api server doesn't set the error status cause to
+< 	// metav1.CauseTypeResourceVersionTooLarge to indicate that the requested minimum resource
+< 	// version is larger than the largest currently available resource version. To ensure backward
+< 	// compatibility with these server versions we also need to detect the error based on the content
+< 	// of the error message field.
+< 	if !apierrors.IsTimeout(err) {
+< 		return false
+< 	}
+< 	apierr, ok := err.(apierrors.APIStatus)
+< 	if !ok || apierr == nil || apierr.Status().Details == nil {
+< 		return false
+< 	}
+< 	for _, cause := range apierr.Status().Details.Causes {
+< 		// Matches the message returned by api server 1.17.0-1.18.5 for this error condition
+< 		if cause.Message == "Too large resource version" {
+< 			return true
+< 		}
+< 	}
+< 	return false
