@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kapi "k8s.io/api/core/v1"
+	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -229,7 +230,12 @@ func (vmap *masterVNIDMap) revokeVNID(networkClient networkclient.Interface, nsN
 
 	// Delete NetNamespace object
 	if err := networkClient.NetworkV1().NetNamespaces().Delete(context.TODO(), nsName, metav1.DeleteOptions{}); err != nil {
-		return err
+		// If the netnamespace is already deleted, emit a warning and move forward
+		if kapierrors.IsNotFound(err) {
+			klog.Warningf("Could not find the netnamespace %s: Must be already deleted.", nsName)
+		} else {
+			return err
+		}
 	}
 
 	if err := vmap.releaseNetID(nsName); err != nil {
