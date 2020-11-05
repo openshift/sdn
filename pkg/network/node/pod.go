@@ -255,9 +255,6 @@ func (m *podManager) processCNIRequests() {
 }
 
 func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.PodResult {
-	m.runningPodsLock.Lock()
-	defer m.runningPodsLock.Unlock()
-
 	pk := getPodKey(request.PodNamespace, request.PodName)
 	result := &cniserver.PodResult{}
 	switch request.Command {
@@ -266,6 +263,8 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		if ipamResult != nil {
 			result.Response, err = json.Marshal(ipamResult)
 			if err == nil {
+				m.runningPodsLock.Lock()
+				defer m.runningPodsLock.Unlock()
 				m.runningPods[pk] = runningPod
 				if m.ovs != nil {
 					m.updateLocalMulticastRulesWithLock(runningPod.vnid)
@@ -280,6 +279,8 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 	case cniserver.CNI_UPDATE:
 		vnid, err := m.podHandler.update(request)
 		if err == nil {
+			m.runningPodsLock.Lock()
+			defer m.runningPodsLock.Unlock()
 			if runningPod, exists := m.runningPods[pk]; exists {
 				runningPod.vnid = vnid
 			}
@@ -288,12 +289,14 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		}
 		result.Err = err
 	case cniserver.CNI_DEL:
+		m.runningPodsLock.Lock()
 		if runningPod, exists := m.runningPods[pk]; exists {
 			delete(m.runningPods, pk)
 			if m.ovs != nil {
 				m.updateLocalMulticastRulesWithLock(runningPod.vnid)
 			}
 		}
+		m.runningPodsLock.Unlock()
 		result.Err = m.podHandler.teardown(request)
 		if result.Err != nil {
 			klog.Warningf("CNI_DEL %s failed: %v", pk, result.Err)
