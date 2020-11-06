@@ -15,7 +15,7 @@ RUN INSTALL_PKGS=" \
       libmnl libnetfilter_conntrack conntrack-tools \
       libnfnetlink iproute procps-ng openssl \
       iputils binutils xz util-linux dbus nftables \
-      " && \
+      tcpdump" && \
     yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
     mkdir -p /etc/sysconfig/cni/net.d && \
     yum clean all && rm -rf /var/cache/*
