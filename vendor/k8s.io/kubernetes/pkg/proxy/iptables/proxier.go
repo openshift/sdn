@@ -1402,7 +1402,7 @@ func (proxier *Proxier) syncProxyRules() {
 				args = append(args, "-m", "recent", "--name", string(endpointChain), "--set")
 			}
 			// DNAT to final destination.
-			args = append(args, "-m", protocol, "-p", protocol, "-j", "DNAT", "--to-destination", readyEndpoints[i].Endpoint)
+			args = append(args, "-m", protocol, "-p", protocol, "-j", "DNAT", "--to-destination", endpoints[i].Endpoint)
 			writeLine(proxier.natRules, args...)
 		}
 
