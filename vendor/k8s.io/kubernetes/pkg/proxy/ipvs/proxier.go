@@ -1986,9 +1986,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 
 			if epInfo.IsReady() {
 				localReadyEndpoints.Insert(epInfo.String())
-			}
-
-			if epInfo.IsServing() && epInfo.IsTerminating() {
+			} else if epInfo.IsServing() && epInfo.IsTerminating() {
 				localReadyTerminatingEndpoints.Insert(epInfo.String())
 			}
 		}
