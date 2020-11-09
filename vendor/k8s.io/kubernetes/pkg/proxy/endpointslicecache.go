@@ -77,7 +77,11 @@ type endpointSliceInfo struct {
 type endpointInfo struct {
 	Addresses []string
 	Topology  map[string]string
-}
+
+	Ready       bool
+	Serving     bool
+	Terminating bool
+ }
 
 // spToEndpointMap stores groups Endpoint objects by ServicePortName and
 // EndpointSlice name.
@@ -119,13 +123,18 @@ func newEndpointSliceInfo(endpointSlice *discovery.EndpointSlice, remove bool) *
 
 	if !remove {
 		for _, endpoint := range endpointSlice.Endpoints {
-			if endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready {
-				esInfo.Endpoints = append(esInfo.Endpoints, &endpointInfo{
-					Addresses: endpoint.Addresses,
-					Topology:  endpoint.Topology,
-				})
+			epInfo := &endpointInfo{
+				Addresses: endpoint.Addresses,
+				Topology:  endpoint.Topology,
+
+				// conditions
+				Ready:       endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready,
+				Serving:     endpoint.Conditions.Serving == nil || *endpoint.Conditions.Serving,
+				Terminating: endpoint.Conditions.Terminating != nil && *endpoint.Conditions.Terminating,
 			}
-		}
+
+			esInfo.Endpoints = append(esInfo.Endpoints, epInfo)
+ 		}
 
 		sort.Sort(byAddress(esInfo.Endpoints))
 	}
@@ -256,7 +265,8 @@ func (cache *EndpointSliceCache) addEndpointsByIP(serviceNN types.NamespacedName
 		}
 
 		isLocal := cache.isLocal(endpoint.Topology[v1.LabelHostname])
-		endpointInfo := newBaseEndpointInfo(endpoint.Addresses[0], portNum, isLocal, endpoint.Topology)
+		endpointInfo := newBaseEndpointInfo(endpoint.Addresses[0], portNum, isLocal, endpoint.Topology,
+			endpoint.Ready, endpoint.Serving, endpoint.Terminating)
 
 		// This logic ensures we're deduping potential overlapping endpoints
 		// isLocal should not vary between matching IPs, but if it does, we
