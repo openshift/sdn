@@ -137,7 +137,7 @@ func (sdn *OpenShiftSDN) Init() error {
 		return fmt.Errorf("failed to build informers: %v", err)
 	}
 
-	sdn.ipt = iptables.New(kexec.New(), iptables.ProtocolIpv4)
+	sdn.ipt = iptables.New(kexec.New(), iptables.ProtocolIPv4)
 
 	// Configure SDN
 	err = sdn.initSDN()

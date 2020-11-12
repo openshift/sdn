@@ -32,6 +32,7 @@ const (
 	RT_FILTER_SRC
 	RT_FILTER_GW
 	RT_FILTER_TABLE
+	RT_FILTER_HOPLIMIT
 )
 
 const (
@@ -125,17 +126,17 @@ func (e *MPLSEncap) Type() int {
 
 func (e *MPLSEncap) Decode(buf []byte) error {
 	if len(buf) < 4 {
-		return fmt.Errorf("Lack of bytes")
+		return fmt.Errorf("lack of bytes")
 	}
 	native := nl.NativeEndian()
 	l := native.Uint16(buf)
 	if len(buf) < int(l) {
-		return fmt.Errorf("Lack of bytes")
+		return fmt.Errorf("lack of bytes")
 	}
 	buf = buf[:l]
 	typ := native.Uint16(buf[2:])
 	if typ != nl.MPLS_IPTUNNEL_DST {
-		return fmt.Errorf("Unknown MPLS Encap Type: %d", typ)
+		return fmt.Errorf("unknown MPLS Encap Type: %d", typ)
 	}
 	e.Labels = nl.DecodeMPLSStack(buf[4:])
 	return nil
@@ -182,6 +183,262 @@ func (e *MPLSEncap) Equal(x Encap) bool {
 		if e.Labels[i] != o.Labels[i] {
 			return false
 		}
+	}
+	return true
+}
+
+// SEG6 definitions
+type SEG6Encap struct {
+	Mode     int
+	Segments []net.IP
+}
+
+func (e *SEG6Encap) Type() int {
+	return nl.LWTUNNEL_ENCAP_SEG6
+}
+func (e *SEG6Encap) Decode(buf []byte) error {
+	if len(buf) < 4 {
+		return fmt.Errorf("lack of bytes")
+	}
+	native := nl.NativeEndian()
+	// Get Length(l) & Type(typ) : 2 + 2 bytes
+	l := native.Uint16(buf)
+	if len(buf) < int(l) {
+		return fmt.Errorf("lack of bytes")
+	}
+	buf = buf[:l] // make sure buf size upper limit is Length
+	typ := native.Uint16(buf[2:])
+	// LWTUNNEL_ENCAP_SEG6 has only one attr type SEG6_IPTUNNEL_SRH
+	if typ != nl.SEG6_IPTUNNEL_SRH {
+		return fmt.Errorf("unknown SEG6 Type: %d", typ)
+	}
+
+	var err error
+	e.Mode, e.Segments, err = nl.DecodeSEG6Encap(buf[4:])
+
+	return err
+}
+func (e *SEG6Encap) Encode() ([]byte, error) {
+	s, err := nl.EncodeSEG6Encap(e.Mode, e.Segments)
+	native := nl.NativeEndian()
+	hdr := make([]byte, 4)
+	native.PutUint16(hdr, uint16(len(s)+4))
+	native.PutUint16(hdr[2:], nl.SEG6_IPTUNNEL_SRH)
+	return append(hdr, s...), err
+}
+func (e *SEG6Encap) String() string {
+	segs := make([]string, 0, len(e.Segments))
+	// append segment backwards (from n to 0) since seg#0 is the last segment.
+	for i := len(e.Segments); i > 0; i-- {
+		segs = append(segs, fmt.Sprintf("%s", e.Segments[i-1]))
+	}
+	str := fmt.Sprintf("mode %s segs %d [ %s ]", nl.SEG6EncapModeString(e.Mode),
+		len(e.Segments), strings.Join(segs, " "))
+	return str
+}
+func (e *SEG6Encap) Equal(x Encap) bool {
+	o, ok := x.(*SEG6Encap)
+	if !ok {
+		return false
+	}
+	if e == o {
+		return true
+	}
+	if e == nil || o == nil {
+		return false
+	}
+	if e.Mode != o.Mode {
+		return false
+	}
+	if len(e.Segments) != len(o.Segments) {
+		return false
+	}
+	for i := range e.Segments {
+		if !e.Segments[i].Equal(o.Segments[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// SEG6LocalEncap definitions
+type SEG6LocalEncap struct {
+	Flags    [nl.SEG6_LOCAL_MAX]bool
+	Action   int
+	Segments []net.IP // from SRH in seg6_local_lwt
+	Table    int      // table id for End.T and End.DT6
+	InAddr   net.IP
+	In6Addr  net.IP
+	Iif      int
+	Oif      int
+}
+
+func (e *SEG6LocalEncap) Type() int {
+	return nl.LWTUNNEL_ENCAP_SEG6_LOCAL
+}
+func (e *SEG6LocalEncap) Decode(buf []byte) error {
+	attrs, err := nl.ParseRouteAttr(buf)
+	if err != nil {
+		return err
+	}
+	native := nl.NativeEndian()
+	for _, attr := range attrs {
+		switch attr.Attr.Type {
+		case nl.SEG6_LOCAL_ACTION:
+			e.Action = int(native.Uint32(attr.Value[0:4]))
+			e.Flags[nl.SEG6_LOCAL_ACTION] = true
+		case nl.SEG6_LOCAL_SRH:
+			e.Segments, err = nl.DecodeSEG6Srh(attr.Value[:])
+			e.Flags[nl.SEG6_LOCAL_SRH] = true
+		case nl.SEG6_LOCAL_TABLE:
+			e.Table = int(native.Uint32(attr.Value[0:4]))
+			e.Flags[nl.SEG6_LOCAL_TABLE] = true
+		case nl.SEG6_LOCAL_NH4:
+			e.InAddr = net.IP(attr.Value[0:4])
+			e.Flags[nl.SEG6_LOCAL_NH4] = true
+		case nl.SEG6_LOCAL_NH6:
+			e.In6Addr = net.IP(attr.Value[0:16])
+			e.Flags[nl.SEG6_LOCAL_NH6] = true
+		case nl.SEG6_LOCAL_IIF:
+			e.Iif = int(native.Uint32(attr.Value[0:4]))
+			e.Flags[nl.SEG6_LOCAL_IIF] = true
+		case nl.SEG6_LOCAL_OIF:
+			e.Oif = int(native.Uint32(attr.Value[0:4]))
+			e.Flags[nl.SEG6_LOCAL_OIF] = true
+		}
+	}
+	return err
+}
+func (e *SEG6LocalEncap) Encode() ([]byte, error) {
+	var err error
+	native := nl.NativeEndian()
+	res := make([]byte, 8)
+	native.PutUint16(res, 8) // length
+	native.PutUint16(res[2:], nl.SEG6_LOCAL_ACTION)
+	native.PutUint32(res[4:], uint32(e.Action))
+	if e.Flags[nl.SEG6_LOCAL_SRH] {
+		srh, err := nl.EncodeSEG6Srh(e.Segments)
+		if err != nil {
+			return nil, err
+		}
+		attr := make([]byte, 4)
+		native.PutUint16(attr, uint16(len(srh)+4))
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_SRH)
+		attr = append(attr, srh...)
+		res = append(res, attr...)
+	}
+	if e.Flags[nl.SEG6_LOCAL_TABLE] {
+		attr := make([]byte, 8)
+		native.PutUint16(attr, 8)
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_TABLE)
+		native.PutUint32(attr[4:], uint32(e.Table))
+		res = append(res, attr...)
+	}
+	if e.Flags[nl.SEG6_LOCAL_NH4] {
+		attr := make([]byte, 4)
+		native.PutUint16(attr, 8)
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_NH4)
+		ipv4 := e.InAddr.To4()
+		if ipv4 == nil {
+			err = fmt.Errorf("SEG6_LOCAL_NH4 has invalid IPv4 address")
+			return nil, err
+		}
+		attr = append(attr, ipv4...)
+		res = append(res, attr...)
+	}
+	if e.Flags[nl.SEG6_LOCAL_NH6] {
+		attr := make([]byte, 4)
+		native.PutUint16(attr, 20)
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_NH6)
+		attr = append(attr, e.In6Addr...)
+		res = append(res, attr...)
+	}
+	if e.Flags[nl.SEG6_LOCAL_IIF] {
+		attr := make([]byte, 8)
+		native.PutUint16(attr, 8)
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_IIF)
+		native.PutUint32(attr[4:], uint32(e.Iif))
+		res = append(res, attr...)
+	}
+	if e.Flags[nl.SEG6_LOCAL_OIF] {
+		attr := make([]byte, 8)
+		native.PutUint16(attr, 8)
+		native.PutUint16(attr[2:], nl.SEG6_LOCAL_OIF)
+		native.PutUint32(attr[4:], uint32(e.Oif))
+		res = append(res, attr...)
+	}
+	return res, err
+}
+func (e *SEG6LocalEncap) String() string {
+	strs := make([]string, 0, nl.SEG6_LOCAL_MAX)
+	strs = append(strs, fmt.Sprintf("action %s", nl.SEG6LocalActionString(e.Action)))
+
+	if e.Flags[nl.SEG6_LOCAL_TABLE] {
+		strs = append(strs, fmt.Sprintf("table %d", e.Table))
+	}
+	if e.Flags[nl.SEG6_LOCAL_NH4] {
+		strs = append(strs, fmt.Sprintf("nh4 %s", e.InAddr))
+	}
+	if e.Flags[nl.SEG6_LOCAL_NH6] {
+		strs = append(strs, fmt.Sprintf("nh6 %s", e.In6Addr))
+	}
+	if e.Flags[nl.SEG6_LOCAL_IIF] {
+		link, err := LinkByIndex(e.Iif)
+		if err != nil {
+			strs = append(strs, fmt.Sprintf("iif %d", e.Iif))
+		} else {
+			strs = append(strs, fmt.Sprintf("iif %s", link.Attrs().Name))
+		}
+	}
+	if e.Flags[nl.SEG6_LOCAL_OIF] {
+		link, err := LinkByIndex(e.Oif)
+		if err != nil {
+			strs = append(strs, fmt.Sprintf("oif %d", e.Oif))
+		} else {
+			strs = append(strs, fmt.Sprintf("oif %s", link.Attrs().Name))
+		}
+	}
+	if e.Flags[nl.SEG6_LOCAL_SRH] {
+		segs := make([]string, 0, len(e.Segments))
+		//append segment backwards (from n to 0) since seg#0 is the last segment.
+		for i := len(e.Segments); i > 0; i-- {
+			segs = append(segs, fmt.Sprintf("%s", e.Segments[i-1]))
+		}
+		strs = append(strs, fmt.Sprintf("segs %d [ %s ]", len(e.Segments), strings.Join(segs, " ")))
+	}
+	return strings.Join(strs, " ")
+}
+func (e *SEG6LocalEncap) Equal(x Encap) bool {
+	o, ok := x.(*SEG6LocalEncap)
+	if !ok {
+		return false
+	}
+	if e == o {
+		return true
+	}
+	if e == nil || o == nil {
+		return false
+	}
+	// compare all arrays first
+	for i := range e.Flags {
+		if e.Flags[i] != o.Flags[i] {
+			return false
+		}
+	}
+	if len(e.Segments) != len(o.Segments) {
+		return false
+	}
+	for i := range e.Segments {
+		if !e.Segments[i].Equal(o.Segments[i]) {
+			return false
+		}
+	}
+	// compare values
+	if !e.InAddr.Equal(o.InAddr) || !e.In6Addr.Equal(o.In6Addr) {
+		return false
+	}
+	if e.Action != o.Action || e.Table != o.Table || e.Iif != o.Iif || e.Oif != o.Oif {
+		return false
 	}
 	return true
 }
@@ -262,18 +519,18 @@ func (h *Handle) routeHandle(route *Route, req *nl.NetlinkRequest, msg *nl.RtMsg
 		if err != nil {
 			return err
 		}
-		rtAttrs = append(rtAttrs, nl.NewRtAttr(nl.RTA_NEWDST, buf))
+		rtAttrs = append(rtAttrs, nl.NewRtAttr(unix.RTA_NEWDST, buf))
 	}
 
 	if route.Encap != nil {
 		buf := make([]byte, 2)
 		native.PutUint16(buf, uint16(route.Encap.Type()))
-		rtAttrs = append(rtAttrs, nl.NewRtAttr(nl.RTA_ENCAP_TYPE, buf))
+		rtAttrs = append(rtAttrs, nl.NewRtAttr(unix.RTA_ENCAP_TYPE, buf))
 		buf, err := route.Encap.Encode()
 		if err != nil {
 			return err
 		}
-		rtAttrs = append(rtAttrs, nl.NewRtAttr(nl.RTA_ENCAP, buf))
+		rtAttrs = append(rtAttrs, nl.NewRtAttr(unix.RTA_ENCAP, buf))
 	}
 
 	if route.Src != nil {
@@ -337,17 +594,17 @@ func (h *Handle) routeHandle(route *Route, req *nl.NetlinkRequest, msg *nl.RtMsg
 				if err != nil {
 					return err
 				}
-				children = append(children, nl.NewRtAttr(nl.RTA_NEWDST, buf))
+				children = append(children, nl.NewRtAttr(unix.RTA_NEWDST, buf))
 			}
 			if nh.Encap != nil {
 				buf := make([]byte, 2)
 				native.PutUint16(buf, uint16(nh.Encap.Type()))
-				rtAttrs = append(rtAttrs, nl.NewRtAttr(nl.RTA_ENCAP_TYPE, buf))
+				children = append(children, nl.NewRtAttr(unix.RTA_ENCAP_TYPE, buf))
 				buf, err := nh.Encap.Encode()
 				if err != nil {
 					return err
 				}
-				children = append(children, nl.NewRtAttr(nl.RTA_ENCAP, buf))
+				children = append(children, nl.NewRtAttr(unix.RTA_ENCAP, buf))
 			}
 			rtnh.Children = children
 			buf = append(buf, rtnh.Serialize()...)
@@ -379,6 +636,29 @@ func (h *Handle) routeHandle(route *Route, req *nl.NetlinkRequest, msg *nl.RtMsg
 	}
 	if route.Type > 0 {
 		msg.Type = uint8(route.Type)
+	}
+
+	var metrics []*nl.RtAttr
+	// TODO: support other rta_metric values
+	if route.MTU > 0 {
+		b := nl.Uint32Attr(uint32(route.MTU))
+		metrics = append(metrics, nl.NewRtAttr(unix.RTAX_MTU, b))
+	}
+	if route.AdvMSS > 0 {
+		b := nl.Uint32Attr(uint32(route.AdvMSS))
+		metrics = append(metrics, nl.NewRtAttr(unix.RTAX_ADVMSS, b))
+	}
+	if route.Hoplimit > 0 {
+		b := nl.Uint32Attr(uint32(route.Hoplimit))
+		metrics = append(metrics, nl.NewRtAttr(unix.RTAX_HOPLIMIT, b))
+	}
+
+	if metrics != nil {
+		attr := nl.NewRtAttr(unix.RTA_METRICS, nil)
+		for _, metric := range metrics {
+			attr.AddChild(metric)
+		}
+		rtAttrs = append(rtAttrs, attr)
 	}
 
 	msg.Flags = uint32(route.Flags)
@@ -482,6 +762,8 @@ func (h *Handle) RouteListFiltered(family int, filter *Route, filterMask uint64)
 						continue
 					}
 				}
+			case filterMask&RT_FILTER_HOPLIMIT != 0 && route.Hoplimit != filter.Hoplimit:
+				continue
 			}
 		}
 		res = append(res, route)
@@ -537,11 +819,11 @@ func deserializeRoute(m []byte) (Route, error) {
 		case unix.RTA_MULTIPATH:
 			parseRtNexthop := func(value []byte) (*NexthopInfo, []byte, error) {
 				if len(value) < unix.SizeofRtNexthop {
-					return nil, nil, fmt.Errorf("Lack of bytes")
+					return nil, nil, fmt.Errorf("lack of bytes")
 				}
 				nh := nl.DeserializeRtNexthop(value)
 				if len(value) < int(nh.RtNexthop.Len) {
-					return nil, nil, fmt.Errorf("Lack of bytes")
+					return nil, nil, fmt.Errorf("lack of bytes")
 				}
 				info := &NexthopInfo{
 					LinkIndex: int(nh.RtNexthop.Ifindex),
@@ -557,7 +839,7 @@ func deserializeRoute(m []byte) (Route, error) {
 					switch attr.Attr.Type {
 					case unix.RTA_GATEWAY:
 						info.Gw = net.IP(attr.Value)
-					case nl.RTA_NEWDST:
+					case unix.RTA_NEWDST:
 						var d Destination
 						switch msg.Family {
 						case nl.FAMILY_MPLS:
@@ -567,9 +849,9 @@ func deserializeRoute(m []byte) (Route, error) {
 							return nil, nil, err
 						}
 						info.NewDst = d
-					case nl.RTA_ENCAP_TYPE:
+					case unix.RTA_ENCAP_TYPE:
 						encapType = attr
-					case nl.RTA_ENCAP:
+					case unix.RTA_ENCAP:
 						encap = attr
 					}
 				}
@@ -598,7 +880,7 @@ func deserializeRoute(m []byte) (Route, error) {
 				route.MultiPath = append(route.MultiPath, info)
 				rest = buf
 			}
-		case nl.RTA_NEWDST:
+		case unix.RTA_NEWDST:
 			var d Destination
 			switch msg.Family {
 			case nl.FAMILY_MPLS:
@@ -608,10 +890,25 @@ func deserializeRoute(m []byte) (Route, error) {
 				return route, err
 			}
 			route.NewDst = d
-		case nl.RTA_ENCAP_TYPE:
+		case unix.RTA_ENCAP_TYPE:
 			encapType = attr
-		case nl.RTA_ENCAP:
+		case unix.RTA_ENCAP:
 			encap = attr
+		case unix.RTA_METRICS:
+			metrics, err := nl.ParseRouteAttr(attr.Value)
+			if err != nil {
+				return route, err
+			}
+			for _, metric := range metrics {
+				switch metric.Attr.Type {
+				case unix.RTAX_MTU:
+					route.MTU = int(native.Uint32(metric.Value[0:4]))
+				case unix.RTAX_ADVMSS:
+					route.AdvMSS = int(native.Uint32(metric.Value[0:4]))
+				case unix.RTAX_HOPLIMIT:
+					route.Hoplimit = int(native.Uint32(metric.Value[0:4]))
+				}
+			}
 		}
 	}
 
@@ -621,6 +918,16 @@ func deserializeRoute(m []byte) (Route, error) {
 		switch typ {
 		case nl.LWTUNNEL_ENCAP_MPLS:
 			e = &MPLSEncap{}
+			if err := e.Decode(encap.Value); err != nil {
+				return route, err
+			}
+		case nl.LWTUNNEL_ENCAP_SEG6:
+			e = &SEG6Encap{}
+			if err := e.Decode(encap.Value); err != nil {
+				return route, err
+			}
+		case nl.LWTUNNEL_ENCAP_SEG6_LOCAL:
+			e = &SEG6LocalEncap{}
 			if err := e.Decode(encap.Value); err != nil {
 				return route, err
 			}
@@ -679,13 +986,13 @@ func (h *Handle) RouteGet(destination net.IP) ([]Route, error) {
 // RouteSubscribe takes a chan down which notifications will be sent
 // when routes are added or deleted. Close the 'done' chan to stop subscription.
 func RouteSubscribe(ch chan<- RouteUpdate, done <-chan struct{}) error {
-	return routeSubscribeAt(netns.None(), netns.None(), ch, done, nil)
+	return routeSubscribeAt(netns.None(), netns.None(), ch, done, nil, false)
 }
 
 // RouteSubscribeAt works like RouteSubscribe plus it allows the caller
 // to choose the network namespace in which to subscribe (ns).
 func RouteSubscribeAt(ns netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}) error {
-	return routeSubscribeAt(ns, netns.None(), ch, done, nil)
+	return routeSubscribeAt(ns, netns.None(), ch, done, nil, false)
 }
 
 // RouteSubscribeOptions contains a set of options to use with
@@ -693,6 +1000,7 @@ func RouteSubscribeAt(ns netns.NsHandle, ch chan<- RouteUpdate, done <-chan stru
 type RouteSubscribeOptions struct {
 	Namespace     *netns.NsHandle
 	ErrorCallback func(error)
+	ListExisting  bool
 }
 
 // RouteSubscribeWithOptions work like RouteSubscribe but enable to
@@ -703,10 +1011,10 @@ func RouteSubscribeWithOptions(ch chan<- RouteUpdate, done <-chan struct{}, opti
 		none := netns.None()
 		options.Namespace = &none
 	}
-	return routeSubscribeAt(*options.Namespace, netns.None(), ch, done, options.ErrorCallback)
+	return routeSubscribeAt(*options.Namespace, netns.None(), ch, done, options.ErrorCallback, options.ListExisting)
 }
 
-func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}, cberr func(error)) error {
+func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}, cberr func(error), listExisting bool) error {
 	s, err := nl.SubscribeAt(newNs, curNs, unix.NETLINK_ROUTE, unix.RTNLGRP_IPV4_ROUTE, unix.RTNLGRP_IPV6_ROUTE)
 	if err != nil {
 		return err
@@ -717,17 +1025,46 @@ func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <
 			s.Close()
 		}()
 	}
+	if listExisting {
+		req := pkgHandle.newNetlinkRequest(unix.RTM_GETROUTE,
+			unix.NLM_F_DUMP)
+		infmsg := nl.NewIfInfomsg(unix.AF_UNSPEC)
+		req.AddData(infmsg)
+		if err := s.Send(req); err != nil {
+			return err
+		}
+	}
 	go func() {
 		defer close(ch)
 		for {
-			msgs, err := s.Receive()
+			msgs, from, err := s.Receive()
 			if err != nil {
 				if cberr != nil {
 					cberr(err)
 				}
 				return
 			}
+			if from.Pid != nl.PidKernel {
+				if cberr != nil {
+					cberr(fmt.Errorf("Wrong sender portid %d, expected %d", from.Pid, nl.PidKernel))
+				}
+				continue
+			}
 			for _, m := range msgs {
+				if m.Header.Type == unix.NLMSG_DONE {
+					continue
+				}
+				if m.Header.Type == unix.NLMSG_ERROR {
+					native := nl.NativeEndian()
+					error := int32(native.Uint32(m.Data[0:4]))
+					if error == 0 {
+						continue
+					}
+					if cberr != nil {
+						cberr(syscall.Errno(-error))
+					}
+					return
+				}
 				route, err := deserializeRoute(m.Data)
 				if err != nil {
 					if cberr != nil {
