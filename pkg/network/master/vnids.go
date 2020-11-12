@@ -80,7 +80,7 @@ func (vmap *masterVNIDMap) isAdminNamespace(nsName string) bool {
 
 func (vmap *masterVNIDMap) markAllocatedNetID(netid uint32) error {
 	// Skip GlobalVNID, not part of netID allocation range
-	if netid == network.GlobalVNID {
+	if netid < network.MinVNID {
 		return nil
 	}
 
