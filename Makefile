@@ -5,6 +5,9 @@ export GO111MODULE=on
 export GOPROXY=https://proxy.golang.org
 unexport GOPATH
 
+GO_LD_FLAGS = \
+    -ldflags "-w $(call version-ldflags,$(GO_PACKAGE)/pkg/version) $(GO_LD_EXTRAFLAGS)"
+
 GO_BUILD_PACKAGES = \
     ./cmd/... \
     ./vendor/github.com/containernetworking/plugins/plugins/ipam/host-local \
