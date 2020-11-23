@@ -772,27 +772,43 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 func TestAlreadySetUp(t *testing.T) {
 	testcases := []struct {
-		flow    string
+		flows   []string
 		success bool
 	}{
 		{
-			// Good note
-			flow:    fmt.Sprintf("cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion),
+			// Good note and existing pod flows
+			flows: []string{
+				fmt.Sprintf("cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion),
+				fmt.Sprintf("cookie=0x0, duration=11753.619s, table=40, n_packets=324, n_bytes=13608, priority=100,arp,arp_tpa=10.128.2.76 actions=output:10"),
+			},
 			success: true,
 		},
 		{
+			// Good note but missing pod flows
+			flows: []string{
+				fmt.Sprintf("cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion),
+			},
+			success: false,
+		},
+		{
 			// Wrong version
-			flow:    fmt.Sprintf("cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion-1),
+			flows: []string{
+				fmt.Sprintf("cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion-1),
+			},
 			success: false,
 		},
 		{
 			// Wrong table
-			flow:    fmt.Sprintf("cookie=0x0, duration=4.796s, table=10, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion),
+			flows: []string{
+				fmt.Sprintf("cookie=0x0, duration=4.796s, table=10, n_packets=0, n_bytes=0, actions=note:00.%02x.00.00.00.00", ruleVersion),
+			},
 			success: false,
 		},
 		{
 			// No note
-			flow:    "cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=goto_table:50",
+			flows: []string{
+				"cookie=0x0, duration=4.796s, table=253, n_packets=0, n_bytes=0, actions=goto_table:50",
+			},
 			success: false,
 		},
 	}
@@ -810,7 +826,9 @@ func TestAlreadySetUp(t *testing.T) {
 		}
 
 		otx := ovsif.NewTransaction()
-		otx.AddFlow(tc.flow)
+		for _, flow := range tc.flows {
+			otx.AddFlow(flow)
+		}
 		if err := otx.Commit(); err != nil {
 			t.Fatalf("(%d) unexpected error from AddFlow: %v", i, err)
 		}

@@ -39,6 +39,7 @@ const (
 	ruleVersion = 8
 
 	ruleVersionTable = 253
+	podFlowsTable    = 40
 )
 
 func NewOVSController(ovsif ovs.Interface, pluginId int, useConnTrack bool, localIP string) *ovsController {
@@ -53,18 +54,25 @@ func (oc *ovsController) getVersionNote() string {
 }
 
 func (oc *ovsController) AlreadySetUp(vxlanPort uint32) bool {
-	flows, err := oc.ovs.DumpFlows("table=%d", ruleVersionTable)
-	if err != nil || len(flows) != 1 {
+	ruleVersionFlows, err := oc.ovs.DumpFlows("table=%d", ruleVersionTable)
+	if err != nil || len(ruleVersionFlows) != 1 {
 		return false
 	}
-
+	// Have a look in the table filled in by setupPodFlows, as to make
+	// sure that we don't have a partial setup remaining in other tables,
+	// but are actually missing pod setup from an earlier run and don't
+	// proceed to setting up any pods that we should be doing in this run.
+	podFlows, err := oc.ovs.DumpFlows("table=%d", podFlowsTable)
+	if err != nil || len(podFlows) == 0 {
+		return false
+	}
 	port, err := oc.ovs.Get("Interface", Vxlan0, "options:dst_port")
 	// the call to ovs.Get() returns the port number surrounded by double quotes
 	// so add them to the structs value for purposes of comparison
 	if err != nil || fmt.Sprintf("\"%d\"", vxlanPort) != port {
 		return false
 	}
-	if parsed, err := ovs.ParseFlow(ovs.ParseForDump, flows[0]); err == nil {
+	if parsed, err := ovs.ParseFlow(ovs.ParseForDump, ruleVersionFlows[0]); err == nil {
 		return parsed.NoteHasPrefix(oc.getVersionNote())
 	}
 	return false
