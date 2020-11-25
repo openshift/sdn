@@ -139,6 +139,8 @@ func newEndpointSliceInfo(endpointSlice *discovery.EndpointSlice, remove bool) *
 		sort.Sort(byAddress(esInfo.Endpoints))
 	}
 
+	klog.V(2).Infof("newEndpointSliceInfo(%+v) = %+v", *endpointSlice, *esInfo)
+
 	return esInfo
 }
 
@@ -329,7 +331,7 @@ func endpointsMapFromEndpointInfo(endpointInfoBySP map[ServicePortName]map[strin
 			// Ensure IPs are always returned in the same order to simplify diffing.
 			sort.Sort(byIP(endpointsMap[svcPortName]))
 
-			klog.V(3).Infof("Setting endpoints for %q to %+v", svcPortName, formatEndpointsList(endpointsMap[svcPortName]))
+			klog.V(2).Infof("Setting endpoints for %q to %+v", svcPortName, formatEndpointsList(endpointsMap[svcPortName]))
 		}
 	}
 

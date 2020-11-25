@@ -983,6 +983,8 @@ func (proxier *Proxier) syncProxyRules() {
 			hasEndpoints = len(allEndpoints) > 0
 		}
 
+		klog.V(2).Infof("syncProxyRules(), svcName = %q, allEndpoints = %+v", svcName, allEndpoints)
+
 		svcChain := svcInfo.servicePortChainName
 		if hasEndpoints {
 			// Create the per-service chain, retaining counters if possible.
@@ -1356,6 +1358,8 @@ func (proxier *Proxier) syncProxyRules() {
 				readyEndpoints = append(readyEndpoints, endpoints[i])
 			}
 		}
+
+		klog.V(2).Infof("syncProxyRules(), svcName = %q, readyEndpointChains = %+v, localReadyEndpointChains = %+v, localServingTerminatingEndpointChains = %+v", svcName, readyEndpointChains, localReadyEndpointChains, localServingTerminatingEndpointChains)
 
 		// Only add Ready endpoint chains to the service chain.
 		numReadyEndpoints := len(readyEndpointChains)
