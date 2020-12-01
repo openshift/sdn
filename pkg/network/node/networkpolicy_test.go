@@ -34,7 +34,6 @@ func newTestNPP() *networkPolicyPlugin {
 
 		namespaces:       make(map[uint32]*npNamespace),
 		namespacesByName: make(map[string]*npNamespace),
-		pods:             make(map[ktypes.UID]corev1.Pod),
 		nsMatchCache:     make(map[string]*npCacheEntry),
 	}
 	np.vnids = newNodeVNIDMap(np, nil)
