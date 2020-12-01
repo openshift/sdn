@@ -100,7 +100,7 @@ func addNamespace(np *networkPolicyPlugin, name string, vnid uint32, labels map[
 func delNamespace(np *networkPolicyPlugin, name string, vnid uint32) {
 	synced.Store(false)
 
-	// Hack to prevent it from calling syncNamespaceFlows()
+	// Hack to prevent it from calling syncNamespaceImmediately()
 	if npns := np.namespaces[vnid]; npns != nil {
 		npns.inUse = false
 	}

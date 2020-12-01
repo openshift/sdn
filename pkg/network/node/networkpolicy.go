@@ -27,6 +27,7 @@ import (
 	networkv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
+	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
 
 type networkPolicyPlugin struct {
@@ -220,9 +221,8 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *networkv1.NetNamespace)
 
 	if npns.inUse {
 		npns.inUse = false
-		// We call syncNamespaceFlows() not syncNamespace() because it
-		// needs to happen before we forget about the namespace.
-		np.syncNamespaceFlows(npns)
+		// This needs to happen before we forget about the namespace.
+		np.syncNamespaceImmediately(npns)
 	}
 	delete(np.namespaces, netns.NetID)
 	npns.gotNetNamespace = false
@@ -252,21 +252,32 @@ func (np *networkPolicyPlugin) syncNamespace(npns *npNamespace) {
 	}
 }
 
+func (np *networkPolicyPlugin) syncNamespaceImmediately(npns *npNamespace) {
+	otx := np.node.oc.NewTransaction()
+	np.generateNamespaceFlows(otx, npns)
+	if err := otx.Commit(); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Error syncing OVS flows for namespace %q: %v", npns.name, err))
+	}
+}
+
 func (np *networkPolicyPlugin) syncFlows() {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
+	otx := np.node.oc.NewTransaction()
 	for _, npns := range np.namespaces {
 		if npns.dirty {
-			np.syncNamespaceFlows(npns)
+			np.generateNamespaceFlows(otx, npns)
 			npns.dirty = false
 		}
 	}
+	if err := otx.Commit(); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Error syncing OVS flows: %v", err))
+	}
 }
 
-func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
+func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns *npNamespace) {
 	klog.V(5).Infof("syncNamespace %d", npns.vnid)
-	otx := np.node.oc.NewTransaction()
 	otx.DeleteFlows("table=80, reg1=%d", npns.vnid)
 	if npns.inUse {
 		allPodsSelected := false
@@ -303,9 +314,6 @@ func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
 
 			otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 		}
-	}
-	if err := otx.Commit(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error syncing OVS flows for VNID: %v", err))
 	}
 }
 
