@@ -42,8 +42,9 @@ func newTestNPP() *networkPolicyPlugin {
 		np.lock.Lock()
 		defer np.lock.Unlock()
 
+		np.recalculate()
 		for _, npns := range np.namespaces {
-			npns.dirty = false
+			npns.mustSync = false
 		}
 
 		synced.Store(true)
@@ -164,8 +165,11 @@ func assertPolicies(npns *npNamespace, nPolicies int, matches map[string]*npPoli
 		if npp.watchesNamespaces != match.watchesNamespaces {
 			return fmt.Errorf("policy %q in %q has incorrect watchesNamespaces %t", npp.policy.Name, npns.name, npp.watchesNamespaces)
 		}
-		if npp.watchesPods != match.watchesPods {
-			return fmt.Errorf("policy %q in %q has incorrect watchesPods %t", npp.policy.Name, npns.name, npp.watchesPods)
+		if npp.watchesAllPods != match.watchesAllPods {
+			return fmt.Errorf("policy %q in %q has incorrect watchesAllPods %t", npp.policy.Name, npns.name, npp.watchesAllPods)
+		}
+		if npp.watchesOwnPods != match.watchesOwnPods {
+			return fmt.Errorf("policy %q in %q has incorrect watchesOwnPods %t", npp.policy.Name, npns.name, npp.watchesOwnPods)
 		}
 
 		nppFlows := sets.NewString(npp.flows...)
@@ -303,14 +307,16 @@ func TestNetworkPolicy(t *testing.T) {
 		err := assertPolicies(npns, 2, map[string]*npPolicy{
 			"allow-from-self": {
 				watchesNamespaces: false,
-				watchesPods:       false,
+				watchesAllPods:    false,
+				watchesOwnPods:    false,
 				flows: []string{
 					fmt.Sprintf("reg0=%d", npns.vnid),
 				},
 			},
 			"allow-from-default": {
 				watchesNamespaces: true,
-				watchesPods:       false,
+				watchesAllPods:    false,
+				watchesOwnPods:    false,
 				flows: []string{
 					"reg0=0",
 				},
@@ -364,7 +370,8 @@ func TestNetworkPolicy(t *testing.T) {
 		err = assertPolicies(npns, 3, map[string]*npPolicy{
 			"allow-client-to-server": {
 				watchesNamespaces: false,
-				watchesPods:       true,
+				watchesAllPods:    false,
+				watchesOwnPods:    true,
 				flows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
 				},
@@ -402,7 +409,8 @@ func TestNetworkPolicy(t *testing.T) {
 	err := assertPolicies(npns1, 4, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesPods:       false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
 			flows: []string{
 				"reg0=2",
 				"reg0=4",
@@ -448,7 +456,8 @@ func TestNetworkPolicy(t *testing.T) {
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-odd-primes": {
 			watchesNamespaces: true,
-			watchesPods:       true,
+			watchesAllPods:    true,
+			watchesOwnPods:    true,
 			flows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
 				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
@@ -476,28 +485,32 @@ func TestNetworkPolicy(t *testing.T) {
 			err := assertPolicies(npns, 5, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
-					watchesPods:       false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
 					flows: []string{
 						"reg0=1",
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesPods:       false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
 					flows: []string{
 						"reg0=0",
 					},
 				},
 				"allow-client-to-server": {
 					watchesNamespaces: false,
-					watchesPods:       true,
+					watchesAllPods:    false,
+					watchesOwnPods:    true,
 					flows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 				"allow-from-even": {
 					watchesNamespaces: true,
-					watchesPods:       false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
 					flows: []string{
 						"reg0=2",
 						"reg0=4",
@@ -507,7 +520,8 @@ func TestNetworkPolicy(t *testing.T) {
 				},
 				"allow-from-odd-primes": {
 					watchesNamespaces: true,
-					watchesPods:       true,
+					watchesAllPods:    true,
+					watchesOwnPods:    true,
 					flows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
 						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
@@ -524,21 +538,24 @@ func TestNetworkPolicy(t *testing.T) {
 			err := assertPolicies(npns, 3, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
-					watchesPods:       false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
 					flows: []string{
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesPods:       false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
 					flows: []string{
 						"reg0=0",
 					},
 				},
 				"allow-client-to-server": {
 					watchesNamespaces: false,
-					watchesPods:       true,
+					watchesAllPods:    false,
+					watchesOwnPods:    true,
 					flows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
 					},
@@ -565,7 +582,8 @@ func TestNetworkPolicy(t *testing.T) {
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesPods:       false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
 			flows: []string{
 				"reg0=2",
 				"reg0=4",
@@ -588,7 +606,8 @@ func TestNetworkPolicy(t *testing.T) {
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesPods:       false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
 			flows: []string{
 				"reg0=4",
 				"reg0=6",
@@ -626,14 +645,16 @@ func TestNetworkPolicy(t *testing.T) {
 	err = assertPolicies(npns4, 2, map[string]*npPolicy{
 		"allow-from-self": {
 			watchesNamespaces: false,
-			watchesPods:       false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
 			flows: []string{
 				fmt.Sprintf("reg0=%d", npns4.vnid),
 			},
 		},
 		"allow-client-to-server": {
 			watchesNamespaces: false,
-			watchesPods:       true,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
 			flows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns4), npns4.vnid, clientIP(npns4)),
 			},
@@ -646,7 +667,8 @@ func TestNetworkPolicy(t *testing.T) {
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-default": {
 			watchesNamespaces: true,
-			watchesPods:       false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
 			flows: []string{
 				"reg0=0",
 			},
@@ -874,14 +896,16 @@ func TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 		err := assertPolicies(npns, 2, map[string]*npPolicy{
 			"allow-client-to-server-1": {
 				watchesNamespaces: false,
-				watchesPods:       true,
+				watchesAllPods:    false,
+				watchesOwnPods:    true,
 				flows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
 				},
 			},
 			"allow-client-to-server-2": {
 				watchesNamespaces: false,
-				watchesPods:       true,
+				watchesAllPods:    false,
+				watchesOwnPods:    true,
 				flows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
 				},
