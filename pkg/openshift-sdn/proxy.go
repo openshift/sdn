@@ -13,10 +13,12 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
+	"k8s.io/kubernetes/pkg/features"
 	proxy "k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
@@ -43,7 +45,16 @@ func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, 
 	if err := o.Complete(); err != nil {
 		return nil, err
 	}
-	return o.GetConfig(), nil
+
+	config := o.GetConfig()
+
+	// o.Complete() will set the feature gates from the config, but we need to re-set
+	// them with EndpointSlice forced off
+	config.FeatureGates[string(features.EndpointSlice)] = false
+	config.FeatureGates[string(features.EndpointSliceProxying)] = false
+	utilfeature.DefaultMutableFeatureGate.SetFromMap(config.FeatureGates)
+
+	return config, nil
 }
 
 // initProxy sets up the proxy process.
