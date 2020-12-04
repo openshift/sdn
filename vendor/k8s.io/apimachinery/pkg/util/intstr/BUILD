@@ -17,6 +17,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "generated.pb.go",
+        "instr_fuzz.go",
         "intstr.go",
     ],
     importmap = "k8s.io/kubernetes/vendor/k8s.io/apimachinery/pkg/util/intstr",
@@ -24,7 +25,7 @@ go_library(
     deps = [
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",
         "//vendor/github.com/google/gofuzz:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
 

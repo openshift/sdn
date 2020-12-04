@@ -10,6 +10,7 @@ go_test(
     name = "go_default_test",
     srcs = [
         "context_test.go",
+        "received_time_test.go",
         "requestinfo_test.go",
     ],
     embed = [":go_default_library"],
@@ -25,6 +26,7 @@ go_library(
     srcs = [
         "context.go",
         "doc.go",
+        "received_time.go",
         "requestinfo.go",
     ],
     importmap = "k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/request",
@@ -37,7 +39,7 @@ go_library(
         "//staging/src/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/apis/audit:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/authentication/user:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
 
