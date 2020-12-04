@@ -76,9 +76,9 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		}
 	}
 
-	protocol := utiliptables.ProtocolIpv4
+	protocol := utiliptables.ProtocolIPv4
 	if nodeAddr.To4() == nil {
-		protocol = utiliptables.ProtocolIpv6
+		protocol = utiliptables.ProtocolIPv6
 	}
 
 	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
@@ -224,7 +224,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// Start up healthz server
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
-		healthzServer.Run()
+		serveHealthz(healthzServer)
 	}
 
 	// Start up a metrics server if requested
@@ -252,6 +252,19 @@ func (sdn *OpenShiftSDN) startMetricsServer() {
 		err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
 		if err != nil {
 			utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
+		}
+	}, 5*time.Second, utilwait.NeverStop)
+}
+
+func serveHealthz(hz healthcheck.ProxierHealthUpdater) {
+	go utilwait.Until(func() {
+		err := hz.Run()
+		if err != nil {
+			// For historical reasons we do not abort on errors here.  We may
+			// change that in the future.
+			klog.Errorf("healthz server failed: %v", err)
+		} else {
+			klog.Errorf("healthz server returned without error")
 		}
 	}, 5*time.Second, utilwait.NeverStop)
 }
