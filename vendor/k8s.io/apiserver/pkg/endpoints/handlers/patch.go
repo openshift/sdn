@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
@@ -49,7 +50,6 @@ import (
 	"k8s.io/apiserver/pkg/util/dryrun"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utiltrace "k8s.io/utils/trace"
-	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -421,6 +421,7 @@ type applyPatcher struct {
 	creater      runtime.ObjectCreater
 	kind         schema.GroupVersionKind
 	fieldManager *fieldmanager.FieldManager
+	userAgent    string
 }
 
 func (p *applyPatcher) applyPatchToCurrentObject(obj runtime.Object) (runtime.Object, error) {
@@ -569,14 +570,20 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 			options:      p.options,
 			creater:      p.creater,
 			kind:         p.kind,
+			userAgent:    p.userAgent,
 		}
 		p.forceAllowCreate = true
 	default:
 		return nil, false, fmt.Errorf("%v: unimplemented patch type", p.patchType)
 	}
+	dedupOwnerReferencesTransformer := func(_ context.Context, obj, _ runtime.Object) (runtime.Object, error) {
+		// Dedup owner references after mutating admission happens
+		dedupOwnerReferencesAndAddWarning(obj, ctx, true)
+		return obj, nil
+	}
 
 	wasCreated := false
-	p.updatedObjectInfo = rest.DefaultUpdatedObjectInfo(nil, p.applyPatch, p.applyAdmission)
+	p.updatedObjectInfo = rest.DefaultUpdatedObjectInfo(nil, p.applyPatch, p.applyAdmission, dedupOwnerReferencesTransformer)
 	requestFunc := func() (runtime.Object, error) {
 		// Pass in UpdateOptions to override UpdateStrategy.AllowUpdateOnCreate
 		options := patchToUpdateOptions(p.options)
@@ -590,11 +597,15 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 		// it is safe to remove managedFields (which can be large) and try again.
 		if isTooLargeError(err) && p.patchType != types.ApplyPatchType {
 			if _, accessorErr := meta.Accessor(p.restPatcher.New()); accessorErr == nil {
-				p.updatedObjectInfo = rest.DefaultUpdatedObjectInfo(nil, p.applyPatch, p.applyAdmission, func(_ context.Context, obj, _ runtime.Object) (runtime.Object, error) {
-					accessor, _ := meta.Accessor(obj)
-					accessor.SetManagedFields(nil)
-					return obj, nil
-				})
+				p.updatedObjectInfo = rest.DefaultUpdatedObjectInfo(nil,
+					p.applyPatch,
+					p.applyAdmission,
+					dedupOwnerReferencesTransformer,
+					func(_ context.Context, obj, _ runtime.Object) (runtime.Object, error) {
+						accessor, _ := meta.Accessor(obj)
+						accessor.SetManagedFields(nil)
+						return obj, nil
+					})
 				result, err = requestFunc()
 			}
 		}

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
@@ -29,9 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	utilnet "k8s.io/utils/net"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -123,6 +125,16 @@ func IsProxyableHostname(ctx context.Context, resolv Resolver, hostname string) 
 	return nil
 }
 
+// IsAllowedHost checks if the given IP host address is in a network in the denied list.
+func IsAllowedHost(host net.IP, denied []*net.IPNet) error {
+	for _, ipNet := range denied {
+		if ipNet.Contains(host) {
+			return ErrAddressNotAllowed
+		}
+	}
+	return nil
+}
+
 // GetLocalAddrs returns a list of all network addresses on the local system
 func GetLocalAddrs() ([]net.IP, error) {
 	var localAddrs []net.IP
@@ -145,15 +157,15 @@ func GetLocalAddrs() ([]net.IP, error) {
 }
 
 // ShouldSkipService checks if a given service should skip proxying
-func ShouldSkipService(svcName types.NamespacedName, service *v1.Service) bool {
+func ShouldSkipService(service *v1.Service) bool {
 	// if ClusterIP is "None" or empty, skip proxying
 	if !helper.IsServiceIPSet(service) {
-		klog.V(3).Infof("Skipping service %s due to clusterIP = %q", svcName, service.Spec.ClusterIP)
+		klog.V(3).Infof("Skipping service %s in namespace %s due to clusterIP = %q", service.Name, service.Namespace, service.Spec.ClusterIP)
 		return true
 	}
 	// Even if ClusterIP is set, ServiceTypeExternalName services don't get proxied
 	if service.Spec.Type == v1.ServiceTypeExternalName {
-		klog.V(3).Infof("Skipping service %s due to Type=ExternalName", svcName)
+		klog.V(3).Infof("Skipping service %s in namespace %s due to Type=ExternalName", service.Name, service.Namespace)
 		return true
 	}
 	return false
@@ -180,29 +192,35 @@ func GetNodeAddresses(cidrs []string, nw NetworkInterfacer) (sets.String, error)
 			uniqueAddressList.Insert(cidr)
 		}
 	}
+
+	itfs, err := nw.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("error listing all interfaces from host, error: %v", err)
+	}
+
 	// Second round of iteration to parse IPs based on cidr.
 	for _, cidr := range cidrs {
 		if IsZeroCIDR(cidr) {
 			continue
 		}
+
 		_, ipNet, _ := net.ParseCIDR(cidr)
-		itfs, err := nw.Interfaces()
-		if err != nil {
-			return nil, fmt.Errorf("error listing all interfaces from host, error: %v", err)
-		}
 		for _, itf := range itfs {
 			addrs, err := nw.Addrs(&itf)
 			if err != nil {
 				return nil, fmt.Errorf("error getting address from interface %s, error: %v", itf.Name, err)
 			}
+
 			for _, addr := range addrs {
 				if addr == nil {
 					continue
 				}
+
 				ip, _, err := net.ParseCIDR(addr.String())
 				if err != nil {
 					return nil, fmt.Errorf("error parsing CIDR for interface %s, error: %v", itf.Name, err)
 				}
+
 				if ipNet.Contains(ip) {
 					if utilnet.IsIPv6(ip) && !uniqueAddressList.Has(IPv6ZeroCIDR) {
 						uniqueAddressList.Insert(ip.String())
@@ -214,6 +232,11 @@ func GetNodeAddresses(cidrs []string, nw NetworkInterfacer) (sets.String, error)
 			}
 		}
 	}
+
+	if uniqueAddressList.Len() == 0 {
+		return nil, fmt.Errorf("no addresses found for cidrs %v", cidrs)
+	}
+
 	return uniqueAddressList, nil
 }
 
@@ -233,13 +256,13 @@ func LogAndEmitIncorrectIPVersionEvent(recorder record.EventRecorder, fieldName,
 }
 
 // FilterIncorrectIPVersion filters out the incorrect IP version case from a slice of IP strings.
-func FilterIncorrectIPVersion(ipStrings []string, isIPv6Mode bool) ([]string, []string) {
-	return filterWithCondition(ipStrings, isIPv6Mode, utilnet.IsIPv6String)
+func FilterIncorrectIPVersion(ipStrings []string, ipfamily v1.IPFamily) ([]string, []string) {
+	return filterWithCondition(ipStrings, (ipfamily == v1.IPv6Protocol), utilnet.IsIPv6String)
 }
 
 // FilterIncorrectCIDRVersion filters out the incorrect IP version case from a slice of CIDR strings.
-func FilterIncorrectCIDRVersion(ipStrings []string, isIPv6Mode bool) ([]string, []string) {
-	return filterWithCondition(ipStrings, isIPv6Mode, utilnet.IsIPv6CIDRString)
+func FilterIncorrectCIDRVersion(ipStrings []string, ipfamily v1.IPFamily) ([]string, []string) {
+	return filterWithCondition(ipStrings, (ipfamily == v1.IPv6Protocol), utilnet.IsIPv6CIDRString)
 }
 
 func filterWithCondition(strs []string, expectedCondition bool, conditionFunc func(string) bool) ([]string, []string) {
@@ -287,4 +310,96 @@ func ShuffleStrings(s []string) []string {
 		shuffled[j] = s[i]
 	}
 	return shuffled
+}
+
+// EnsureSysctl sets a kernel sysctl to a given numeric value.
+func EnsureSysctl(sysctl utilsysctl.Interface, name string, newVal int) error {
+	if oldVal, _ := sysctl.GetSysctl(name); oldVal != newVal {
+		if err := sysctl.SetSysctl(name, newVal); err != nil {
+			return fmt.Errorf("can't set sysctl %s to %d: %v", name, newVal, err)
+		}
+		klog.V(1).Infof("Changed sysctl %q: %d -> %d", name, oldVal, newVal)
+	}
+	return nil
+}
+
+// DialContext is a dial function matching the signature of net.Dialer.DialContext.
+type DialContext = func(context.Context, string, string) (net.Conn, error)
+
+// FilteredDialOptions configures how a DialContext is wrapped by NewFilteredDialContext.
+type FilteredDialOptions struct {
+	// DialHostIPDenylist restricts hosts from being dialed.
+	DialHostCIDRDenylist []*net.IPNet
+	// AllowLocalLoopback controls connections to local loopback hosts (as defined by
+	// IsProxyableIP).
+	AllowLocalLoopback bool
+}
+
+// NewFilteredDialContext returns a DialContext function that filters connections based on a FilteredDialOptions.
+func NewFilteredDialContext(wrapped DialContext, resolv Resolver, opts *FilteredDialOptions) DialContext {
+	if wrapped == nil {
+		wrapped = http.DefaultTransport.(*http.Transport).DialContext
+	}
+	if opts == nil {
+		// Do no filtering
+		return wrapped
+	}
+	if resolv == nil {
+		resolv = net.DefaultResolver
+	}
+	if len(opts.DialHostCIDRDenylist) == 0 && opts.AllowLocalLoopback {
+		// Do no filtering.
+		return wrapped
+	}
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		resp, err := resolv.LookupIPAddr(ctx, address)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp) == 0 {
+			return nil, ErrNoAddresses
+		}
+
+		for _, host := range resp {
+			if !opts.AllowLocalLoopback {
+				if err := isProxyableIP(host.IP); err != nil {
+					return nil, err
+				}
+			}
+			if opts.DialHostCIDRDenylist != nil {
+				if err := IsAllowedHost(host.IP, opts.DialHostCIDRDenylist); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return wrapped(ctx, network, address)
+	}
+}
+
+// GetClusterIPByFamily returns a service clusterip by family
+func GetClusterIPByFamily(ipFamily v1.IPFamily, service *v1.Service) string {
+	// allowing skew
+	if len(service.Spec.IPFamilies) == 0 {
+		if len(service.Spec.ClusterIP) == 0 || service.Spec.ClusterIP == v1.ClusterIPNone {
+			return ""
+		}
+
+		IsIPv6Family := (ipFamily == v1.IPv6Protocol)
+		if IsIPv6Family == utilnet.IsIPv6String(service.Spec.ClusterIP) {
+			return service.Spec.ClusterIP
+		}
+
+		return ""
+	}
+
+	for idx, family := range service.Spec.IPFamilies {
+		if family == ipFamily {
+			if idx < len(service.Spec.ClusterIPs) {
+				return service.Spec.ClusterIPs[idx]
+			}
+		}
+	}
+
+	return ""
 }

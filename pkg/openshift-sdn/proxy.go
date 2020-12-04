@@ -13,10 +13,12 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
+	"k8s.io/kubernetes/pkg/features"
 	proxy "k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
@@ -43,7 +45,16 @@ func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, 
 	if err := o.Complete(); err != nil {
 		return nil, err
 	}
-	return o.GetConfig(), nil
+
+	config := o.GetConfig()
+
+	// o.Complete() will set the feature gates from the config, but we need to re-set
+	// them with EndpointSlice forced off
+	config.FeatureGates[string(features.EndpointSlice)] = false
+	config.FeatureGates[string(features.EndpointSliceProxying)] = false
+	utilfeature.DefaultMutableFeatureGate.SetFromMap(config.FeatureGates)
+
+	return config, nil
 }
 
 // initProxy sets up the proxy process.
@@ -76,9 +87,9 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		}
 	}
 
-	protocol := utiliptables.ProtocolIpv4
+	protocol := utiliptables.ProtocolIPv4
 	if nodeAddr.To4() == nil {
-		protocol = utiliptables.ProtocolIpv6
+		protocol = utiliptables.ProtocolIPv6
 	}
 
 	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
@@ -224,7 +235,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// Start up healthz server
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
-		healthzServer.Run()
+		serveHealthz(healthzServer)
 	}
 
 	// Start up a metrics server if requested
@@ -252,6 +263,19 @@ func (sdn *OpenShiftSDN) startMetricsServer() {
 		err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
 		if err != nil {
 			utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
+		}
+	}, 5*time.Second, utilwait.NeverStop)
+}
+
+func serveHealthz(hz healthcheck.ProxierHealthUpdater) {
+	go utilwait.Until(func() {
+		err := hz.Run()
+		if err != nil {
+			// For historical reasons we do not abort on errors here.  We may
+			// change that in the future.
+			klog.Errorf("healthz server failed: %v", err)
+		} else {
+			klog.Errorf("healthz server returned without error")
 		}
 	}, 5*time.Second, utilwait.NeverStop)
 }

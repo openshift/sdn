@@ -19,6 +19,7 @@ package ipvs
 import (
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/version"
@@ -68,8 +69,6 @@ const (
 	FlagPersistent = 0x1
 	// FlagHashed specify IPVS service hash flag
 	FlagHashed = 0x2
-	// IPVSProxyMode is match set up cluster with ipvs proxy model
-	IPVSProxyMode = "ipvs"
 )
 
 // IPVS required kernel modules.
@@ -132,4 +131,9 @@ func GetRequiredIPVSModules(kernelVersion *version.Version) []string {
 	}
 	return []string{KernelModuleIPVS, KernelModuleIPVSRR, KernelModuleIPVSWRR, KernelModuleIPVSSH, KernelModuleNfConntrack}
 
+}
+
+// IsRsGracefulTerminationNeeded returns true if protocol requires graceful termination for the stale connections
+func IsRsGracefulTerminationNeeded(proto string) bool {
+	return !strings.EqualFold(proto, "UDP") && !strings.EqualFold(proto, "SCTP")
 }

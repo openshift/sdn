@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/clock"
 	compbasemetrics "k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	basemetricstestutil "k8s.io/component-base/metrics/testutil"
@@ -32,8 +33,11 @@ const (
 )
 
 const (
-	priorityLevel = "priorityLevel"
-	flowSchema    = "flowSchema"
+	requestKind   = "request_kind"
+	priorityLevel = "priority_level"
+	flowSchema    = "flow_schema"
+	phase         = "phase"
+	mark          = "mark"
 )
 
 var (
@@ -69,83 +73,140 @@ func GatherAndCompare(expected string, metricNames ...string) error {
 	return basemetricstestutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(expected), metricNames...)
 }
 
+// Registerables is a slice of Registerable
+type Registerables []compbasemetrics.Registerable
+
+// Append adds more
+func (rs Registerables) Append(more ...compbasemetrics.Registerable) Registerables {
+	return append(rs, more...)
+}
+
 var (
 	apiserverRejectedRequestsTotal = compbasemetrics.NewCounterVec(
 		&compbasemetrics.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "rejected_requests_total",
-			Help:      "Number of requests rejected by API Priority and Fairness system",
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "rejected_requests_total",
+			Help:           "Number of requests rejected by API Priority and Fairness system",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema, "reason"},
 	)
 	apiserverDispatchedRequestsTotal = compbasemetrics.NewCounterVec(
 		&compbasemetrics.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "dispatched_requests_total",
-			Help:      "Number of requests released by API Priority and Fairness system for service",
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "dispatched_requests_total",
+			Help:           "Number of requests released by API Priority and Fairness system for service",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema},
 	)
+
+	// PriorityLevelConcurrencyObserverPairGenerator creates pairs that observe concurrency for priority levels
+	PriorityLevelConcurrencyObserverPairGenerator = NewSampleAndWaterMarkHistogramsPairGenerator(clock.RealClock{}, time.Millisecond,
+		&compbasemetrics.HistogramOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "priority_level_request_count_samples",
+			Help:           "Periodic observations of the number of requests",
+			Buckets:        []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		&compbasemetrics.HistogramOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "priority_level_request_count_watermarks",
+			Help:           "Watermarks of the number of requests",
+			Buckets:        []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{priorityLevel})
+
+	// ReadWriteConcurrencyObserverPairGenerator creates pairs that observe concurrency broken down by mutating vs readonly
+	ReadWriteConcurrencyObserverPairGenerator = NewSampleAndWaterMarkHistogramsPairGenerator(clock.RealClock{}, time.Millisecond,
+		&compbasemetrics.HistogramOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "read_vs_write_request_count_samples",
+			Help:           "Periodic observations of the number of requests",
+			Buckets:        []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		&compbasemetrics.HistogramOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "read_vs_write_request_count_watermarks",
+			Help:           "Watermarks of the number of requests",
+			Buckets:        []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{requestKind})
+
 	apiserverCurrentInqueueRequests = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "current_inqueue_requests",
-			Help:      "Number of requests currently pending in queues of the API Priority and Fairness system",
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "current_inqueue_requests",
+			Help:           "Number of requests currently pending in queues of the API Priority and Fairness system",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema},
 	)
 	apiserverRequestQueueLength = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "request_queue_length_after_enqueue",
-			Help:      "Length of queue in the API Priority and Fairness system, as seen by each request after it is enqueued",
-			Buckets:   queueLengthBuckets,
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "request_queue_length_after_enqueue",
+			Help:           "Length of queue in the API Priority and Fairness system, as seen by each request after it is enqueued",
+			Buckets:        queueLengthBuckets,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema},
 	)
 	apiserverRequestConcurrencyLimit = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "request_concurrency_limit",
-			Help:      "Shared concurrency limit in the API Priority and Fairness system",
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "request_concurrency_limit",
+			Help:           "Shared concurrency limit in the API Priority and Fairness system",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel},
 	)
 	apiserverCurrentExecutingRequests = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "current_executing_requests",
-			Help:      "Number of requests currently executing in the API Priority and Fairness system",
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "current_executing_requests",
+			Help:           "Number of requests currently executing in the API Priority and Fairness system",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema},
 	)
 	apiserverRequestWaitingSeconds = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "request_wait_duration_seconds",
-			Help:      "Length of time a request spent waiting in its queue",
-			Buckets:   requestDurationSecondsBuckets,
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "request_wait_duration_seconds",
+			Help:           "Length of time a request spent waiting in its queue",
+			Buckets:        requestDurationSecondsBuckets,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema, "execute"},
 	)
 	apiserverRequestExecutionSeconds = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "request_execution_seconds",
-			Help:      "Duration of request execution in the API Priority and Fairness system",
-			Buckets:   requestDurationSecondsBuckets,
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "request_execution_seconds",
+			Help:           "Duration of request execution in the API Priority and Fairness system",
+			Buckets:        requestDurationSecondsBuckets,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{priorityLevel, flowSchema},
 	)
-	metrics = []compbasemetrics.Registerable{
+	metrics = Registerables{
 		apiserverRejectedRequestsTotal,
 		apiserverDispatchedRequestsTotal,
 		apiserverCurrentInqueueRequests,
@@ -154,7 +215,9 @@ var (
 		apiserverCurrentExecutingRequests,
 		apiserverRequestWaitingSeconds,
 		apiserverRequestExecutionSeconds,
-	}
+	}.
+		Append(PriorityLevelConcurrencyObserverPairGenerator.metrics()...).
+		Append(ReadWriteConcurrencyObserverPairGenerator.metrics()...)
 )
 
 // AddRequestsInQueues adds the given delta to the gauge of the # of requests in the queues of the specified flowSchema and priorityLevel
