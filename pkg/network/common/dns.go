@@ -10,6 +10,7 @@ import (
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog"
 )
 
 const (
@@ -139,10 +140,12 @@ func (d *DNS) getIPsAndMinTTL(domain string) ([]net.IP, time.Duration, error) {
 		c.Timeout = 5 * time.Second
 		in, _, err := c.Exchange(msg, dialServer)
 		if err != nil {
-			return nil, defaultTTL, err
+			klog.Warningf("failed to query nameserver: %s with address: %s for domain: %s, err: %v", server, dialServer, domain, err)
+			continue
 		}
 		if in != nil && in.Rcode != dns.RcodeSuccess {
-			return nil, defaultTTL, fmt.Errorf("failed to get a valid answer: %v", in)
+			klog.Warningf("failed to get a valid answer: %v from nameserver: %s for domain: %s", in.Rcode, server, domain)
+			continue
 		}
 
 		if in != nil && len(in.Answer) > 0 {
