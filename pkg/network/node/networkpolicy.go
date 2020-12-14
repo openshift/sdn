@@ -297,8 +297,10 @@ func (np *networkPolicyPlugin) syncNamespaceFlows(npns *npNamespace) {
 			selectedIPs := sets.NewString()
 			for _, npp := range npns.policies {
 				for _, ip := range npp.selectedIPs {
+					klog.Warningf("syncNamespaceFlows ip %s", ip)
 					if !selectedIPs.Has(ip) {
 						selectedIPs.Insert(ip)
+						klog.Warningf("syncNamespaceFlows adding drop rule to table 80 for ip %s", ip)
 						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 					}
 				}
@@ -463,7 +465,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		// The rest of this function assumes that all policies affect ingress: a
 		// policy that only affects egress is, for our purposes, equivalent to one
 		// that affects ingress but does not select any pods.
-		npp.selectedIPs = []string{""}
+		npp.selectedIPs = nil
 		return npp
 	}
 
