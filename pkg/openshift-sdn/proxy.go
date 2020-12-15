@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
+	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
+	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -17,6 +20,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/pkg/features"
 	proxy "k8s.io/kubernetes/pkg/proxy"
@@ -30,12 +35,6 @@ import (
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	utilexec "k8s.io/utils/exec"
-
-	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
-	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
-	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
-	"k8s.io/component-base/metrics/legacyregistry"
-	"k8s.io/klog/v2"
 )
 
 // readProxyConfig reads the proxy config from a file
@@ -45,16 +44,7 @@ func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, 
 	if err := o.Complete(); err != nil {
 		return nil, err
 	}
-
-	config := o.GetConfig()
-
-	// o.Complete() will set the feature gates from the config, but we need to re-set
-	// them with EndpointSlice forced off
-	config.FeatureGates[string(features.EndpointSlice)] = false
-	config.FeatureGates[string(features.EndpointSliceProxying)] = false
-	utilfeature.DefaultMutableFeatureGate.SetFromMap(config.FeatureGates)
-
-	return config, nil
+	return o.GetConfig(), nil
 }
 
 // initProxy sets up the proxy process.
@@ -73,6 +63,13 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if string(sdn.ProxyConfig.Mode) == "disabled" {
 		klog.Warningf("Built-in kube-proxy is disabled")
 		sdn.startMetricsServer()
+		close(waitChan)
+		return
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice) ||
+		utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
+		klog.Warningf("kube-proxy has unsupported EndpointSlice/EndpointSliceProxying gates enabled")
 		close(waitChan)
 		return
 	}
