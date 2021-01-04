@@ -304,11 +304,15 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
 			}
 			if npp.selectedIPs == nil {
+				klog.Infof("SelectedIPs is nil for NetworkPolicy: %#v, setting allPodsSelected to true", npp)
 				allPodsSelected = true
+			} else {
+				klog.Infof("SelectedIPs is NOT nil for NetworkPolicy: %#v", npp)
 			}
 		}
 
 		if allPodsSelected {
+			klog.Infof("allPodsSelected is true for NetworkPolicy Namespace: %#v", npns)
 			// Some policy selects all pods, so all pods are "isolated" and no
 			// traffic is allowed beyond what we explicitly allowed above. (And
 			// the "priority=0, actions=drop" rule will filter out all remaining
@@ -318,16 +322,19 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			// allow traffic to pod IPs that aren't selected by a policy. But
 			// before that we need rules to drop any remaining traffic for any pod
 			// IP that *is* selected by a policy.
+			klog.Infof("allPodsSelected is false for NetworkPolicy Namespace: %#v", npns)
 			selectedIPs := sets.NewString()
 			for _, npp := range npns.policies {
 				for _, ip := range npp.selectedIPs {
+					klog.Infof("Checking for ips to drop for Network Policy: %#v", npp)
 					if !selectedIPs.Has(ip) {
 						selectedIPs.Insert(ip)
+						klog.Infof("Adding drop flow for npns: %#v for ip:%s", npns, ip)
 						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 					}
 				}
 			}
-
+			klog.Infof("Adding output flow for npns: %#v for vnid:%d", npns, npns.vnid)
 			otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 		}
 	}
@@ -494,6 +501,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		// policy that only affects egress is, for our purposes, equivalent to one
 		// that affects ingress but does not select any pods.
 		npp.selectedIPs = []string{""}
+		klog.Infof("selectedIPs set to 1 empty ip address for NetworkPolicy: %#v", npp)
 		return npp
 	}
 
