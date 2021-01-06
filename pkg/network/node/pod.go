@@ -483,6 +483,7 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 	if podIP == nil {
 		ipamResult, podIP, err = m.ipamAdd(req.Netns, req.SandboxID)
 		if err != nil {
+			success = true
 			return nil, nil, fmt.Errorf("failed to run IPAM for %v: %v", req.SandboxID, err)
 		}
 		if err := maybeAddMacvlan(v1Pod, req.Netns); err != nil {
