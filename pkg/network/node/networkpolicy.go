@@ -431,7 +431,9 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 			continue
 		}
 		for _, pod := range pods {
-			peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", vnid, pod.Status.PodIP))
+			if isOnPodNetwork(pod) {
+				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", vnid, pod.Status.PodIP))
+			}
 		}
 	}
 
@@ -470,7 +472,9 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 		return ips
 	}
 	for _, pod := range pods {
-		ips = append(ips, pod.Status.PodIP)
+		if isOnPodNetwork(pod) {
+			ips = append(ips, pod.Status.PodIP)
+		}
 	}
 	return ips
 }
@@ -671,16 +675,18 @@ func (np *networkPolicyPlugin) watchPods() {
 	np.node.kubeInformers.Core().V1().Pods().Informer().AddEventHandler(funcs)
 }
 
+func isOnPodNetwork(pod *corev1.Pod) bool {
+	if pod.Spec.HostNetwork {
+		return false
+	}
+	return pod.Status.PodIP != ""
+}
+
 func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventType watch.EventType) {
 	pod := obj.(*corev1.Pod)
 	klog.V(5).Infof("Watch %s event for Pod %q", eventType, getPodFullName(pod))
 
-	// Ignore pods with HostNetwork=true, SDN is not involved in this case
-	if pod.Spec.SecurityContext != nil && pod.Spec.HostNetwork {
-		return
-	}
-	if pod.Status.PodIP == "" {
-		klog.V(5).Infof("PodIP is not set for pod %q; ignoring", getPodFullName(pod))
+	if !isOnPodNetwork(pod) {
 		return
 	}
 
