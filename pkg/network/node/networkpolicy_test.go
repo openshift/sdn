@@ -250,6 +250,58 @@ func addPods(np *networkPolicyPlugin, npns *npNamespace, expectSync bool) {
 	}
 }
 
+func addBadPods(np *networkPolicyPlugin, npns *npNamespace) {
+	synced.Store(false)
+
+	// HostNetwork pods should not show up in NetworkPolicies
+	hostNetwork := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: npns.name,
+			Name:      "hostNetwork",
+			UID:       uid(npns, "hostNetwork"),
+			Labels: map[string]string{
+				"kind": "client",
+			},
+		},
+		Spec: corev1.PodSpec{
+			HostNetwork: true,
+		},
+		Status: corev1.PodStatus{
+			PodIP: "1.2.3.4",
+		},
+	}
+	// Pods that haven't yet received a PodIP should not show up
+	pending := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: npns.name,
+			Name:      "pending",
+			UID:       uid(npns, "pending"),
+			Labels: map[string]string{
+				"kind": "client",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			PodIP: "",
+		},
+	}
+
+	_, err := np.node.kClient.CoreV1().Pods(npns.name).Create(context.TODO(), hostNetwork, metav1.CreateOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error creating hostNetwork pod: %v", err))
+	}
+	_, err = np.node.kClient.CoreV1().Pods(npns.name).Create(context.TODO(), pending, metav1.CreateOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error creating pending pod: %v", err))
+	}
+
+	// This should not cause a resync
+	err = waitForEvent(np, func() bool { return synced.Load().(bool) })
+	if err == nil {
+		panic("Did not get expected error! Unexpected sync occurred")
+	}
+}
+
 func TestNetworkPolicy(t *testing.T) {
 	np := newTestNPP()
 
@@ -477,6 +529,11 @@ func TestNetworkPolicy(t *testing.T) {
 	addPods(np, np.namespaces[8], true)
 	addNamespace(np, "nine", 9, map[string]string{"parity": "odd"})
 	addPods(np, np.namespaces[9], true)
+
+	// add same non-pod-network pods; this should not affect the generated flows.
+	addBadPods(np, np.namespaces[4])
+	addBadPods(np, np.namespaces[7])
+	addBadPods(np, np.namespaces[9])
 
 	// Now reassert the full set of matches for each namespace
 	for vnid, npns := range np.namespaces {
