@@ -209,8 +209,8 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			srcChain: "OUTPUT",
 			srcRule:  []string{"-m", "comment", "--comment", "firewall overrides"},
 			rules: [][]string{
-				{"-p", "tcp", "-m", "tcp", "--dport", "22623", "-j", "REJECT"},
-				{"-p", "tcp", "-m", "tcp", "--dport", "22624", "-j", "REJECT"},
+				{"-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
+				{"-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
 			},
 		},
 		Chain{
