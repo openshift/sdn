@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -79,7 +80,8 @@ func runOVSHealthCheck(network, addr string, healthFn func() error) {
 		if err != nil {
 			// If OVS restarts and our health check fails, we exit
 			// TODO: make openshift-sdn able to reconcile without a restart
-			klog.Fatalf("SDN healthcheck detected OVS server change, restarting: %v", err)
+			klog.Warningf("SDN healthcheck detected OVS server change, restarting: %v", err)
+			os.Exit(1)
 		}
 		klog.V(2).Infof("SDN healthcheck reconnected to OVS server")
 	}, ovsDialTimeout, utilwait.NeverStop)
@@ -96,7 +98,8 @@ func runOVSHealthCheck(network, addr string, healthFn func() error) {
 			return
 		}
 		if err := healthFn(); err != nil {
-			klog.Fatalf("SDN healthcheck detected unhealthy OVS server, restarting: %v", err)
+			klog.Warningf("SDN healthcheck detected unhealthy OVS server, restarting: %v", err)
+			os.Exit(1)
 		}
 		klog.V(4).Infof("SDN healthcheck succeeded")
 	}, ovsHealthcheckInterval, utilwait.NeverStop)
