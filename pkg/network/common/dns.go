@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
 )
 
@@ -24,6 +25,9 @@ type dnsValue struct {
 	ttl time.Duration
 	// Holds (last dns lookup time + ttl), tells when to refresh IPs next time
 	nextQueryTime time.Time
+	// Used to know if DNS.Update or DNS.Add are modifying it, so that
+	// DNS.GetNextQueryTime can ignore it
+	updating bool
 }
 
 type DNS struct {
@@ -41,6 +45,11 @@ type DNS struct {
 
 	// query timeout; overridden by tests
 	timeout time.Duration
+}
+
+type DNSResponseNotification struct {
+	Name    string
+	Changed bool
 }
 
 func NewDNS(resolverConfigFile string, ipv4, ipv6 bool) (*DNS, error) {
@@ -84,15 +93,20 @@ func (d *DNS) Get(dns string) dnsValue {
 }
 
 func (d *DNS) Add(dns string) error {
+	// This is a blocking operation, therefore must be done before acquring
+	// the lock
+	ips, ttl, err := d.getIPsAndMinTTL(dns)
+	if err != nil {
+		return err
+	}
+
 	d.lock.Lock()
 	defer d.lock.Unlock()
-
-	d.dnsMap[dns] = dnsValue{}
-	_, err := d.updateOne(dns)
-	if err != nil {
-		delete(d.dnsMap, dns)
+	d.dnsMap[dns] = dnsValue{
+		updating: true,
 	}
-	return err
+	d.updateDNSValue(dns, ips, ttl)
+	return nil
 }
 
 func (d *DNS) Delete(dns string) {
@@ -101,25 +115,56 @@ func (d *DNS) Delete(dns string) {
 	delete(d.dnsMap, dns)
 }
 
-func (d *DNS) Update(dnsName string) (bool, error) {
+func (d *DNS) SetUpdating(dns string) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-
-	return d.updateOne(dnsName)
-}
-
-func (d *DNS) updateOne(dns string) (bool, error) {
 	res, ok := d.dnsMap[dns]
 	if !ok {
 		// Should not happen, all operations on dnsMap are synchronized by d.lock
-		return false, fmt.Errorf("DNS value not found in dnsMap for domain: %q", dns)
+		return fmt.Errorf("DNS value not found in dnsMap for domain: %q", dns)
 	}
 
+	res.updating = true
+	d.dnsMap[dns] = res
+
+	return nil
+}
+
+func (d *DNS) Update(dns string) (bool, error) {
+	// This is a blocking operation, therefore must be done before acquring
+	// the lock
 	ips, ttl, err := d.getIPsAndMinTTL(dns)
+
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	if err != nil {
-		res.nextQueryTime = time.Now().Add(defaultTTL * time.Second)
-		d.dnsMap[dns] = res
+		d.updateNextQueryTime(dns)
 		return false, err
+	}
+
+	changed := d.updateDNSValue(dns, ips, ttl)
+	return changed, nil
+}
+
+func (d *DNS) updateNextQueryTime(dns string) {
+	res, ok := d.dnsMap[dns]
+	if !ok {
+		// Should not happen, all operations on dnsMap are synchronized by d.lock
+		klog.Errorf("DNS value not found in dnsMap for domain: %q", dns)
+		return
+	}
+	res.nextQueryTime = time.Now().Add(res.ttl)
+	res.updating = false
+	d.dnsMap[dns] = res
+}
+
+func (d *DNS) updateDNSValue(dns string, ips []net.IP, ttl time.Duration) bool {
+	res, ok := d.dnsMap[dns]
+	if !ok {
+		// Should not happen, all operations on dnsMap are synchronized by d.lock
+		klog.Errorf("DNS value not found in dnsMap for domain: %q", dns)
+		return false
 	}
 
 	changed := false
@@ -129,8 +174,9 @@ func (d *DNS) updateOne(dns string) (bool, error) {
 	res.ips = ips
 	res.ttl = ttl
 	res.nextQueryTime = time.Now().Add(res.ttl)
+	res.updating = false
 	d.dnsMap[dns] = res
-	return changed, nil
+	return changed
 }
 
 func (d *DNS) doOneQuery(server, domain string, rtype uint16) ([]net.IP, int, error) {
@@ -248,7 +294,7 @@ func (d *DNS) GetNextQueryTime() (time.Time, string, bool) {
 	var dns string
 
 	for dnsName, res := range d.dnsMap {
-		if (timeSet == false) || res.nextQueryTime.Before(minTime) {
+		if !res.updating && (timeSet == false || res.nextQueryTime.Before(minTime)) {
 			timeSet = true
 			minTime = res.nextQueryTime
 			dns = dnsName

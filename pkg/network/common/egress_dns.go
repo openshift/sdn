@@ -35,6 +35,9 @@ type EgressDNS struct {
 
 	// Report changes when there are dns updates
 	Updates chan EgressDNSUpdates
+
+	// Notify when a dns query is responded
+	dnsResponse chan DNSResponseNotification
 }
 
 func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
@@ -49,6 +52,7 @@ func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
 		namespaces:         map[ktypes.UID]string{},
 		added:              make(chan bool),
 		Updates:            make(chan EgressDNSUpdates),
+		dnsResponse:        make(chan DNSResponseNotification),
 	}, nil
 }
 
@@ -98,17 +102,19 @@ func (e *EgressDNS) Delete(policy networkv1.EgressNetworkPolicy) {
 	}
 }
 
-func (e *EgressDNS) Update(dns string) (bool, error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
+func (e *EgressDNS) update(dns string) {
+	changed, err := e.dns.Update(dns)
+	if err != nil {
+		klog.Errorf("Unable to update ip addreses for %q: %v", dns, err)
+	}
 
-	return e.dns.Update(dns)
+	e.dnsResponse <- DNSResponseNotification{Changed: changed, Name: dns}
 }
 
 func (e *EgressDNS) Sync() {
 	var duration time.Duration
 	for {
-		tm, dnsName, updates, ok := e.GetNextQueryTime()
+		tm, dnsName, ok := e.dns.GetNextQueryTime()
 		if !ok {
 			duration = 30 * time.Minute
 		} else {
@@ -117,35 +123,33 @@ func (e *EgressDNS) Sync() {
 				// Item needs to wait for this duration before it can be processed
 				duration = tm.Sub(now)
 			} else {
-				changed, err := e.Update(dnsName)
-				if err != nil {
-					utilruntime.HandleError(err)
-				}
-
-				if changed {
-					e.Updates <- updates
-				}
-				continue
+				e.dns.SetUpdating(dnsName)
+				go e.update(dnsName)
 			}
 		}
 
-		// Wait for the given duration or till something got added
+		// Wait for the the next query time, until there is a reply,
+		// or until a new name is added.
 		select {
+		case response := <-e.dnsResponse:
+			go e.handleDNSResponse(response)
 		case <-e.added:
 		case <-time.After(duration):
 		}
 	}
 }
 
-func (e *EgressDNS) GetNextQueryTime() (time.Time, string, []EgressDNSUpdate, bool) {
+func (e *EgressDNS) handleDNSResponse(response DNSResponseNotification) {
+	if response.Changed {
+		e.Updates <- e.getEgressDNSUpdates(response.Name)
+	}
+
+}
+
+func (e *EgressDNS) getEgressDNSUpdates(dnsName string) []EgressDNSUpdate {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	policyUpdates := make([]EgressDNSUpdate, 0)
-	tm, dnsName, timeSet := e.dns.GetNextQueryTime()
-	if !timeSet {
-		return tm, dnsName, nil, timeSet
-	}
-
 	if uids, exists := e.dnsNamesToPolicies[dnsName]; exists {
 		for uid := range uids {
 			policyUpdates = append(policyUpdates, EgressDNSUpdate{ktypes.UID(uid), e.namespaces[ktypes.UID(uid)]})
@@ -153,7 +157,7 @@ func (e *EgressDNS) GetNextQueryTime() (time.Time, string, []EgressDNSUpdate, bo
 	} else {
 		klog.V(5).Infof("Didn't find any entry for dns name: %s in the dns map.", dnsName)
 	}
-	return tm, dnsName, policyUpdates, timeSet
+	return policyUpdates
 }
 
 func (e *EgressDNS) GetIPs(dnsName string) []net.IP {
