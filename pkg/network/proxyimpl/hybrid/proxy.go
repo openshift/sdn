@@ -201,8 +201,17 @@ func (p *HybridProxier) shouldEndpointsUseUserspace(endpoints *corev1.Endpoints)
 		}
 	}
 
+	// Get the Endpoints corresponding Service and checks if it has the IdledAt annotation
+	// oc idle annotates the Service object, it used to annotate the Endpoints object
+	svc, err := p.serviceLister.Services(endpoints.Namespace).Get(endpoints.Name)
+	// don´t use userspace if we are not able to find the corresponding Service
+	if err != nil {
+		return false
+	}
+
+	// use the Userspace proxy if the Service doesn´t have endpoints and has been annotated
 	if !hasEndpoints {
-		if _, ok := endpoints.Annotations[unidlingapi.IdledAtAnnotation]; ok {
+		if _, ok := svc.Annotations[unidlingapi.IdledAtAnnotation]; ok {
 			return true
 		}
 	}
