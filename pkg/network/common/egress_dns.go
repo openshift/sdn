@@ -26,7 +26,7 @@ type EgressDNS struct {
 	// Protects pdMap/namespaces operations
 	lock sync.Mutex
 	// holds DNS entries globally
-	dns *DNS
+	dns DNSInterface
 	// this map holds which DNS names are in what policy objects
 	dnsNamesToPolicies map[string]sets.String
 	// Maintain namespaces for each policy to avoid querying etcd in syncEgressDNSPolicyRules()
@@ -40,6 +40,9 @@ type EgressDNS struct {
 
 	// Notify when a dns query is responded
 	dnsResponse chan DNSResponseNotification
+
+	// Notify when a dns query is responded
+	stopCh chan struct{}
 }
 
 func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
@@ -55,6 +58,7 @@ func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
 		added:              make(chan bool),
 		Updates:            make(chan EgressDNSUpdates),
 		dnsResponse:        make(chan DNSResponseNotification),
+		stopCh:             make(chan struct{}),
 	}, nil
 }
 
@@ -138,6 +142,8 @@ func (e *EgressDNS) Sync() {
 		case response := <-e.dnsResponse:
 			go e.handleDNSResponse(response)
 		case <-e.added:
+		case <-e.stopCh:
+			return
 		case <-time.After(duration):
 		}
 	}
@@ -196,4 +202,9 @@ func (e *EgressDNS) signalAdded() {
 	case e.added <- true:
 	default:
 	}
+}
+
+func (e *EgressDNS) Stop() {
+	klog.V(5).Info("Stopping EgressDNS")
+	e.stopCh <- struct{}{}
 }
