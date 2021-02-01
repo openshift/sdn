@@ -11,11 +11,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
+	utiltrace "k8s.io/utils/trace"
 )
 
 const (
 	// defaultTTL the time (in seconds) used as a TTL if an invalid or zero TTL is provided.
 	defaultTTL = 30 * 60
+	// dnsMapTraceThreshold the grace period before warning about a slow operation
+	dnsMapTraceThreshold = 100 * time.Millisecond
+	// dnsQueryTraceThreshold the grace period before warning about a slow operation
+	dnsQueryTraceThreshold = 350 * time.Millisecond
 )
 
 type dnsValue struct {
@@ -100,6 +105,9 @@ func (d *DNS) Add(dns string) error {
 		return err
 	}
 
+	trace := utiltrace.New(fmt.Sprintf("Update resolved DNS record %q", dns))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
+
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	d.dnsMap[dns] = dnsValue{
@@ -110,12 +118,18 @@ func (d *DNS) Add(dns string) error {
 }
 
 func (d *DNS) Delete(dns string) {
+	trace := utiltrace.New(fmt.Sprintf("Delete DNS record %q", dns))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
+
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	delete(d.dnsMap, dns)
 }
 
 func (d *DNS) SetUpdating(dns string) error {
+	trace := utiltrace.New(fmt.Sprintf("SetUpdating DNS record %q", dns))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
+
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	res, ok := d.dnsMap[dns]
@@ -134,6 +148,9 @@ func (d *DNS) Update(dns string) (bool, error) {
 	// This is a blocking operation, therefore must be done before acquring
 	// the lock
 	ips, ttl, err := d.getIPsAndMinTTL(dns)
+
+	trace := utiltrace.New(fmt.Sprintf("Update resolved DNS record %q", dns))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
 
 	d.lock.Lock()
 	defer d.lock.Unlock()
@@ -264,6 +281,9 @@ func (d *DNS) queryServer(nameserver, domain string) ([]net.IP, int, error) {
 }
 
 func (d *DNS) getIPsAndMinTTL(domain string) ([]net.IP, time.Duration, error) {
+	trace := utiltrace.New(fmt.Sprintf("DNS resolution for %q", domain))
+	defer trace.LogIfLong(dnsQueryTraceThreshold)
+
 	var ips []net.IP
 	var ttl int
 	var err error

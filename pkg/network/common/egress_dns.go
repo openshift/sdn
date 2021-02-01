@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
+	utiltrace "k8s.io/utils/trace"
 )
 
 type EgressDNSUpdate struct {
@@ -108,6 +110,8 @@ func (e *EgressDNS) update(dns string) {
 		klog.Errorf("Unable to update ip addreses for %q: %v", dns, err)
 	}
 
+	trace := utiltrace.New(fmt.Sprintf("Update egressDNS response channel for %q", dns))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
 	e.dnsResponse <- DNSResponseNotification{Changed: changed, Name: dns}
 }
 
@@ -140,8 +144,13 @@ func (e *EgressDNS) Sync() {
 }
 
 func (e *EgressDNS) handleDNSResponse(response DNSResponseNotification) {
+	trace := utiltrace.New(fmt.Sprintf("Handle DNS response notification for %q", response.Name))
+	defer trace.LogIfLong(dnsMapTraceThreshold)
+
 	if response.Changed {
-		e.Updates <- e.getEgressDNSUpdates(response.Name)
+		updates := e.getEgressDNSUpdates(response.Name)
+		trace.Step("getEgressDNSUpdates")
+		e.Updates <- updates
 	}
 
 }
