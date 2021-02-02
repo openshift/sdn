@@ -1615,6 +1615,25 @@ func (proxier *Proxier) syncProxyRules() {
 			v.Close()
 		}
 	}
+
+	// Clear conntrack entries for the new UDP NodePorts, this has to be done AFTER the iptables rules are programmed.
+	// It can happen that traffic to the NodePort hits the host before the iptables rules are programmed
+	// this will create an stale entry in conntrack that will blackhole the traffic, so we need to clear it
+	for lp := range replacementPortsMap {
+		_, ok := proxier.portsMap[lp]
+		// If the port is not present in the proxier portsMap means that we just opened it
+		if !ok && lp.Protocol == "udp" {
+			// TODO: We might have multiple services using the same port, and this will clear conntrack for all of them.
+			// This is very low impact. The NodePort range is intentionally obscure, and unlikely to actually collide with real Services.
+			// This only affects UDP connections, which are not common.
+			// See issue: https://github.com/kubernetes/kubernetes/issues/49881
+			err := conntrack.ClearEntriesForPort(proxier.exec, lp.Port, isIPv6, v1.ProtocolUDP)
+			if err != nil {
+				klog.ErrorS(err, "Failed to clear udp conntrack", "port", lp.Port)
+			}
+		}
+	}
+
 	proxier.portsMap = replacementPortsMap
 
 	if proxier.healthzServer != nil {
