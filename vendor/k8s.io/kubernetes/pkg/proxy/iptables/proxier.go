@@ -375,16 +375,19 @@ type iptablesJumpChain struct {
 
 var iptablesJumpChains = []iptablesJumpChain{
 	{utiliptables.TableFilter, kubeExternalServicesChain, utiliptables.ChainInput, "kubernetes externally-visible service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
+	{utiliptables.TableFilter, kubeExternalServicesChain, utiliptables.ChainForward, "kubernetes externally-visible service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainForward, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainOutput, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
-	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainInput, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableFilter, kubeForwardChain, utiliptables.ChainForward, "kubernetes forwarding rules", nil},
 	{utiliptables.TableNAT, kubeServicesChain, utiliptables.ChainOutput, "kubernetes service portals", nil},
 	{utiliptables.TableNAT, kubeServicesChain, utiliptables.ChainPrerouting, "kubernetes service portals", nil},
 	{utiliptables.TableNAT, kubePostroutingChain, utiliptables.ChainPostrouting, "kubernetes postrouting rules", nil},
 }
 
-var iptablesCleanupOnlyChains = []iptablesJumpChain{}
+var iptablesCleanupOnlyChains = []iptablesJumpChain{
+	// Present in kube 1.13 - 1.19. Removed by #95252 in favor of adding reject rules for incoming/forwarding packets to kubeExternalServicesChain
+	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainInput, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
+}
 
 // CleanupLeftovers removes all iptables rules and chains created by the Proxier
 // It returns true if an error was encountered. Errors are logged.
@@ -983,6 +986,20 @@ func (proxier *Proxier) syncProxyRules() {
 			hasEndpoints = len(allEndpoints) > 0
 		}
 
+		// Prefer local endpoint for the DNS service.
+		// Fixes <https://bugzilla.redhat.com/show_bug.cgi?id=1919737>.
+		// TODO: Delete this if-block once internal traffic policy is
+		// implemented and the DNS operator is updated to use it.
+		if svcNameString == "openshift-dns/dns-default:dns" {
+			for _, ep := range allEndpoints {
+				if ep.GetIsLocal() {
+					klog.V(4).Infof("Found a local endpoint %q for service %q; preferring the local endpoint and ignoring %d other endpoints", ep.String(), svcNameString, len(allEndpoints) - 1)
+					allEndpoints = []proxy.Endpoint{ep}
+					break
+				}
+			}
+		}
+
 		svcChain := svcInfo.servicePortChainName
 		if hasEndpoints {
 			// Create the per-service chain, retaining counters if possible.
@@ -1181,7 +1198,7 @@ func (proxier *Proxier) syncProxyRules() {
 				} else {
 					// No endpoints.
 					writeLine(proxier.filterRules,
-						"-A", string(kubeServicesChain),
+						"-A", string(kubeExternalServicesChain),
 						"-m", "comment", "--comment", fmt.Sprintf(`"%s has no endpoints"`, svcNameString),
 						"-m", protocol, "-p", protocol,
 						"-d", utilproxy.ToCIDR(net.ParseIP(ingress)),

@@ -86,7 +86,7 @@ replace (
 	k8s.io/kube-scheduler => github.com/openshift/kubernetes/staging/src/k8s.io/kube-scheduler v0.0.0-20200924180536-c77dd9b79070
 	k8s.io/kubectl => github.com/openshift/kubernetes/staging/src/k8s.io/kubectl v0.0.0-20200924180536-c77dd9b79070
 	k8s.io/kubelet => github.com/openshift/kubernetes/staging/src/k8s.io/kubelet v0.0.0-20200924180536-c77dd9b79070
-	k8s.io/kubernetes => github.com/openshift/kubernetes v0.0.0-20200924180536-c77dd9b79070
+	k8s.io/kubernetes => github.com/openshift/kubernetes v1.19.0-alpha.0.0.20210302151112-05e619e27cf6
 	k8s.io/legacy-cloud-providers => github.com/openshift/kubernetes/staging/src/k8s.io/legacy-cloud-providers v0.0.0-20200924180536-c77dd9b79070
 	k8s.io/metrics => github.com/openshift/kubernetes/staging/src/k8s.io/metrics v0.0.0-20200924180536-c77dd9b79070
 	k8s.io/sample-apiserver => github.com/openshift/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-20200924180536-c77dd9b79070
