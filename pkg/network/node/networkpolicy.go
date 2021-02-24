@@ -110,7 +110,10 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 
 	otx := node.oc.NewTransaction()
 	for _, cn := range np.node.networkInfo.ClusterNetworks {
-		otx.AddFlow("table=21, priority=200, ip, nw_dst=%s, actions=ct(commit,table=30)", cn.ClusterCIDR.String())
+		// Must pass packets through CT NAT to ensure NAT state is handled
+		// correctly by OVS when NAT-ed packets have tuple collisions.
+		// https://bugzilla.redhat.com/show_bug.cgi?id=1910378
+		otx.AddFlow("table=21, priority=200, ip, nw_dst=%s, ct_state=-rpl, actions=ct(commit,nat(src=0.0.0.0),table=30)", cn.ClusterCIDR.String())
 	}
 	otx.AddFlow("table=80, priority=200, ip, ct_state=+rpl, actions=output:NXM_NX_REG2[]")
 	if err := otx.Commit(); err != nil {
