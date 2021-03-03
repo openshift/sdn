@@ -30,6 +30,8 @@ import (
 	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
 
+const HostNetworkNamespace = "openshift-host-network"
+
 type networkPolicyPlugin struct {
 	node   *OsdnNode
 	vnids  *nodeVNIDMap
@@ -378,7 +380,14 @@ func (np *networkPolicyPlugin) selectNamespacesInternal(selector labels.Selector
 		match = &npCacheEntry{selector: selector, matches: make(map[string]uint32)}
 		for vnid, npns := range np.namespaces {
 			if npns.gotNamespace && selector.Matches(labels.Set(npns.labels)) {
-				match.matches[npns.name] = vnid
+				// handle host network namespace as special and classify it as vnid 0 for
+				// network policy purposes, so it can ride upon the handling of default
+				// namespace for host network traffic.
+				if npns.name == HostNetworkNamespace {
+					match.matches[npns.name] = 0
+				} else {
+					match.matches[npns.name] = vnid
+				}
 			}
 		}
 		np.nsMatchCache[cacheKey] = match
