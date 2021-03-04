@@ -245,6 +245,11 @@ func (o *Options) Complete() error {
 		return err
 	}
 
+	// DO NOT MERGE: hack endpoint slice on
+	o.config.FeatureGates[string(features.EndpointSlice)] = true
+	o.config.FeatureGates[string(features.EndpointSliceProxying)] = true
+	o.config.FeatureGates[string(features.EndpointSliceTerminatingCondition)] = true
+
 	return utilfeature.DefaultMutableFeatureGate.SetFromMap(o.config.FeatureGates)
 }
 

@@ -169,6 +169,8 @@ func NewEndpointChangeTracker(hostname string, makeEndpointInfo makeEndpointFunc
 	}
 	if endpointSlicesEnabled {
 		ect.endpointSliceCache = NewEndpointSliceCache(hostname, ipFamily, recorder, makeEndpointInfo)
+	} else {
+		klog.Infof("DEBUG: endpointSliceCache is nil because endpointSlicesEnabled=false")
 	}
 	return ect
 }

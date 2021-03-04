@@ -124,7 +124,6 @@ func (sdn *OpenShiftSDN) ValidateAndParse() error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
