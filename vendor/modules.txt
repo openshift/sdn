@@ -844,7 +844,7 @@ k8s.io/kubectl/pkg/util/openapi/validation
 k8s.io/kubectl/pkg/util/templates
 k8s.io/kubectl/pkg/util/term
 k8s.io/kubectl/pkg/validation
-# k8s.io/kubernetes v1.18.2 => github.com/openshift/kubernetes v0.0.0-20200506150957-662762e23e80
+# k8s.io/kubernetes v1.18.2 => github.com/openshift/kubernetes v1.19.0-alpha.0.0.20210304151414-a18cff1620e7
 k8s.io/kubernetes/cmd/kube-proxy
 k8s.io/kubernetes/cmd/kube-proxy/app
 k8s.io/kubernetes/pkg/api/legacyscheme
