@@ -16,14 +16,12 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/scheme"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
-	"k8s.io/kubernetes/pkg/features"
 	proxy "k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
@@ -63,13 +61,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	if string(sdn.ProxyConfig.Mode) == "disabled" {
 		klog.Warningf("Built-in kube-proxy is disabled")
 		sdn.startMetricsServer()
-		close(waitChan)
-		return
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice) ||
-		utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
-		klog.Warningf("kube-proxy has unsupported EndpointSlice/EndpointSliceProxying gates enabled")
 		close(waitChan)
 		return
 	}
@@ -214,8 +205,8 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		}
 	}
 
-	endpointsConfig := pconfig.NewEndpointsConfig(
-		sdn.informers.KubeInformers.Core().V1().Endpoints(),
+	endpointsConfig := pconfig.NewEndpointSliceConfig(
+		sdn.informers.KubeInformers.Discovery().V1beta1().EndpointSlices(),
 		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 	)
 	// customized handling registration that inserts a filter if needed
