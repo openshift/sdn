@@ -85,7 +85,7 @@ func TestAddDNS(t *testing.T) {
 		domainName        string
 		dnsResolverOutput string
 		ips               []net.IP
-		ttl               float64
+		ttl               time.Duration
 		expectFailure     bool
 	}
 
@@ -96,7 +96,7 @@ func TestAddDNS(t *testing.T) {
 			domainName:        "example.com",
 			dnsResolverOutput: "example.com. 600 IN A 10.11.12.13",
 			ips:               []net.IP{ip},
-			ttl:               600,
+			ttl:               600 * time.Second,
 			expectFailure:     false,
 		},
 		{
@@ -104,7 +104,7 @@ func TestAddDNS(t *testing.T) {
 			domainName:        "example.com",
 			dnsResolverOutput: "example.com. 200 IN CNAME foo.example.com.\nfoo.example.com. 600 IN A 10.11.12.13",
 			ips:               []net.IP{ip},
-			ttl:               200,
+			ttl:               200 * time.Second,
 			expectFailure:     false,
 		},
 		{
@@ -124,7 +124,7 @@ func TestAddDNS(t *testing.T) {
 			domainName:        "example.com",
 			dnsResolverOutput: "example.com. 0 IN A 10.11.12.13",
 			ips:               []net.IP{ip},
-			ttl:               1800,
+			ttl:               30 * time.Second,
 			expectFailure:     false,
 		},
 	}
@@ -160,8 +160,9 @@ func TestAddDNS(t *testing.T) {
 			if !ipsEqual(d.ips, test.ips) {
 				t.Fatalf("Test case: %s failed, expected IPs: %v, got: %v for the domain %q", test.testCase, test.ips, d.ips, test.domainName)
 			}
-			if d.ttl.Seconds() != test.ttl {
-				t.Fatalf("Test case: %s failed, expected TTL: %g, got: %g for the domain %q", test.testCase, test.ttl, d.ttl.Seconds(), test.domainName)
+			normalizedTTL := normalizeTTL(test.ttl)
+			if d.ttl != normalizedTTL {
+				t.Fatalf("Test case: %s failed, expected TTL: %s, got: %s for the domain %q", test.testCase, normalizedTTL, d.ttl, test.domainName)
 			}
 			if d.nextQueryTime.IsZero() {
 				t.Fatalf("Test case: %s failed, nextQueryTime for the domain %q is not set", test.testCase, test.domainName)
@@ -188,7 +189,7 @@ func TestAddDNSIPv6(t *testing.T) {
 		domainName        string
 		dnsResolverOutput string
 		ips               []net.IP
-		ttl               float64
+		ttl               time.Duration
 		expectFailure     bool
 	}
 
@@ -199,7 +200,7 @@ func TestAddDNSIPv6(t *testing.T) {
 			domainName:        "example.com",
 			dnsResolverOutput: "example.com. 600 IN AAAA 2600:5200::7800:1",
 			ips:               []net.IP{ip},
-			ttl:               600,
+			ttl:               600 * time.Second,
 			expectFailure:     false,
 		},
 		{
@@ -207,7 +208,7 @@ func TestAddDNSIPv6(t *testing.T) {
 			domainName:        "example.com",
 			dnsResolverOutput: "example.com. 200 IN CNAME foo.example.com.\nfoo.example.com. 600 IN AAAA 2600:5200::7800:1",
 			ips:               []net.IP{ip},
-			ttl:               200,
+			ttl:               200 * time.Second,
 			expectFailure:     false,
 		},
 		{
@@ -249,8 +250,9 @@ func TestAddDNSIPv6(t *testing.T) {
 			if !ipsEqual(d.ips, test.ips) {
 				t.Fatalf("Test case: %s failed, expected IPs: %v, got: %v for the domain %q", test.testCase, test.ips, d.ips, test.domainName)
 			}
-			if d.ttl.Seconds() != test.ttl {
-				t.Fatalf("Test case: %s failed, expected TTL: %g, got: %g for the domain %q", test.testCase, test.ttl, d.ttl.Seconds(), test.domainName)
+			normalizedTTL := normalizeTTL(test.ttl)
+			if d.ttl != normalizedTTL {
+				t.Fatalf("Test case: %s failed, expected TTL: %s, got: %s for the domain %q", test.testCase, normalizedTTL, d.ttl, test.domainName)
 			}
 			if d.nextQueryTime.IsZero() {
 				t.Fatalf("Test case: %s failed, nextQueryTime for the domain %q is not set", test.testCase, test.domainName)
@@ -278,7 +280,7 @@ func TestAddDNSDualStack(t *testing.T) {
 		dnsV4Output   string
 		dnsV6Output   string
 		ips           []net.IP
-		ttl           float64
+		ttl           time.Duration
 		expectFailure bool
 	}
 
@@ -294,7 +296,7 @@ func TestAddDNSDualStack(t *testing.T) {
 			dnsV4Output:   "example.com. 600 IN A 10.11.12.13",
 			dnsV6Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
 			ips:           []net.IP{ip4},
-			ttl:           600,
+			ttl:           600 * time.Second,
 			expectFailure: false,
 		},
 		{
@@ -303,7 +305,7 @@ func TestAddDNSDualStack(t *testing.T) {
 			dnsV4Output:   "example.com. 3600 IN SOA ns.example.com. root.example.com. 12345 600 600 600 600",
 			dnsV6Output:   "example.com. 600 IN AAAA 2600:5200::7800:1",
 			ips:           []net.IP{ip6},
-			ttl:           600,
+			ttl:           600 * time.Second,
 			expectFailure: false,
 		},
 		{
@@ -312,7 +314,7 @@ func TestAddDNSDualStack(t *testing.T) {
 			dnsV4Output:   "example.com. 200 IN A 10.11.12.13",
 			dnsV6Output:   "example.com. 600 IN AAAA 2600:5200::7800:1",
 			ips:           []net.IP{ip4, ip6},
-			ttl:           200,
+			ttl:           200 * time.Second,
 			expectFailure: false,
 		},
 		{
@@ -321,7 +323,7 @@ func TestAddDNSDualStack(t *testing.T) {
 			dnsV4Output:   "example.com. 600 IN A 10.11.12.13",
 			dnsV6Output:   "example.com. 200 IN AAAA 2600:5200::7800:1",
 			ips:           []net.IP{ip4, ip6},
-			ttl:           200,
+			ttl:           200 * time.Second,
 			expectFailure: false,
 		},
 		{
@@ -330,7 +332,7 @@ func TestAddDNSDualStack(t *testing.T) {
 			dnsV4Output:   "example.com. 200 IN A 10.11.12.13",
 			dnsV6Output:   "",
 			ips:           []net.IP{ip4},
-			ttl:           200,
+			ttl:           200 * time.Second,
 			expectFailure: false,
 		},
 		{
@@ -373,8 +375,9 @@ func TestAddDNSDualStack(t *testing.T) {
 			if !ipsEqual(d.ips, test.ips) {
 				t.Fatalf("Test case: %s failed, expected IPs: %v, got: %v for the domain %q", test.testCase, test.ips, d.ips, test.domainName)
 			}
-			if d.ttl.Seconds() != test.ttl {
-				t.Fatalf("Test case: %s failed, expected TTL: %g, got: %g for the domain %q", test.testCase, test.ttl, d.ttl.Seconds(), test.domainName)
+			normalizedTTL := normalizeTTL(test.ttl)
+			if d.ttl != normalizedTTL {
+				t.Fatalf("Test case: %s failed, expected TTL: %s, got: %s for the domain %q", test.testCase, normalizedTTL, d.ttl, test.domainName)
 			}
 			if d.nextQueryTime.IsZero() {
 				t.Fatalf("Test case: %s failed, nextQueryTime for the domain %q is not set", test.testCase, test.domainName)
@@ -402,11 +405,11 @@ func TestUpdateDNS(t *testing.T) {
 
 		addResolverOutput string
 		addIPs            []net.IP
-		addTTL            float64
+		addTTL            time.Duration
 
 		updateResolverOutput string
 		updateIPs            []net.IP
-		updateTTL            float64
+		updateTTL            time.Duration
 
 		expectFailure bool
 	}
@@ -419,10 +422,10 @@ func TestUpdateDNS(t *testing.T) {
 			domainName:           "example.com",
 			addResolverOutput:    "example.com. 600 IN A 10.11.12.13",
 			addIPs:               []net.IP{addIP},
-			addTTL:               600,
+			addTTL:               600 * time.Second,
 			updateResolverOutput: "example.com. 500 IN A 10.11.12.14",
 			updateIPs:            []net.IP{updateIP},
-			updateTTL:            500,
+			updateTTL:            500 * time.Second,
 			expectFailure:        false,
 		},
 		{
@@ -437,10 +440,10 @@ func TestUpdateDNS(t *testing.T) {
 			domainName:           "example.com",
 			addResolverOutput:    "example.com. 5 IN A 10.11.12.13",
 			addIPs:               []net.IP{addIP},
-			addTTL:               5,
+			addTTL:               5 * time.Second,
 			updateResolverOutput: "example.com. 0 IN A 10.11.12.14",
 			updateIPs:            []net.IP{updateIP},
-			updateTTL:            1800,
+			updateTTL:            30 * time.Second,
 			expectFailure:        false,
 		},
 	}
@@ -485,8 +488,9 @@ func TestUpdateDNS(t *testing.T) {
 			if !ipsEqual(orig.ips, test.addIPs) {
 				t.Fatalf("Test case: %s failed, expected ips after add op: %v, got: %v", test.testCase, test.addIPs, orig.ips)
 			}
-			if orig.ttl.Seconds() != test.addTTL {
-				t.Fatalf("Test case: %s failed, expected ttl after add op: %g, got: %g", test.testCase, test.addTTL, orig.ttl.Seconds())
+			normalizedTTL := normalizeTTL(test.addTTL)
+			if orig.ttl != normalizedTTL {
+				t.Fatalf("Test case: %s failed, expected ttl after add op: %s, got: %s", test.testCase, normalizedTTL, orig.ttl)
 			}
 			if orig.nextQueryTime.IsZero() {
 				t.Fatalf("Test case: %s failed, expected nextQueryTime to be set after add op", test.testCase)
@@ -495,8 +499,9 @@ func TestUpdateDNS(t *testing.T) {
 			if !ipsEqual(updated.ips, test.updateIPs) {
 				t.Fatalf("Test case: %s failed, expected ips after update op: %v, got: %v", test.testCase, test.updateIPs, updated.ips)
 			}
-			if updated.ttl.Seconds() != test.updateTTL {
-				t.Fatalf("Test case: %s failed, expected ttl after update op: %g, got: %g", test.testCase, test.updateTTL, updated.ttl.Seconds())
+			normalizedTTL = normalizeTTL(test.updateTTL)
+			if updated.ttl != normalizedTTL {
+				t.Fatalf("Test case: %s failed, expected ttl after add op: %s, got: %s", test.testCase, normalizedTTL, orig.ttl)
 			}
 			if updated.nextQueryTime.IsZero() {
 				t.Fatalf("Test case: %s failed, expected nextQueryTime to be set after update op", test.testCase)
@@ -507,6 +512,29 @@ func TestUpdateDNS(t *testing.T) {
 			}
 		}
 	}
+}
+func TestNormalizeTTL(t *testing.T) {
+	// The tests map stores the argument as the key and the expected output
+	// as the value
+	tests := make(map[int]int)
+	tests[2] = 2
+	tests[27] = 27
+	tests[29] = 29
+	tests[30] = 30
+	tests[31] = 30
+	tests[1799] = 30
+	tests[1800] = 1800
+	tests[1801] = 1800
+	tests[3600] = 1800
+	for k, v := range tests {
+		originalTTL := time.Duration(k) * time.Second
+		expectedTTL := time.Duration(v) * time.Second
+		normalizedTTL := normalizeTTL(originalTTL)
+		if normalizedTTL != expectedTTL {
+			t.Fatalf("Test case: For TTL %s expected %s, got: %s", originalTTL, expectedTTL, normalizedTTL)
+		}
+	}
+
 }
 
 func dummyServer(output string) func(dns.ResponseWriter, *dns.Msg) {

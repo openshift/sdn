@@ -16,7 +16,7 @@ import (
 
 const (
 	// defaultTTL the time (in seconds) used as a TTL if an invalid or zero TTL is provided.
-	defaultTTL = 30 * 60
+	defaultTTL = 30
 	// dnsMapTraceThreshold the grace period before warning about a slow operation
 	dnsMapTraceThreshold = 100 * time.Millisecond
 	// dnsQueryTraceThreshold the grace period before warning about a slow operation
@@ -199,7 +199,7 @@ func (d *DNS) updateDNSValue(dns string, ips []net.IP, ttl time.Duration) bool {
 		changed = true
 	}
 	res.ips = ips
-	res.ttl = ttl
+	res.ttl = normalizeTTL(ttl)
 	res.nextQueryTime = time.Now().Add(res.ttl)
 	res.updating = false
 	d.dnsMap[dns] = res
@@ -399,4 +399,20 @@ func removeDuplicateIPs(ips []net.IP) []net.IP {
 	}
 
 	return uniqueIPs
+}
+
+func normalizeTTL(ttl time.Duration) time.Duration {
+	// The TTL is guaranteed to be valid for its duration, however, it's not
+	// guaranteed that the DNS server will cache it and always return the same
+	// list of IP addreses for the whole TTL.
+	// For records with large TTL (>30 min) we assume they will always return
+	// the same list of addresses and query them only once every 30 min. We'll
+	// assume rest of the records a TTL of at most 30 seconds.
+
+	if ttl < 30*time.Second {
+		return ttl
+	} else if ttl >= 30*time.Minute {
+		return 30 * time.Minute
+	}
+	return 30 * time.Second
 }
