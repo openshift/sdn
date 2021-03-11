@@ -61,9 +61,9 @@ func TestEgressVXLANMonitor(t *testing.T) {
 	evm := newEgressVXLANMonitor(ovsif, nil, updates)
 	evm.pollInterval = 0
 
-	evm.AddNode("192.168.1.1")
-	evm.AddNode("192.168.1.3")
-	evm.AddNode("192.168.1.5")
+	evm.AddEgressIP("192.168.1.1", "192.168.1.10")
+	evm.AddEgressIP("192.168.1.3", "192.168.1.12")
+	evm.AddEgressIP("192.168.1.5", "192.168.1.14")
 
 	// Everything should be fine at startup
 	retry := evm.check(false)
@@ -268,5 +268,48 @@ func TestEgressVXLANMonitor(t *testing.T) {
 		t.Fatalf("%s unexpectedly online: %#v", update[0].nodeIP, update)
 	} else if !update[1].offline {
 		t.Fatalf("%s unexpectedly online: %#v", update[1].nodeIP, update)
+	}
+
+	evm.AddEgressIP("192.168.1.5", "192.168.1.16")
+	packetsOut(ovsif, outCounts, "192.168.1.1", 0x46)
+
+	retry = evm.check(false)
+	if retry {
+		t.Fatalf("Check erroneously requested retry")
+	}
+
+	evm.RemoveEgressIP("192.168.1.3", "192.168.1.12")
+	evm.RemoveEgressIP("192.168.1.5", "192.168.1.14")
+	evm.RemoveEgressIP("192.168.1.1", "192.168.1.10")
+	packetsOut(ovsif, outCounts, "192.168.1.1", 0x46)
+
+	// At this point we only monitor 192.168.1.5
+	// (as it will still have one egress IP left -
+	// 192.168.1.16 - and is considered online),
+	// so check that increasing packets on the
+	// other nodes have no effect.
+	retry = evm.check(false)
+	if retry {
+		t.Fatalf("Check erroneously requested retry")
+	}
+
+	packetsOut(ovsif, outCounts, "192.168.1.5", 0x46)
+
+	// Check that we're still monitoring 192.168.1.5
+	retry = evm.check(false)
+	if !retry {
+		t.Fatalf("Check erroneously failed to request retry")
+	}
+
+	evm.RemoveEgressIP("192.168.1.5", "192.168.1.16")
+	packetsOut(ovsif, outCounts, "192.168.1.5", 0x46)
+
+	// At this point we are not monitoring any node
+	// so there should be no more retries at all, even if
+	// 192.168.1.5 is still considered online and should
+	// trigger a retry normally.
+	retry = evm.check(false)
+	if retry {
+		t.Fatalf("Check erroneously requested retry")
 	}
 }

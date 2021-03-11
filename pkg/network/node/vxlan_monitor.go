@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/openshift/sdn/pkg/network/common"
@@ -60,6 +61,8 @@ type egressVXLANNode struct {
 	nodeIP  string
 	offline bool
 
+	egressIPs sets.String
+
 	in  uint64
 	out uint64
 
@@ -84,35 +87,41 @@ func newEgressVXLANMonitor(ovsif ovs.Interface, tracker *common.EgressIPTracker,
 	}
 }
 
-func (evm *egressVXLANMonitor) AddNode(nodeIP string) {
+func (evm *egressVXLANMonitor) AddEgressIP(nodeIP, egressIP string) {
 	evm.Lock()
 	defer evm.Unlock()
 
 	if evm.monitorNodes[nodeIP] != nil {
+		evm.monitorNodes[nodeIP].egressIPs.Insert(egressIP)
 		return
 	}
 	klog.V(4).Infof("Monitoring node %s", nodeIP)
 
-	evm.monitorNodes[nodeIP] = &egressVXLANNode{nodeIP: nodeIP}
+	evm.monitorNodes[nodeIP] = &egressVXLANNode{
+		nodeIP:    nodeIP,
+		egressIPs: sets.NewString(egressIP),
+	}
 	if len(evm.monitorNodes) == 1 && evm.pollInterval != 0 {
 		evm.stop = make(chan struct{})
 		go utilwait.PollUntil(evm.pollInterval, evm.poll, evm.stop)
 	}
 }
 
-func (evm *egressVXLANMonitor) RemoveNode(nodeIP string) {
+func (evm *egressVXLANMonitor) RemoveEgressIP(nodeIP, egressIP string) {
 	evm.Lock()
 	defer evm.Unlock()
 
 	if evm.monitorNodes[nodeIP] == nil {
 		return
 	}
-	klog.V(4).Infof("Unmonitoring node %s", nodeIP)
-
-	delete(evm.monitorNodes, nodeIP)
-	if len(evm.monitorNodes) == 0 && evm.stop != nil {
-		close(evm.stop)
-		evm.stop = nil
+	evm.monitorNodes[nodeIP].egressIPs.Delete(egressIP)
+	if evm.monitorNodes[nodeIP].egressIPs.Len() == 0 {
+		klog.V(4).Infof("Unmonitoring node %s", nodeIP)
+		delete(evm.monitorNodes, nodeIP)
+		if len(evm.monitorNodes) == 0 && evm.stop != nil {
+			close(evm.stop)
+			evm.stop = nil
+		}
 	}
 }
 
