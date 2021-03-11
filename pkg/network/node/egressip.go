@@ -120,7 +120,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) 
 			utilruntime.HandleError(fmt.Errorf("Error assigning Egress IP %q: %v", egressIP, err))
 		}
 	} else if eip.vxlanMonitor != nil {
-		eip.vxlanMonitor.AddNode(nodeIP)
+		eip.vxlanMonitor.AddEgressIP(nodeIP, egressIP)
 	}
 }
 
@@ -132,7 +132,7 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 			utilruntime.HandleError(fmt.Errorf("Error releasing Egress IP %q: %v", egressIP, err))
 		}
 	} else if eip.vxlanMonitor != nil {
-		eip.vxlanMonitor.RemoveNode(nodeIP)
+		eip.vxlanMonitor.RemoveEgressIP(nodeIP, egressIP)
 	}
 }
 
