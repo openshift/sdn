@@ -36,7 +36,7 @@ const (
 	Vxlan0 = "vxlan0"
 
 	// rule versioning; increment each time flow rules change
-	ruleVersion = 9
+	ruleVersion = 10
 
 	ruleVersionTable = 253
 )
@@ -769,33 +769,50 @@ func (oc *ovsController) ensureTunMAC() error {
 func (oc *ovsController) SetNamespaceEgressNormal(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=100, reg0=%d", vnid)
+	otx.DeleteGroup(vnid)
 	return otx.Commit()
 }
 
 func (oc *ovsController) SetNamespaceEgressDropped(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
+	otx.DeleteGroup(vnid)
 	otx.DeleteFlows("table=100, reg0=%d", vnid)
 	otx.AddFlow("table=100, priority=100, reg0=%d, actions=drop", vnid)
 	return otx.Commit()
 }
 
-func (oc *ovsController) SetNamespaceEgressViaEgressIP(vnid uint32, nodeIP, mark string) error {
+func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMetaData []egressIPMetaData) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=100, reg0=%d", vnid)
-	if nodeIP == "" {
-		// Namespace wants egress IP, but no node hosts it, so drop
+	otx.DeleteGroup(vnid)
+
+	var buildBuckets []string
+	for _, egressIPMetaData := range egressIPsMetaData {
+		if egressIPMetaData.nodeIP == oc.localIP {
+			if err := oc.ensureTunMAC(); err != nil {
+				return err
+			}
+			buildBuckets = []string{fmt.Sprintf("actions=set_field:%s->eth_dst,set_field:%s->pkt_mark,output:tun0", oc.tunMAC, egressIPMetaData.packetMark)}
+			// if one of the egressIPs is the IP of the node always use that egress otherwise it might not actually egress and get sent between nodes
+			break
+		} else {
+			commit := ""
+			if oc.useConnTrack {
+				commit = "ct(commit),"
+			}
+			buildBuckets = append(buildBuckets, fmt.Sprintf("actions=%smove:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:vxlan0", commit, egressIPMetaData.nodeIP))
+		}
+
+	}
+
+	if len(egressIPsMetaData) == 0 {
+		// Namespace wants egressIP, but no node hosts it, so drop
 		otx.AddFlow("table=100, priority=100, reg0=%d, actions=drop", vnid)
-	} else if nodeIP == oc.localIP {
-		if err := oc.ensureTunMAC(); err != nil {
-			return err
-		}
-		otx.AddFlow("table=100, priority=100, reg0=%d, ip, actions=set_field:%s->eth_dst,set_field:%s->pkt_mark,goto_table:101", vnid, oc.tunMAC, mark)
 	} else {
-		commit := ""
-		if oc.useConnTrack {
-			commit = "ct(commit),"
-		}
-		otx.AddFlow("table=100, priority=100, reg0=%d, ip, actions=%smove:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", vnid, commit, nodeIP)
+		// there is at least one egressIP hosted by one other node. Use a group
+		// to load balance between the egressIPs
+		otx.AddGroup(vnid, "select", buildBuckets)
+		otx.AddFlow("table=100, priority=100,ip,reg0=%d, actions=group:%d", vnid, vnid)
 	}
 	return otx.Commit()
 }

@@ -35,6 +35,10 @@ type Interface interface {
 	// error if the interface is not currently a bridge port.)
 	DeletePort(port string) error
 
+	// DumpGroup dumps the groups table for the bridge and returns it as an array of stings
+	// Currently DumpGroups is only used in testing
+	DumpGroups() ([]string, error)
+
 	// GetOFPort returns the OpenFlow port number of a given network interface
 	// attached to a bridge.
 	GetOFPort(port string) (int, error)
@@ -95,6 +99,9 @@ type Transaction interface {
 	// Given flow is cached but not executed at this time.
 	// The arguments are passed to fmt.Sprintf().
 	DeleteFlows(flow string, args ...interface{})
+
+	AddGroup(groupID uint32, groupType string, buckets []string)
+	DeleteGroup(groupID uint32)
 
 	// Commit executes all cached flows as a single atomic transaction and
 	// returns any error that occurred during the transaction.
@@ -268,6 +275,13 @@ func (ovsif *ovsExec) DeletePort(port string) error {
 	return err
 }
 
+// Currently DumpGroups is only used for testing
+func (ovsif *ovsExec) DumpGroups() ([]string, error) {
+	//stub
+	return nil, fmt.Errorf("Dump Groups is not implemented")
+
+}
+
 func (ovsif *ovsExec) SetFrags(mode string) error {
 	_, err := ovsif.exec(OVS_OFCTL, "set-frags", ovsif.bridge, mode)
 	return err
@@ -385,7 +399,7 @@ func (ovsif *ovsExec) DumpFlows(flow string, args ...interface{}) ([]string, err
 }
 
 func (ovsif *ovsExec) NewTransaction() Transaction {
-	return &ovsExecTx{ovsif: ovsif, flows: []string{}}
+	return &ovsExecTx{ovsif: ovsif, mods: []string{}}
 }
 
 // bundle executes all given flows as a single atomic transaction
@@ -410,29 +424,37 @@ func (ovsif *ovsExec) UpdateOVSMetrics() {
 // ovsExecTx implements ovs.Transaction and maintains current flow context
 type ovsExecTx struct {
 	ovsif *ovsExec
-	flows []string
+	mods  []string
 }
 
 func (tx *ovsExecTx) AddFlow(flow string, args ...interface{}) {
 	if len(args) > 0 {
 		flow = fmt.Sprintf(flow, args...)
 	}
-	tx.flows = append(tx.flows, fmt.Sprintf("flow add %s", flow))
+	tx.mods = append(tx.mods, fmt.Sprintf("flow add %s", flow))
 }
 
 func (tx *ovsExecTx) DeleteFlows(flow string, args ...interface{}) {
 	if len(args) > 0 {
 		flow = fmt.Sprintf(flow, args...)
 	}
-	tx.flows = append(tx.flows, fmt.Sprintf("flow delete %s", flow))
+	tx.mods = append(tx.mods, fmt.Sprintf("flow delete %s", flow))
+}
+
+func (tx *ovsExecTx) AddGroup(groupID uint32, groupType string, buckets []string) {
+	tx.mods = append(tx.mods, fmt.Sprintf("group add group_id=%d,type=%s,bucket=%s", groupID, groupType, strings.Join(buckets, "bucket=")))
+}
+
+func (tx *ovsExecTx) DeleteGroup(groupID uint32) {
+	tx.mods = append(tx.mods, fmt.Sprintf("group delete group_id=%d", groupID))
 }
 
 func (tx *ovsExecTx) Commit() error {
 	defer func() {
-		tx.flows = []string{}
+		tx.mods = []string{}
 	}()
 	return utilwait.ExponentialBackoff(ovsBackoff, func() (bool, error) {
-		err := tx.ovsif.bundle(tx.flows)
+		err := tx.ovsif.bundle(tx.mods)
 		if err == nil {
 			metrics.OVSOperationsResult.WithLabelValues(metrics.OVSOperationSuccess).Inc()
 			return true, nil

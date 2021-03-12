@@ -24,12 +24,14 @@ type ovsFake struct {
 	bridge string
 
 	ports map[string]ovsPortInfo
-	flows ovsFlows
+	// map of groupID to OVS group, makes it easier to add and delete groups
+	groups map[string]OVSGroup
+	flows  ovsFlows
 }
 
 // NewFake returns a new ovs.Interface
 func NewFake(bridge string) Interface {
-	return &ovsFake{bridge: bridge}
+	return &ovsFake{bridge: bridge, groups: make(map[string]OVSGroup)}
 }
 
 func (fake *ovsFake) AddBridge(properties ...string) error {
@@ -124,6 +126,35 @@ func (fake *ovsFake) DeletePort(port string) error {
 	return nil
 }
 
+func (fake *ovsFake) DumpGroups() ([]string, error) {
+	if err := fake.ensureExists(); err != nil {
+		return nil, err
+	}
+
+	var groups []string
+	//since fake.groups is a map the results are in a random order might cause issues with unit tests in the future
+	for _, group := range fake.groups {
+		bucketString := "bucket="
+		for _, bucket := range group.Buckets {
+			actionString := "actions="
+			for _, action := range bucket.Actions {
+				if action.Name == "ct" {
+					actionString = fmt.Sprintf("%s%s%s", actionString, action.Name, action.Value)
+				} else {
+					actionString = fmt.Sprintf("%s%s:%s", actionString, action.Name, action.Value)
+				}
+				actionString = fmt.Sprintf("%s,", actionString)
+			}
+			bucketString = fmt.Sprintf("%s%s,", bucketString, actionString[:len(actionString)-1])
+
+		}
+		groups = append(groups, fmt.Sprintf("group_id=%d,type=%s,%s", group.GroupID, group.Type, bucketString[:len(bucketString)-1]))
+
+	}
+	return groups, nil
+
+}
+
 func (fake *ovsFake) SetFrags(mode string) error {
 	return nil
 }
@@ -205,12 +236,13 @@ func (fake *ovsFake) Clear(table, record string, columns ...string) error {
 }
 
 type ovsFakeTx struct {
-	fake  *ovsFake
-	flows []string
+	fake   *ovsFake
+	flows  []string
+	groups []string
 }
 
 func (fake *ovsFake) NewTransaction() Transaction {
-	return &ovsFakeTx{fake: fake, flows: []string{}}
+	return &ovsFakeTx{fake: fake, flows: []string{}, groups: []string{}}
 }
 
 func (fake *ovsFake) UpdateOVSMetrics() {
@@ -297,15 +329,40 @@ func (fake *ovsFake) deleteFlowsHelper(flow string) error {
 	return nil
 }
 
+func (tx *ovsFakeTx) AddGroup(groupID uint32, groupType string, buckets []string) {
+	tx.groups = append(tx.groups, fmt.Sprintf("group add group_id=%d,type=%s,bucket=%s", groupID, groupType, strings.Join(buckets, "bucket=")))
+}
+
+func (tx *ovsFakeTx) DeleteGroup(groupID uint32) {
+	tx.groups = append(tx.groups, fmt.Sprintf("group delete group_id=%d", groupID))
+}
+
 func (tx *ovsFakeTx) Commit() error {
 	var err error
 	if err = tx.fake.ensureExists(); err != nil {
 		return err
 	}
 
+	for _, group := range tx.groups {
+		if strings.HasPrefix(group, "group add") {
+			group = strings.TrimPrefix(group, "group add ")
+			id := strings.TrimPrefix(strings.Split(group, ",")[0], "group_id=")
+			parsed, err := ParseGroup(group)
+			if err != nil {
+				return fmt.Errorf("cannot parse group %s for group add: %v", group, err)
+			}
+			tx.fake.groups[id] = *parsed
+
+		}
+		if strings.HasPrefix(group, "group delete") {
+			group = strings.TrimPrefix(group, "group delete group_id=")
+			delete(tx.fake.groups, group)
+
+		}
+	}
+
 	oldFlows := make(ovsFlows, len(tx.fake.flows))
 	copy(oldFlows, tx.fake.flows)
-
 	for _, flow := range tx.flows {
 		if strings.HasPrefix(flow, "add") {
 			flow = strings.TrimLeft(flow, "add")

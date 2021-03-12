@@ -34,6 +34,11 @@ type egressIPWatcher struct {
 	testModeChan chan string
 }
 
+type egressIPMetaData struct {
+	nodeIP     string
+	packetMark string
+}
+
 func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32) *egressIPWatcher {
 	eip := &egressIPWatcher{
 		oc:      oc,
@@ -151,9 +156,12 @@ func (eip *egressIPWatcher) SetNamespaceEgressDropped(vnid uint32) {
 	}
 }
 
-func (eip *egressIPWatcher) SetNamespaceEgressViaEgressIP(vnid uint32, egressIP, nodeIP string) {
-	mark := eip.iptablesMark[egressIP]
-	if err := eip.oc.SetNamespaceEgressViaEgressIP(vnid, nodeIP, mark); err != nil {
+func (eip *egressIPWatcher) SetNamespaceEgressViaEgressIPs(vnid uint32, activeEgressIPs []common.EgressIPAssignment) {
+	egressIPsMetaData := []egressIPMetaData{}
+	for _, egressIPAssignment := range activeEgressIPs {
+		egressIPsMetaData = append(egressIPsMetaData, egressIPMetaData{nodeIP: egressIPAssignment.NodeIP, packetMark: eip.iptablesMark[egressIPAssignment.EgressIP]})
+	}
+	if err := eip.oc.SetNamespaceEgressViaEgressIPs(vnid, egressIPsMetaData); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err))
 	}
 }

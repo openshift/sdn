@@ -1138,7 +1138,7 @@ var expectedFlows = []string{
 	" cookie=0, table=100, priority=200, tcp, tcp_dst=53, nw_dst=172.17.0.4, actions=output:2",
 	" cookie=0, table=100, priority=200, udp, udp_dst=53, nw_dst=172.17.0.4, actions=output:2",
 	" cookie=0, table=100, priority=150, ct_state=+rpl, actions=goto_table:101",
-	" cookie=0, table=100, priority=100, reg0=37, ip, actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.12.34->tun_dst,output:1",
+	" cookie=0, table=100, priority=100, ip, reg0=37, actions=group:37",
 	" cookie=0, table=100, priority=0, actions=goto_table:101",
 	" cookie=0, table=101, priority=3, reg0=42, ip, nw_dst=192.168.0.0/16, actions=output:2",
 	" cookie=0, table=101, priority=2, reg0=42, ip, nw_dst=192.168.1.0/24, actions=drop",
@@ -1149,7 +1149,7 @@ var expectedFlows = []string{
 	" cookie=0, table=111, priority=100, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1,set_field:10.0.45.123->tun_dst,output:1,goto_table:120",
 	" cookie=0, table=120, priority=100, reg0=99, actions=output:4,output:5,output:6",
 	" cookie=0, table=120, priority=0, actions=drop",
-	" cookie=0, table=253, actions=note:00.09",
+	" cookie=0, table=253, actions=note:00.0A",
 }
 
 // Ensure that we do not change the OVS flows without bumping ruleVersion
@@ -1221,7 +1221,9 @@ func TestRuleVersion(t *testing.T) {
 	}
 
 	// Egress IP flows
-	err = oc.SetNamespaceEgressViaEgressIP(37, "10.0.12.34", getMarkForVNID(37, 0x1))
+	egressIPsMetaData := []egressIPMetaData{
+		{nodeIP: "10.0.12.34", packetMark: getMarkForVNID(37, 0x1)}}
+	err = oc.SetNamespaceEgressViaEgressIPs(uint32(37), egressIPsMetaData)
 	if err != nil {
 		t.Fatalf("Unexpected error updating egress IPs: %v", err)
 	}

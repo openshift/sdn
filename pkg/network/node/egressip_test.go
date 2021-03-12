@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	//"strconv"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 
 	networkapi "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
+	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
 
 // Checks the "testModeChan" of eip and ensures that the expected netlink event(s)
@@ -110,7 +112,7 @@ func assertOVSChanges(eip *egressIPWatcher, flows *[]string, changes ...egressOV
 			flowChanges = append(flowChanges,
 				flowChange{
 					kind:  flowAdded,
-					match: []string{vnidStr, fmt.Sprintf("%s->tun_dst", change.remote)},
+					match: []string{vnidStr, fmt.Sprintf("%s", change.remote)},
 				},
 			)
 		}
@@ -128,6 +130,41 @@ func assertOVSChanges(eip *egressIPWatcher, flows *[]string, changes ...egressOV
 // Checks that no OVS changes have occurred (relative to the provided old flows)
 func assertNoOVSChanges(eip *egressIPWatcher, flows *[]string) error {
 	return assertOVSChanges(eip, flows)
+}
+
+//determine if the the groups are the same regardless of order
+func compareGroups(groups []string, expectedGroups []string) (bool, error) {
+	//both groups and expected should be the same size
+	if len(groups) != len(expectedGroups) {
+		return false, nil
+	}
+	var parsedExpectedGroups []*ovs.OVSGroup
+	for _, expectedGroup := range expectedGroups {
+		parsedExpectedGroup, err := ovs.ParseGroup(expectedGroup)
+		if err != nil {
+			return false, fmt.Errorf("the expected groups where not correct, one did not parse correctly: %v", err)
+		}
+		parsedExpectedGroups = append(parsedExpectedGroups, parsedExpectedGroup)
+
+	}
+	for _, group := range groups {
+		parsedGroup, err := ovs.ParseGroup(group)
+		if err != nil {
+			return false, err
+		}
+
+		found := false
+		for _, parsedExpectedGroup := range parsedExpectedGroups {
+			if ovs.GroupMatches(parsedGroup, parsedExpectedGroup) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func setupEgressIPWatcher(t *testing.T) (*egressIPWatcher, []string) {
@@ -215,7 +252,17 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"})
+	groups, _ := eip.oc.ovs.DumpGroups()
+	theSame, err := compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -237,7 +284,19 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "172.17.0.5"})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.5->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -248,7 +307,19 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "172.17.0.3"})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertNoOVSChanges(eip, &flows)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -269,7 +340,20 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Remote, remote: "group:44"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -302,7 +386,21 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Local})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Remote, remote: "group:45"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -312,6 +410,20 @@ func TestEgressIP(t *testing.T) {
 	err = assertNetlinkChange(eip, "release 172.17.0.102")
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Normal})
 	if err != nil {
@@ -324,7 +436,21 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Remote, remote: "group:44"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -335,9 +461,18 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Dropped})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+	})
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 
 	// Drop local node EgressIP
@@ -346,18 +481,40 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Dropped})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+	})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	if !theSame {
 
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
 	// Add them back, swapped
 	updateNodeEgress(eip, "172.17.0.3", []string{"172.17.0.100", "172.17.0.103"}) // Added .103
 	err = assertNoNetlinkChanges(eip)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Remote, remote: "172.17.0.3"})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=45,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertOVSChanges(eip, &flows,
+		egressOVSChange{vnid: 45, egress: Remote, remote: "group:45"},
+		egressOVSChange{vnid: 43, egress: Dropped})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -367,9 +524,20 @@ func TestEgressIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Local})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"})
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002a->pkt_mark,output:tun0",
+		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=45,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 }
 
@@ -379,10 +547,21 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100"})
 	updateNodeEgress(eip, "172.17.0.3", []string{"172.17.0.100"})
 	err := assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	groups, _ := eip.oc.ovs.DumpGroups()
+	theSame, err := compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 
 	// Prepending a second, unavailable, namespace egress IP should have no effect
@@ -393,27 +572,47 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	}
 
 	// Now assigning that IP to a node should switch OVS to use that since it's first in the list
+	// since the egressIP is hosted on the local node only have the bucket to output on the vxlan0
 	updateNodeEgress(eip, "172.17.0.4", []string{"172.17.0.101"})
 	err = assertNetlinkChange(eip, "claim 172.17.0.101")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Local},
-	)
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertNoOVSChanges(eip, &flows)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// Swapping the order in the NetNamespace should swap back
+	// Swapping the order in the NetNamespace should not change anything
+	// egressIP is local so onl have the tun0 bucket
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100", "172.17.0.101"})
 	err = assertNoNetlinkChanges(eip)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
-	)
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+	err = assertNoOVSChanges(eip, &flows)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -423,6 +622,17 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	err = assertNetlinkChange(eip, "release 172.17.0.101")
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertNoOVSChanges(eip, &flows)
 	if err != nil {
@@ -435,6 +645,15 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
 	err = assertOVSChanges(eip, &flows,
 		egressOVSChange{vnid: 42, egress: Dropped},
 	)
@@ -443,14 +662,26 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	}
 
 	// Now add the egress IPs back...
+	// only have the tun0 bucket because one of the egrssIPs is local to the node
 	updateNodeEgress(eip, "172.17.0.3", []string{"172.17.0.100"})
 	updateNodeEgress(eip, "172.17.0.4", []string{"172.17.0.101"})
 	err = assertNetlinkChange(eip, "claim 172.17.0.101")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
 	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -462,6 +693,15 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	err = assertNoNetlinkChanges(eip)
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertOVSChanges(eip, &flows,
 		egressOVSChange{vnid: 42, egress: Dropped},
@@ -476,8 +716,19 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
 	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
 		egressOVSChange{vnid: 43, egress: Normal},
 	)
 	if err != nil {
@@ -488,6 +739,15 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	err = assertNetlinkChange(eip, "release 172.17.0.101")
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertOVSChanges(eip, &flows,
 		egressOVSChange{vnid: 42, egress: Dropped},
@@ -502,13 +762,26 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
+
 	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
 		egressOVSChange{vnid: 44, egress: Normal},
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+
 }
 
 func TestNodeIPAsEgressIP(t *testing.T) {
@@ -531,7 +804,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100"})
 	updateNodeEgress(eip, "172.17.0.3", []string{"172.17.0.100"})
-	err := assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"})
+	err := assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -555,7 +828,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -584,7 +857,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// Removing the original egress node should result in the "duplicate" egress node
 	// now being used.
 	updateNodeEgress(eip, "172.17.0.3", []string{})
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.5"})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -595,7 +868,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100"})
 	updateNodeEgress(eip, "172.17.0.3", []string{"172.17.0.100"})
-	err := assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"})
+	err := assertOVSChanges(eip, &flows, egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -614,7 +887,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	// Removing the duplicate should cause the original to start working again
 	deleteNamespaceEgress(eip, 43)
 	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
 		egressOVSChange{vnid: 43, egress: Normal},
 	)
 	if err != nil {
@@ -650,7 +923,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	deleteNamespaceEgress(eip, 42)
 	err = assertOVSChanges(eip, &flows,
 		egressOVSChange{vnid: 42, egress: Normal},
-		egressOVSChange{vnid: 43, egress: Remote, remote: "172.17.0.3"},
+		egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"},
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -760,15 +1033,25 @@ func TestEgressNodeRenumbering(t *testing.T) {
 	})
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100"})
 	updateNamespaceEgress(eip, 43, []string{"172.17.0.101"})
-
 	err := assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 42, egress: Remote, remote: "172.17.0.3"},
-		egressOVSChange{vnid: 43, egress: Local},
+		egressOVSChange{vnid: 42, egress: Remote, remote: "group:42"},
+		egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"},
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	groups, _ := eip.oc.ovs.DumpGroups()
+	theSame, err := compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002a->pkt_mark,output:tun0",
+	})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !theSame {
 
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
+	}
 	// Renumber one of the hosts
 	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -779,10 +1062,17 @@ func TestEgressNodeRenumbering(t *testing.T) {
 		HostIP:    "172.17.0.6",
 		EgressIPs: []networkapi.HostSubnetEgressIP{"172.17.0.101"},
 	})
-	err = assertOVSChanges(eip, &flows,
-		egressOVSChange{vnid: 43, egress: Remote, remote: "172.17.0.6"},
-	)
+	err = assertNoOVSChanges(eip, &flows)
+	groups, _ = eip.oc.ovs.DumpGroups()
+	theSame, err = compareGroups(groups, []string{
+		"group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=43,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.6->tun_dst,output:vxlan0",
+	})
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	if !theSame {
+
+		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 }
