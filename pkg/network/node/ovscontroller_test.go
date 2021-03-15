@@ -28,6 +28,10 @@ func setupOVSController(t *testing.T) (ovs.Interface, *ovsController, []string) 
 	if err != nil {
 		t.Fatalf("Unexpected error setting up OVS: %v", err)
 	}
+	err = oc.FinishSetupOVS()
+	if err != nil {
+		t.Fatalf("Unexpected error setting up OVS: %v", err)
+	}
 
 	origFlows, err := ovsif.DumpFlows("")
 	if err != nil {
@@ -1077,4 +1081,176 @@ func TestSetHWAddrByIP(t *testing.T) {
 	if !reflect.DeepEqual(hwAddr, expectedHWAddr) {
 		t.Fatalf("hwaddr.GenerateHardwareAddr4 changed behavior! (%#v != %#v)", hwAddr, expectedHWAddr)
 	}
+}
+
+// *** IF YOU UPDATE THIS ARRAY YOU *MUST* CHANGE ruleVersion IN ovscontroller.go ***
+var expectedFlows = []string{
+	" cookie=0, table=0, priority=1000, ip, ct_state=-trk, actions=ct(table=0)",
+	" cookie=0, table=0, priority=400, in_port=2, ip, nw_src=10.128.0.1, actions=goto_table:30",
+	" cookie=0, table=0, priority=300, in_port=2, ip, nw_src=10.128.0.0/23, nw_dst=10.128.0.0/14, actions=goto_table:25",
+	" cookie=0, table=0, priority=250, in_port=2, ip, nw_dst=224.0.0.0/4, actions=drop",
+	" cookie=0, table=0, priority=200, in_port=1, arp, arp_spa=10.128.0.0/14, arp_tpa=10.128.0.0/23, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10",
+	" cookie=0, table=0, priority=200, in_port=1, ip, nw_src=10.128.0.0/14, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10",
+	" cookie=0, table=0, priority=200, in_port=1, ip, nw_dst=10.128.0.0/14, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10",
+	" cookie=0, table=0, priority=200, in_port=2, arp, arp_spa=10.128.0.1, arp_tpa=10.128.0.0/14, actions=goto_table:30",
+	" cookie=0, table=0, priority=200, in_port=2, ip, actions=goto_table:30",
+	" cookie=0, table=0, priority=150, in_port=1, actions=drop",
+	" cookie=0, table=0, priority=150, in_port=2, actions=drop",
+	" cookie=0, table=0, priority=100, arp, actions=goto_table:20",
+	" cookie=0, table=0, priority=100, ip, actions=goto_table:20",
+	" cookie=0, table=0, priority=0, actions=drop",
+	" cookie=0x0f46ee1a, table=10, priority=100, tun_src=10.0.123.45, actions=goto_table:30",
+	" cookie=0, table=10, priority=0, actions=drop",
+	" cookie=0, table=20, priority=100, in_port=3, arp, arp_spa=10.128.0.2, arp_sha=00:00:0a:80:00:02/00:00:ff:ff:ff:ff, actions=load:42->NXM_NX_REG0[],goto_table:21",
+	" cookie=0, table=20, priority=100, in_port=3, ip, nw_src=10.128.0.2, actions=load:42->NXM_NX_REG0[],goto_table:21",
+	" cookie=0, table=20, priority=0, actions=drop",
+	" cookie=0, table=21, priority=0, actions=goto_table:30",
+	" cookie=0, table=25, priority=100, ip, nw_src=10.128.0.2, actions=load:42->NXM_NX_REG0[],goto_table:30",
+	" cookie=0, table=25, priority=0, actions=drop",
+	" cookie=0, table=30, priority=300, arp, arp_tpa=10.128.0.1, actions=output:2",
+	" cookie=0, table=30, priority=300, ip, nw_dst=10.128.0.1, actions=output:2",
+	" cookie=0, table=30, priority=250, ip, nw_dst=10.128.0.0/23, ct_state=+rpl, actions=ct(nat,table=70)",
+	" cookie=0, table=30, priority=200, arp, arp_tpa=10.128.0.0/23, actions=goto_table:40",
+	" cookie=0, table=30, priority=200, ip, nw_dst=10.128.0.0/23, actions=goto_table:70",
+	" cookie=0, table=30, priority=100, arp, arp_tpa=10.128.0.0/14, actions=goto_table:50",
+	" cookie=0, table=30, priority=100, ip, nw_dst=172.30.0.0/16, actions=goto_table:60",
+	" cookie=0, table=30, priority=100, ip, nw_dst=10.128.0.0/14, actions=goto_table:90",
+	" cookie=0, table=30, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120",
+	" cookie=0, table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110",
+	" cookie=0, table=30, priority=0, ip, actions=goto_table:100",
+	" cookie=0, table=30, priority=0, arp, actions=drop",
+	" cookie=0, table=40, priority=100, arp, arp_tpa=10.128.0.2, actions=output:3",
+	" cookie=0, table=40, priority=0, actions=drop",
+	" cookie=0x0f46ee1a, table=50, priority=100, arp, arp_tpa=10.128.2.0/23, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1",
+	" cookie=0, table=50, priority=0, actions=drop",
+	" cookie=0, table=60, priority=200, actions=output:2",
+	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, ip_frag=later, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
+	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, tcp, tcp_dst=80, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
+	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, tcp, tcp_dst=443, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
+	" cookie=0, table=60, priority=0, actions=drop",
+	" cookie=0, table=70, priority=100, ip, nw_dst=10.128.0.2, actions=load:42->NXM_NX_REG1[],load:3->NXM_NX_REG2[],goto_table:80",
+	" cookie=0, table=70, priority=0, actions=drop",
+	" cookie=0, table=80, priority=300, ip, nw_src=10.128.0.1/32, actions=output:NXM_NX_REG2[]",
+	" cookie=0, table=80, priority=0, actions=drop",
+	" cookie=0x0f46ee1a, table=90, priority=100, ip, nw_dst=10.128.2.0/23, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1",
+	" cookie=0, table=90, priority=0, actions=drop",
+	" cookie=0, table=100, priority=300, udp, udp_dst=4789, actions=drop",
+	" cookie=0, table=100, priority=200, tcp, tcp_dst=53, nw_dst=172.17.0.4, actions=output:2",
+	" cookie=0, table=100, priority=200, udp, udp_dst=53, nw_dst=172.17.0.4, actions=output:2",
+	" cookie=0, table=100, priority=150, ct_state=+rpl, actions=goto_table:101",
+	" cookie=0, table=100, priority=100, reg0=37, ip, actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.12.34->tun_dst,output:1",
+	" cookie=0, table=100, priority=0, actions=goto_table:101",
+	" cookie=0, table=101, priority=3, reg0=42, ip, nw_dst=192.168.0.0/16, actions=output:2",
+	" cookie=0, table=101, priority=2, reg0=42, ip, nw_dst=192.168.1.0/24, actions=drop",
+	" cookie=0, table=101, priority=1, reg0=42, ip, nw_dst=192.168.1.1/32, actions=output:2",
+	" cookie=0, table=101, priority=0, actions=output:2",
+	" cookie=0, table=110, reg0=99, actions=goto_table:111",
+	" cookie=0, table=110, priority=0, actions=drop",
+	" cookie=0, table=111, priority=100, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1,set_field:10.0.45.123->tun_dst,output:1,goto_table:120",
+	" cookie=0, table=120, priority=100, reg0=99, actions=output:4,output:5,output:6",
+	" cookie=0, table=120, priority=0, actions=drop",
+	" cookie=0, table=253, actions=note:00.09",
+}
+
+// Ensure that we do not change the OVS flows without bumping ruleVersion
+func TestRuleVersion(t *testing.T) {
+	ovsif, oc, _ := setupOVSController(t)
+
+	// Now call each oc method that adds flows
+
+	// Pod-related flows
+	_, err := oc.SetUpPod(sandboxID, "veth1", net.ParseIP("10.128.0.2"), 42)
+	if err != nil {
+		t.Fatalf("Unexpected error adding pod rules: %v", err)
+	}
+
+	// Service-related flows
+	svc := corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "service",
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: "172.30.99.99",
+			Ports: []corev1.ServicePort{
+				{Protocol: corev1.ProtocolTCP, Port: 80},
+				{Protocol: corev1.ProtocolTCP, Port: 443},
+			},
+		},
+	}
+	err = oc.AddServiceRules(&svc, 42)
+	if err != nil {
+		t.Fatalf("Unexpected error adding service rules: %v", err)
+	}
+
+	// VXLAN flows
+	hs := networkapi.HostSubnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node1",
+			UID:  "node1UID",
+		},
+		HostIP: "10.0.123.45",
+		Subnet: "10.128.2.0/23",
+	}
+	err = oc.AddHostSubnetRules(&hs)
+	if err != nil {
+		t.Fatalf("Unexpected error adding hostsubnet rules: %v", err)
+	}
+
+	// Multicast flows
+	err = oc.UpdateLocalMulticastFlows(99, true, []int{4, 5, 6})
+	if err != nil {
+		t.Fatalf("Unexpected error adding local multicast flows: %v", err)
+	}
+	err = oc.UpdateVXLANMulticastFlows([]string{"10.0.123.45", "10.0.45.123"})
+	if err != nil {
+		t.Fatalf("Unexpected error adding local multicast flows: %v", err)
+	}
+
+	// EgressNetworkPolicy flows
+	err = oc.UpdateEgressNetworkPolicyRules(
+		[]networkapi.EgressNetworkPolicy{enp1},
+		42,
+		[]string{"ns1"},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unexpected error updating egress network policy: %v", err)
+	}
+
+	// Egress IP flows
+	err = oc.SetNamespaceEgressViaEgressIP(37, "10.0.12.34", getMarkForVNID(37, 0x1))
+	if err != nil {
+		t.Fatalf("Unexpected error updating egress IPs: %v", err)
+	}
+
+	flows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	if reflect.DeepEqual(flows, expectedFlows) {
+		return
+	}
+
+	out := &strings.Builder{}
+	firstDiff := ""
+	for i, flow := range flows {
+		if firstDiff == "" {
+			if i > len(expectedFlows) {
+				firstDiff = fmt.Sprintf("Extra flows at end. First additional flow is line %d:\n    %s", i+1, flows[i])
+			} else if flows[i] != expectedFlows[i] {
+				firstDiff = fmt.Sprintf("First non-matching flow is line %d:\n    Expected: %s\n    Got:      %s\n", i+1, expectedFlows[i], flows[i])
+			}
+		}
+		fmt.Fprintf(out, "%q,\n", flow)
+	}
+	expectedOut := &strings.Builder{}
+	for _, flow := range expectedFlows {
+		fmt.Fprintf(expectedOut, "%q,\n", flow)
+	}
+	t.Logf("*** FLOWS HAVE CHANGED FROM PREVIOUS COMMIT ***\nExpected:\n%s\nActual:\n%s\nIf this change is expected then make sure you have bumped ruleVersion in pkg/network/node/ovscontroller.go, and then copy the \"Actual\" output above into expectedFlows in pkg/network/node/ovscontroller_test.go", expectedOut.String(), out.String())
+
+	t.Fatalf("flows changed: %s", firstDiff)
 }
