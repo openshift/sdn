@@ -2,7 +2,6 @@ all: build
 .PHONY: all
 
 export GO111MODULE=on
-export GOPROXY=https://proxy.golang.org
 unexport GOPATH
 
 GO_LD_FLAGS = \
