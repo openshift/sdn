@@ -154,6 +154,11 @@ func uid(npns *npNamespace, name string) ktypes.UID {
 	return ktypes.UID(name + "-" + npns.name)
 }
 
+// Check some or all policies in npns. This requires that (a) npns has exactly nPolicies
+// policies, and (b) every policy named in matches exists in npns and has exactly the indicated
+// watches/flows. It does not require that matches lists every policy in npns; any extra
+// policies in npns that aren't in matches will just be ignored (other than the fact that
+// nPolicies must still be correct).
 func assertPolicies(npns *npNamespace, nPolicies int, matches map[string]*npPolicy) error {
 	var matched []string
 	for _, npp := range npns.policies {
@@ -379,8 +384,12 @@ func TestNetworkPolicy(t *testing.T) {
 		}
 	}
 
-	// Add two pods to each namespace
+	// Add two pods to each namespace (except default)
 	for _, npns := range np.namespaces {
+		if npns.name == "default" {
+			continue
+		}
+
 		addPods(np, npns, false)
 
 		// There are no pod-selecting policies yet, so nothing should have changed
@@ -538,6 +547,29 @@ func TestNetworkPolicy(t *testing.T) {
 	// Now reassert the full set of matches for each namespace
 	for vnid, npns := range np.namespaces {
 		switch vnid {
+		case 0:
+			err := assertPolicies(npns, 2, map[string]*npPolicy{
+				"allow-from-self": {
+					watchesNamespaces: false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
+					flows: []string{
+						fmt.Sprintf("reg0=%d", vnid),
+					},
+				},
+				"allow-from-default": {
+					watchesNamespaces: true,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
+					flows: []string{
+						"reg0=0",
+					},
+				},
+			})
+			if err != nil {
+				t.Error(err.Error())
+			}
+
 		case 1:
 			err := assertPolicies(npns, 5, map[string]*npPolicy{
 				"allow-from-self": {
@@ -591,7 +623,7 @@ func TestNetworkPolicy(t *testing.T) {
 				t.Error(err.Error())
 			}
 
-		case 0, 2, 3, 4, 5:
+		case 2, 3, 4, 5:
 			err := assertPolicies(npns, 3, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
