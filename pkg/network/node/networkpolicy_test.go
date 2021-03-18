@@ -444,6 +444,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	npns1 := np.namespaces[1]
+	npns2 := np.namespaces[2]
 
 	// Allow all pods in even-numbered namespaces to connect to any pod in namespace "one"
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
@@ -522,6 +523,51 @@ func TestNetworkPolicy(t *testing.T) {
 			flows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
 				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Allow client pods in all namespaces to connect to the server in namespace "two"
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-all-clients",
+			UID:       uid(npns1, "allow-from-all-clients"),
+			Namespace: "two",
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "server",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					NamespaceSelector: &metav1.LabelSelector{},
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+		},
+	})
+
+	err = assertPolicies(npns2, 4, map[string]*npPolicy{
+		"allow-from-all-clients": {
+			watchesNamespaces: true,
+			watchesAllPods:    true,
+			watchesOwnPods:    true,
+			flows: []string{
+				fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
+				fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
+				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
+				fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[5])),
 			},
 		},
 	})
@@ -623,7 +669,54 @@ func TestNetworkPolicy(t *testing.T) {
 				t.Error(err.Error())
 			}
 
-		case 2, 3, 4, 5:
+		case 2:
+			err := assertPolicies(npns, 4, map[string]*npPolicy{
+				"allow-from-self": {
+					watchesNamespaces: false,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
+					flows: []string{
+						fmt.Sprintf("reg0=%d", vnid),
+					},
+				},
+				"allow-from-default": {
+					watchesNamespaces: true,
+					watchesAllPods:    false,
+					watchesOwnPods:    false,
+					flows: []string{
+						"reg0=0",
+					},
+				},
+				"allow-client-to-server": {
+					watchesNamespaces: false,
+					watchesAllPods:    false,
+					watchesOwnPods:    true,
+					flows: []string{
+						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
+					},
+				},
+				"allow-from-all-clients": {
+					watchesNamespaces: true,
+					watchesAllPods:    true,
+					watchesOwnPods:    true,
+					flows: []string{
+						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[4])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=6, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[6])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=7, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=8, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[8])),
+						fmt.Sprintf("ip, nw_dst=%s, reg0=9, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[9])),
+					},
+				},
+			})
+			if err != nil {
+				t.Error(err.Error())
+			}
+
+		case 3, 4, 5:
 			err := assertPolicies(npns, 3, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
