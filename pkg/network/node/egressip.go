@@ -199,6 +199,7 @@ func (eip *egressIPWatcher) assignEgressIP(egressIP, mark string) error {
 			klog.Warningf("Failed to send ARP claim for egress IP %q: %v (%s)", egressIP, err, string(out))
 			return
 		}
+
 		time.Sleep(2 * time.Second)
 		_ = exec.Command("/sbin/arping", "-q", "-U", "-c", "1", "-I", localEgressLink.Attrs().Name, egressIP).Run()
 	}()
