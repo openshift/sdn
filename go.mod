@@ -8,6 +8,7 @@ require (
 	github.com/coreos/go-iptables v0.0.0-00010101000000-000000000000 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/fsnotify/fsnotify v1.4.9
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.4
 	github.com/openshift/api v0.0.0-20200424083944-0422dc17083e
@@ -37,6 +38,7 @@ replace (
 	github.com/coreos/go-iptables => github.com/coreos/go-iptables v0.2.0
 	github.com/coreos/go-systemd => github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/fsnotify/fsnotify => github.com/fsnotify/fsnotify v1.4.7
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/golang/glog => github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533
 	github.com/gorilla/mux => github.com/gorilla/mux v1.7.4-0.20190830121156-884b5ffcbd3a
 	github.com/grpc-ecosystem/go-grpc-prometheus => github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
