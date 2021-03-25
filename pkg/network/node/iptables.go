@@ -210,6 +210,7 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 		{"-m", "mark", "--mark", n.masqueradeBitHex + "/" + n.masqueradeBitHex, "-j", "RETURN"},
 	}
 	var masq2Rules [][]string
+	var masqERules [][]string
 	var filterRules [][]string
 	for _, cidr := range n.clusterNetworkCIDR {
 		if n.masqueradeServices {
@@ -218,6 +219,8 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			masqRules = append(masqRules, []string{"-s", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "OPENSHIFT-MASQUERADE-2"})
 			masq2Rules = append(masq2Rules, []string{"-d", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "RETURN"})
 		}
+		masqRules = append(masqRules, []string{"-s", cidr, "-m", "comment", "--comment", "egress S-NAT pod-to-external traffic", "-j", "OPENSHIFT-MASQUERADE-EGRESS"})
+		masqERules = append(masqERules, []string{"-d", cidr, "-m", "comment", "--comment", "no egress S-NAT for traffic to pod", "-j", "RETURN"})
 
 		filterRules = append(filterRules, []string{"-s", cidr, "-m", "comment", "--comment", "attempted resend after connection close", "-m", "conntrack", "--ctstate", "INVALID", "-j", "DROP"})
 		filterRules = append(filterRules, []string{"-d", cidr, "-m", "comment", "--comment", "forward traffic from SDN", "-j", "ACCEPT"})
@@ -231,6 +234,12 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			srcChain: "POSTROUTING",
 			srcRule:  []string{"-m", "comment", "--comment", "rules for masquerading OpenShift traffic"},
 			rules:    masqRules,
+		},
+		Chain{
+			table:   "nat",
+			name:    "OPENSHIFT-MASQUERADE-EGRESS",
+			srcRule: []string{"-m", "comment", "--comment", "rules for masquerading OpenShift traffic with EgressIP"},
+			rules:   masqERules,
 		},
 		Chain{
 			table:    "filter",
@@ -277,17 +286,15 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 }
 
 func (n *NodeIPTables) ensureEgressIPRules(egressIP, mark string) error {
-	for _, cidr := range n.clusterNetworkCIDR {
-		err := execIPTablesWithRetry(func() error {
-			_, err := n.ipt.EnsureRule(iptables.Prepend, iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-	}
 	err := execIPTablesWithRetry(func() error {
-		_, err := n.ipt.EnsureRule(iptables.Append, iptables.TableFilter, iptables.Chain("OPENSHIFT-FIREWALL-ALLOW"), "-d", egressIP, "-m", "conntrack", "--ctstate", "NEW", "-j", "REJECT")
+		_, err := n.ipt.EnsureRule(iptables.Append, iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE-EGRESS"), "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	err = execIPTablesWithRetry(func() error {
+		_, err = n.ipt.EnsureRule(iptables.Append, iptables.TableFilter, iptables.Chain("OPENSHIFT-FIREWALL-ALLOW"), "-d", egressIP, "-m", "conntrack", "--ctstate", "NEW", "-j", "REJECT")
 		return err
 	})
 	return err
@@ -310,21 +317,19 @@ func (n *NodeIPTables) DeleteEgressIPRules(egressIP, mark string) error {
 
 	delete(n.egressIPs, egressIP)
 
-	for _, cidr := range n.clusterNetworkCIDR {
-		err := execIPTablesWithRetry(func() error {
-			return n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
-		})
-		if err != nil {
-			return err
-		}
-	}
 	err := execIPTablesWithRetry(func() error {
+		return n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE-EGRESS"), "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
+	})
+	if err != nil {
+		return err
+	}
+	err = execIPTablesWithRetry(func() error {
 		return n.ipt.DeleteRule(iptables.TableFilter, iptables.Chain("OPENSHIFT-FIREWALL-ALLOW"), "-d", egressIP, "-m", "conntrack", "--ctstate", "NEW", "-j", "REJECT")
 	})
 	return err
 }
 
-var masqRuleRE = regexp.MustCompile(`-A OPENSHIFT-MASQUERADE .* --to-source ([^ ]*)`)
+var masqRuleRE = regexp.MustCompile(`-A OPENSHIFT-MASQUERADE-EGRESS .* --to-source ([^ ]*)`)
 var filterRuleRE = regexp.MustCompile(`-A OPENSHIFT-FIREWALL-ALLOW -d ([^ ]*)/32 .* -j REJECT`)
 
 func (n *NodeIPTables) findStaleEgressIPRules(table iptables.Table, ruleMatch *regexp.Regexp) (map[string]string, error) {
@@ -368,7 +373,7 @@ func (n *NodeIPTables) SyncEgressIPRules() {
 		}
 		args = args[2:]
 		err := execIPTablesWithRetry(func() error {
-			return n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), args...)
+			return n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE-EGRESS"), args...)
 		})
 		if err != nil {
 			klog.Warningf("Error deleting iptables masquerade rule for stale egress IP %s: %v", ip, err)
