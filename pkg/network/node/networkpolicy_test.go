@@ -22,9 +22,7 @@ import (
 	networkv1 "github.com/openshift/api/network/v1"
 )
 
-var synced atomic.Value
-
-func newTestNPP() *networkPolicyPlugin {
+func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
 	kubeClient := fake.NewSimpleClientset()
 	np := &networkPolicyPlugin{
 		node: &OsdnNode{
@@ -38,6 +36,8 @@ func newTestNPP() *networkPolicyPlugin {
 	}
 	np.vnids = newNodeVNIDMap(np, nil)
 
+	synced := new(atomic.Value)
+	stopCh := make(chan struct{})
 	np.runner = async.NewBoundedFrequencyRunner("networkpolicy_test", func() {
 		np.lock.Lock()
 		defer np.lock.Unlock()
@@ -49,17 +49,16 @@ func newTestNPP() *networkPolicyPlugin {
 
 		synced.Store(true)
 	}, 10*time.Millisecond, time.Hour, 10)
-	go np.runner.Loop(utilwait.NeverStop)
+	go np.runner.Loop(stopCh)
 	synced.Store(false)
 
 	np.watchNamespaces()
 	np.watchPods()
 	np.watchNetworkPolicies()
 
-	stopCh := make(chan struct{})
 	np.node.kubeInformers.Start(stopCh)
 
-	return np
+	return np, synced, stopCh
 }
 
 func waitForEvent(np *networkPolicyPlugin, f func() bool) error {
@@ -70,9 +69,20 @@ func waitForEvent(np *networkPolicyPlugin, f func() bool) error {
 	})
 }
 
-func addNamespace(np *networkPolicyPlugin, name string, vnid uint32, labels map[string]string) {
-	synced.Store(false)
+func waitForSync(np *networkPolicyPlugin, synced *atomic.Value, event string) {
+	err := waitForEvent(np, func() bool { return synced.Load().(bool) })
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error waiting for %s: %v", event, err))
+	}
+}
 
+func forceSync(np *networkPolicyPlugin, synced *atomic.Value) {
+	synced.Store(false)
+	np.runner.Run()
+	waitForSync(np, synced, "forced sync")
+}
+
+func addNamespace(np *networkPolicyPlugin, name string, vnid uint32, labels map[string]string) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -99,8 +109,6 @@ func addNamespace(np *networkPolicyPlugin, name string, vnid uint32, labels map[
 }
 
 func delNamespace(np *networkPolicyPlugin, name string, vnid uint32) {
-	synced.Store(false)
-
 	// Hack to prevent it from calling syncNamespaceImmediately()
 	if npns := np.namespaces[vnid]; npns != nil {
 		npns.inUse = false
@@ -125,8 +133,6 @@ func delNamespace(np *networkPolicyPlugin, name string, vnid uint32) {
 }
 
 func addNetworkPolicy(np *networkPolicyPlugin, policy *networkingv1.NetworkPolicy) {
-	synced.Store(false)
-
 	_, err := np.node.kClient.NetworkingV1().NetworkPolicies(policy.Namespace).Create(context.TODO(), policy, metav1.CreateOptions{})
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error creating policy %q: %v", policy.Name, err))
@@ -138,8 +144,6 @@ func addNetworkPolicy(np *networkPolicyPlugin, policy *networkingv1.NetworkPolic
 }
 
 func delNetworkPolicy(np *networkPolicyPlugin, policy *networkingv1.NetworkPolicy) {
-	synced.Store(false)
-
 	err := np.node.kClient.NetworkingV1().NetworkPolicies(policy.Namespace).Delete(context.TODO(), policy.Name, metav1.DeleteOptions{})
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error deleting policy %q: %v", policy.Name, err))
@@ -208,9 +212,7 @@ func serverIP(npns *npNamespace) string {
 	return fmt.Sprintf("10.%d.0.3", npns.vnid)
 }
 
-func addPods(np *networkPolicyPlugin, npns *npNamespace, expectSync bool) {
-	synced.Store(false)
-
+func addPods(np *networkPolicyPlugin, npns *npNamespace) {
 	client := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: npns.name,
@@ -246,18 +248,9 @@ func addPods(np *networkPolicyPlugin, npns *npNamespace, expectSync bool) {
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error creating server pod: %v", err))
 	}
-
-	if expectSync {
-		err = waitForEvent(np, func() bool { return synced.Load().(bool) })
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected error waiting for pod sync: %v", err))
-		}
-	}
 }
 
 func addBadPods(np *networkPolicyPlugin, npns *npNamespace) {
-	synced.Store(false)
-
 	// HostNetwork pods should not show up in NetworkPolicies
 	hostNetwork := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -299,16 +292,11 @@ func addBadPods(np *networkPolicyPlugin, npns *npNamespace) {
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error creating pending pod: %v", err))
 	}
-
-	// This should not cause a resync
-	err = waitForEvent(np, func() bool { return synced.Load().(bool) })
-	if err == nil {
-		panic("Did not get expected error! Unexpected sync occurred")
-	}
 }
 
 func TestNetworkPolicy(t *testing.T) {
-	np := newTestNPP()
+	np, synced, stopCh := newTestNPP()
+	defer close(stopCh)
 
 	// Create some Namespaces
 	addNamespace(np, "default", 0, map[string]string{"default": "true"})
@@ -320,6 +308,7 @@ func TestNetworkPolicy(t *testing.T) {
 
 	// Add allow-from-self and allow-from-default policies to all
 	for _, npns := range np.namespaces {
+		synced.Store(false)
 		addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "allow-from-self",
@@ -337,6 +326,7 @@ func TestNetworkPolicy(t *testing.T) {
 			},
 		})
 
+		synced.Store(false)
 		addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "allow-from-default",
@@ -358,6 +348,7 @@ func TestNetworkPolicy(t *testing.T) {
 			},
 		})
 	}
+	waitForSync(np, synced, "initialization")
 
 	// Each namespace should now have 2 policies, each with a single flow
 	for _, npns := range np.namespaces {
@@ -390,7 +381,7 @@ func TestNetworkPolicy(t *testing.T) {
 			continue
 		}
 
-		addPods(np, npns, false)
+		addPods(np, npns)
 
 		// There are no pod-selecting policies yet, so nothing should have changed
 		err := assertPolicies(npns, 2, nil)
@@ -423,10 +414,7 @@ func TestNetworkPolicy(t *testing.T) {
 				}},
 			},
 		})
-		err = waitForEvent(np, func() bool { return synced.Load().(bool) })
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected error waiting for networkpolicy sync: %v", err))
-		}
+		waitForSync(np, synced, "networkpolicy sync")
 
 		err = assertPolicies(npns, 3, map[string]*npPolicy{
 			"allow-client-to-server": {
@@ -447,6 +435,7 @@ func TestNetworkPolicy(t *testing.T) {
 	npns2 := np.namespaces[2]
 
 	// Allow all pods in even-numbered namespaces to connect to any pod in namespace "one"
+	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "allow-from-even",
@@ -467,6 +456,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}},
 		},
 	})
+	waitForSync(np, synced, "networkpolicy sync")
 
 	err := assertPolicies(npns1, 4, map[string]*npPolicy{
 		"allow-from-even": {
@@ -484,6 +474,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// Allow client pods in odd prime namespaces to connect to the server in namespace "one"
+	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "allow-from-odd-primes",
@@ -514,6 +505,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}},
 		},
 	})
+	waitForSync(np, synced, "networkpolicy sync")
 
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-odd-primes": {
@@ -531,6 +523,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// Allow client pods in all namespaces to connect to the server in namespace "two"
+	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "allow-from-all-clients",
@@ -556,6 +549,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}},
 		},
 	})
+	waitForSync(np, synced, "networkpolicy sync")
 
 	err = assertPolicies(npns2, 4, map[string]*npPolicy{
 		"allow-from-all-clients": {
@@ -577,20 +571,25 @@ func TestNetworkPolicy(t *testing.T) {
 
 	// add some more namespaces
 	addNamespace(np, "six", 6, map[string]string{"parity": "even"})
-	addPods(np, np.namespaces[6], true)
+	addPods(np, np.namespaces[6])
 	addNamespace(np, "seven", 7, map[string]string{"parity": "odd", "prime": "true"})
-	addPods(np, np.namespaces[7], true)
+	addPods(np, np.namespaces[7])
 	addNamespace(np, "eight", 8, map[string]string{"parity": "even"})
-	addPods(np, np.namespaces[8], true)
+	addPods(np, np.namespaces[8])
 	addNamespace(np, "nine", 9, map[string]string{"parity": "odd"})
-	addPods(np, np.namespaces[9], true)
+	addPods(np, np.namespaces[9])
 
-	// add same non-pod-network pods; this should not affect the generated flows.
+	// add some non-pod-network pods; this should not affect the generated flows.
+	// (It should also not cause a sync but this is difficult to test since one of
+	// the previous calls may have resulted in two calls to np.syncNamespace()
+	// with the async runner triggering in between them, so there may still be
+	// another sync waiting to occur at this point.)
 	addBadPods(np, np.namespaces[4])
 	addBadPods(np, np.namespaces[7])
 	addBadPods(np, np.namespaces[9])
 
 	// Now reassert the full set of matches for each namespace
+	forceSync(np, synced)
 	for vnid, npns := range np.namespaces {
 		switch vnid {
 		case 0:
@@ -759,7 +758,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// If we delete a namespace, then stale policies may be left behind...
-	synced.Store(false)
+	forceSync(np, synced)
 	delNamespace(np, "two", 2)
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
@@ -779,12 +778,9 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// ...but they'll be cleaned up as soon as we add any new namespace
+	synced.Store(false)
 	addNamespace(np, "unrelated", 100, nil)
-	err = waitForEvent(np, func() bool { return synced.Load().(bool) })
-	if err != nil {
-		panic(fmt.Sprintf("Unexpected error waiting for namespace sync: %v", err))
-	}
-
+	waitForSync(np, synced, "namespace addition")
 	err = assertPolicies(npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
@@ -803,6 +799,7 @@ func TestNetworkPolicy(t *testing.T) {
 
 	// Deleting a policy in one namespace will not affect other namespaces
 	npns4 := np.namespaces[4]
+	synced.Store(false)
 	delNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "allow-from-default",
@@ -823,6 +820,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}},
 		},
 	})
+	waitForSync(np, synced, "namespace deletion")
 
 	err = assertPolicies(npns4, 2, map[string]*npPolicy{
 		"allow-from-self": {
@@ -865,6 +863,7 @@ func TestNetworkPolicy(t *testing.T) {
 	// Create the namespace to add network policy for
 	addNamespace(np, "host-network-target", 10, map[string]string{"foo": "bar"})
 	npns := np.namespaces[10]
+	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "allow-from-host-network-ns",
@@ -885,6 +884,8 @@ func TestNetworkPolicy(t *testing.T) {
 			}},
 		},
 	})
+	waitForSync(np, synced, "host-network NP addition")
+
 	// make sure we add the right flows
 	err = assertPolicies(npns, 1, map[string]*npPolicy{
 		"allow-from-host-network-ns": {
@@ -908,7 +909,8 @@ func _TestNetworkPolicyCache(t *testing.T) {
 		extraNamespaces   uint32 = 500
 	)
 
-	np := newTestNPP()
+	np, _, stopCh := newTestNPP()
+	defer close(stopCh)
 
 	start := time.Now()
 
@@ -1054,15 +1056,15 @@ func _TestNetworkPolicyCache(t *testing.T) {
 	}
 }
 
-func TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
-	np := newTestNPP()
+func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
+	np, synced, stopCh := newTestNPP()
+	defer close(stopCh)
 
 	// Create some Namespaces
 	addNamespace(np, "default", 0, map[string]string{"default": "true"})
 
 	// Add two pods to each namespace
 	for _, npns := range np.namespaces {
-
 		addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "allow-client-to-server-1",
@@ -1113,7 +1115,9 @@ func TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 		})
 	}
 	for _, npns := range np.namespaces {
-		addPods(np, npns, true)
+		synced.Store(false)
+		addPods(np, npns)
+		waitForSync(np, synced, "pod addition")
 		// both policies should be updated
 		err := assertPolicies(npns, 2, map[string]*npPolicy{
 			"allow-client-to-server-1": {
