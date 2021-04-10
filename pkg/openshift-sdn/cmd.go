@@ -55,6 +55,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 		Short: "Start OpenShiftSDN",
 		Long:  networkLong,
 		Run: func(c *cobra.Command, _ []string) {
+			c.Flags().Lookup("v").Value.Set("5")
 			ch := make(chan struct{})
 			interrupt.New(func(s os.Signal) {
 				fmt.Fprintf(errout, "interrupt: Gracefully shutting down ...\n")
@@ -124,7 +125,6 @@ func (sdn *OpenShiftSDN) ValidateAndParse() error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 

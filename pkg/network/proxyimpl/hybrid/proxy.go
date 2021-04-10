@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corev1listers "k8s.io/client-go/listers/core/v1"
@@ -27,11 +28,28 @@ type RunnableProxy interface {
 	SetSyncRunner(b *async.BoundedFrequencyRunner)
 }
 
+// NoopEndpointSliceHandler is a noop handler for proxiers that have not yet
+// implemented a full EndpointSliceHandler.
+type NoopEndpointsHandler struct{}
+
+func (*NoopEndpointsHandler) OnEndpointsAdd(*corev1.Endpoints) {}
+
+func (*NoopEndpointsHandler) OnEndpointsUpdate(old, new *corev1.Endpoints) {
+}
+
+func (*NoopEndpointsHandler) OnEndpointsDelete(*corev1.Endpoints) {}
+
+func (*NoopEndpointsHandler) OnEndpointsSynced() {}
+
+var _ proxyconfig.EndpointsHandler = &NoopEndpointsHandler{}
+
 // HybridProxier runs an unidling proxy and a primary proxy at the same time,
 // delegating idled services to the unidling proxy and other services to the
 // primary proxy.
 type HybridProxier struct {
-	proxyconfig.NoopEndpointSliceHandler
+	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+	proxyconfig.NoopNodeHandler
+	NoopEndpointsHandler
 
 	mainProxy     RunnableProxy
 	unidlingProxy RunnableProxy
@@ -87,22 +105,6 @@ func NewHybridProxier(
 	unidlingProxy.SetSyncRunner(p.syncRunner)
 
 	return p, nil
-}
-
-func (proxier *HybridProxier) OnNodeAdd(node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
-}
-
-func (proxier *HybridProxier) OnNodeUpdate(oldNode, node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
-}
-
-func (proxier *HybridProxier) OnNodeDelete(node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
-}
-
-func (proxier *HybridProxier) OnNodeSynced() {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
 }
 
 func (p *HybridProxier) OnServiceAdd(service *corev1.Service) {
@@ -190,11 +192,11 @@ func (p *HybridProxier) OnServiceSynced() {
 	klog.V(6).Infof("hybrid proxy: services synced")
 }
 
-// shouldEndpointsUseUserspace checks to see if the given endpoints have the correct
+// shouldEndpointSliceUseUserspace checks to see if the given endpoints have the correct
 // annotations and size to use the unidling proxy.
-func (p *HybridProxier) shouldEndpointsUseUserspace(endpoints *corev1.Endpoints) bool {
+func (p *HybridProxier) shouldEndpointSliceUseUserspace(endpoints *discoveryv1beta1.EndpointSlice) bool {
 	hasEndpoints := false
-	for _, subset := range endpoints.Subsets {
+	for _, subset := range endpoints.Endpoints {
 		if len(subset.Addresses) > 0 {
 			hasEndpoints = true
 			break
@@ -244,11 +246,11 @@ func (p *HybridProxier) switchService(name types.NamespacedName) {
 	p.switchedToUserspace[name] = p.usingUserspace[name]
 }
 
-func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
+func (p *HybridProxier) OnEndpointSliceAdd(endpoints *discoveryv1beta1.EndpointSlice) {
 	// we track all endpoints in the unidling endpoints handler so that we can succesfully
 	// detect when a service become unidling
 	klog.V(6).Infof("hybrid proxy: (always) add ep %s/%s in unidling proxy", endpoints.Namespace, endpoints.Name)
-	p.unidlingProxy.OnEndpointsAdd(endpoints)
+	p.unidlingProxy.OnEndpointSliceAdd(endpoints)
 
 	p.usingUserspaceLock.Lock()
 	defer p.usingUserspaceLock.Unlock()
@@ -259,11 +261,11 @@ func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 	}
 
 	wasUsingUserspace, knownEndpoints := p.usingUserspace[svcName]
-	p.usingUserspace[svcName] = p.shouldEndpointsUseUserspace(endpoints)
+	p.usingUserspace[svcName] = p.shouldEndpointSliceUseUserspace(endpoints)
 
 	if !p.usingUserspace[svcName] {
 		klog.V(6).Infof("hybrid proxy: add ep %s/%s in main proxy", endpoints.Namespace, endpoints.Name)
-		p.mainProxy.OnEndpointsAdd(endpoints)
+		p.mainProxy.OnEndpointSliceAdd(endpoints)
 	}
 
 	// a service could appear before endpoints, so we have to treat this as a potential
@@ -273,11 +275,11 @@ func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 	}
 }
 
-func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoints) {
+func (p *HybridProxier) OnEndpointSliceUpdate(oldEndpoints, endpoints *discoveryv1beta1.EndpointSlice) {
 	// we track all endpoints in the unidling endpoints handler so that we can succesfully
 	// detect when a service become unidling
 	klog.V(6).Infof("hybrid proxy: (always) update ep %s/%s in unidling proxy", endpoints.Namespace, endpoints.Name)
-	p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
+	p.unidlingProxy.OnEndpointSliceUpdate(oldEndpoints, endpoints)
 
 	p.usingUserspaceLock.Lock()
 	defer p.usingUserspaceLock.Unlock()
@@ -288,7 +290,7 @@ func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoi
 	}
 
 	wasUsingUserspace, knownEndpoints := p.usingUserspace[svcName]
-	p.usingUserspace[svcName] = p.shouldEndpointsUseUserspace(endpoints)
+	p.usingUserspace[svcName] = p.shouldEndpointSliceUseUserspace(endpoints)
 
 	if !knownEndpoints {
 		utilruntime.HandleError(fmt.Errorf("received update for unknown endpoints %s", svcName.String()))
@@ -299,26 +301,26 @@ func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoi
 
 	if !isSwitch && !p.usingUserspace[svcName] {
 		klog.V(6).Infof("hybrid proxy: update ep %s/%s in main proxy", endpoints.Namespace, endpoints.Name)
-		p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
+		p.mainProxy.OnEndpointSliceUpdate(oldEndpoints, endpoints)
 		return
 	}
 
 	if p.usingUserspace[svcName] {
 		klog.V(6).Infof("hybrid proxy: del ep %s/%s in main proxy", endpoints.Namespace, endpoints.Name)
-		p.mainProxy.OnEndpointsDelete(oldEndpoints)
+		p.mainProxy.OnEndpointSliceDelete(oldEndpoints)
 	} else {
 		klog.V(6).Infof("hybrid proxy: add ep %s/%s in main proxy", endpoints.Namespace, endpoints.Name)
-		p.mainProxy.OnEndpointsAdd(endpoints)
+		p.mainProxy.OnEndpointSliceAdd(endpoints)
 	}
 
 	p.switchService(svcName)
 }
 
-func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
+func (p *HybridProxier) OnEndpointSliceDelete(endpoints *discoveryv1beta1.EndpointSlice) {
 	// we track all endpoints in the unidling endpoints handler so that we can succesfully
 	// detect when a service become unidling
 	klog.V(6).Infof("hybrid proxy: (always) del ep %s/%s in unidling proxy", endpoints.Namespace, endpoints.Name)
-	p.unidlingProxy.OnEndpointsDelete(endpoints)
+	p.unidlingProxy.OnEndpointSliceDelete(endpoints)
 
 	// Careful - there is the potential for deadlocks here,
 	// except that we always get usingUserspaceLock first, then
@@ -340,15 +342,15 @@ func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
 
 	if !usingUserspace {
 		klog.V(6).Infof("hybrid proxy: del ep %s/%s in main proxy", endpoints.Namespace, endpoints.Name)
-		p.mainProxy.OnEndpointsDelete(endpoints)
+		p.mainProxy.OnEndpointSliceDelete(endpoints)
 	}
 
 	p.cleanupState(svcName)
 }
 
-func (p *HybridProxier) OnEndpointsSynced() {
-	p.unidlingProxy.OnEndpointsSynced()
-	p.mainProxy.OnEndpointsSynced()
+func (p *HybridProxier) OnEndpointSlicesSynced() {
+	p.unidlingProxy.OnEndpointSlicesSynced()
+	p.mainProxy.OnEndpointSlicesSynced()
 	klog.V(6).Infof("hybrid proxy: endpoints synced")
 }
 
