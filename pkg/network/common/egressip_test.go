@@ -34,8 +34,10 @@ func (w *testEIPWatcher) SetNamespaceEgressDropped(vnid uint32) {
 	w.changes = append(w.changes, fmt.Sprintf("namespace %d dropped", int(vnid)))
 }
 
-func (w *testEIPWatcher) SetNamespaceEgressViaEgressIP(vnid uint32, egressIP, nodeIP string) {
-	w.changes = append(w.changes, fmt.Sprintf("namespace %d via %s on %s", int(vnid), egressIP, nodeIP))
+func (w *testEIPWatcher) SetNamespaceEgressViaEgressIPs(vnid uint32, activeEgressIPs []EgressIPAssignment) {
+	for _, activeEgressIP := range activeEgressIPs {
+		w.changes = append(w.changes, fmt.Sprintf("namespace %d via %s on %s", int(vnid), activeEgressIP.EgressIP, activeEgressIP.NodeIP))
+	}
 }
 
 func (w *testEIPWatcher) UpdateEgressCIDRs() {
@@ -362,38 +364,38 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// Now assigning that IP to a node should switch OVS to use that since it's first in the list
+	// Now assigning that IP to a node should cause ovs to add both of them
 	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
 		HostIP:    "172.17.0.4",
 		EgressIPs: []networkv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	err = w.assertChanges(
 		"claim 172.17.0.101 on 172.17.0.4 for namespace 42",
+		"namespace 42 via 172.17.0.100 on 172.17.0.3",
 		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// Swapping the order in the NetNamespace should swap back
+	// Swapping the order in the NetNamespace should do nothing since we are using both of them
 	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
 		NetID:     42,
 		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.100", "172.17.0.101"},
 	})
-	err = w.assertChanges(
-		"namespace 42 via 172.17.0.100 on 172.17.0.3",
-	)
+	err = w.assertNoChanges()
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// Removing the inactive egress IP from its node should have no effect
+	// Removing the 1 egress IP from its node should cause it to be removed
 	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
 		HostIP:    "172.17.0.4",
 		EgressIPs: []networkv1.HostSubnetEgressIP{"172.17.0.200"},
 	})
 	err = w.assertChanges(
 		"release 172.17.0.101 on 172.17.0.4",
+		"namespace 42 via 172.17.0.100 on 172.17.0.3",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -412,7 +414,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// Now add the egress IPs back...
+	// Now add the egress IPs back...this will cause them to all be added
 	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
 		HostIP:    "172.17.0.3",
 		EgressIPs: []networkv1.HostSubnetEgressIP{"172.17.0.100"},
@@ -425,13 +427,15 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 		"claim 172.17.0.100 on 172.17.0.3 for namespace 42",
 		"claim 172.17.0.101 on 172.17.0.4 for namespace 42",
 		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// Assigning either the used or the unused Egress IP to another namespace should
-	// break this namespace
+	// Assigning either of the used Egress IP to another namespace should break that
+	// specific Egress IP on both namespaces
 	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
 		NetID:     43,
 		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.100"},
@@ -449,6 +453,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	err = w.assertChanges(
 		"claim 172.17.0.100 on 172.17.0.3 for namespace 42",
 		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 		"namespace 43 normal",
 	)
 	if err != nil {
@@ -472,6 +477,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	err = w.assertChanges(
 		"claim 172.17.0.101 on 172.17.0.4 for namespace 42",
 		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 		"namespace 44 normal",
 	)
 	if err != nil {
@@ -744,12 +750,13 @@ func TestOfflineEgressIPs(t *testing.T) {
 		"claim 172.17.0.100 on 172.17.0.3 for namespace 42",
 		"claim 172.17.0.101 on 172.17.0.4 for namespace 42",
 		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// If the primary goes offline, fall back to the secondary
+	// If the primary goes offline, just drop that one
 	eit.SetNodeOffline("172.17.0.3", true)
 	err = w.assertChanges(
 		"namespace 42 via 172.17.0.101 on 172.17.0.4",
@@ -776,18 +783,21 @@ func TestOfflineEgressIPs(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// If the primary comes back, use it in preference to the secondary
+	// If the primary comes back, use both
 	eit.SetNodeOffline("172.17.0.3", false)
 	err = w.assertChanges(
 		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+		"namespace 42 via 172.17.0.101 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	// If the secondary goes offline now, we don't care
+	// If the secondary goes offline now we do care
 	eit.SetNodeOffline("172.17.0.4", true)
-	err = w.assertNoChanges()
+	err = w.assertChanges(
+		"namespace 42 via 172.17.0.100 on 172.17.0.3",
+	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

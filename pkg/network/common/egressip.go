@@ -34,10 +34,16 @@ type nodeEgress struct {
 }
 
 type namespaceEgress struct {
-	vnid         uint32
-	requestedIPs []string
+	vnid              uint32
+	requestedIPs      []string
+	shouldDropTraffic bool
 
-	activeEgressIP string
+	activeEgressIPs []EgressIPAssignment
+}
+
+type EgressIPAssignment struct {
+	NodeIP   string
+	EgressIP string
 }
 
 type egressIPInfo struct {
@@ -59,7 +65,7 @@ type EgressIPWatcher interface {
 
 	SetNamespaceEgressNormal(vnid uint32)
 	SetNamespaceEgressDropped(vnid uint32)
-	SetNamespaceEgressViaEgressIP(vnid uint32, egressIP, nodeIP string)
+	SetNamespaceEgressViaEgressIPs(vnid uint32, activeEgressIPs []EgressIPAssignment)
 
 	UpdateEgressCIDRs()
 }
@@ -420,43 +426,44 @@ func (eit *EgressIPTracker) syncEgressNodeState(eg *egressIPInfo, active bool) {
 
 func (eit *EgressIPTracker) syncEgressNamespaceState(ns *namespaceEgress) {
 	if len(ns.requestedIPs) == 0 {
-		if ns.activeEgressIP != "" {
-			ns.activeEgressIP = ""
+		if len(ns.activeEgressIPs) != 0 || ns.shouldDropTraffic {
+			ns.activeEgressIPs = []EgressIPAssignment{}
+			ns.shouldDropTraffic = false
 			eit.watcher.SetNamespaceEgressNormal(ns.vnid)
 		}
 		return
 	}
 
-	var active *egressIPInfo
+	activeEgressIPs := make([]EgressIPAssignment, 0, len(ns.requestedIPs))
 	for _, ip := range ns.requestedIPs {
 		eg := eit.egressIPs[ip]
 		if eg == nil {
 			continue
 		}
 		if len(eg.namespaces) > 1 {
-			active = nil
 			klog.V(4).Infof("VNID %d gets no egress due to multiply-assigned egress IP %s", ns.vnid, eg.ip)
+			activeEgressIPs = nil
 			break
 		}
-		if active == nil {
-			if eg.assignedNodeIP == "" {
-				klog.V(4).Infof("VNID %d cannot use unassigned egress IP %s", ns.vnid, eg.ip)
-			} else if len(ns.requestedIPs) > 1 && eg.nodes[0].offline {
-				klog.V(4).Infof("VNID %d cannot use egress IP %s on offline node %s", ns.vnid, eg.ip, eg.assignedNodeIP)
-			} else {
-				active = eg
-			}
+		if eg.assignedNodeIP == "" {
+			klog.V(4).Infof("VNID %d cannot use unassigned egress IP %s", ns.vnid, eg.ip)
+		} else if len(ns.requestedIPs) > 1 && eg.nodes[0].offline {
+			klog.V(4).Infof("VNID %d cannot use egress IP %s on offline node %s", ns.vnid, eg.ip, eg.assignedNodeIP)
+		} else {
+			activeEgressIPs = append(activeEgressIPs, EgressIPAssignment{NodeIP: eg.assignedNodeIP, EgressIP: eg.ip})
 		}
 	}
 
-	if active != nil {
-		if ns.activeEgressIP != active.ip {
-			ns.activeEgressIP = active.ip
-			eit.watcher.SetNamespaceEgressViaEgressIP(ns.vnid, active.ip, active.assignedNodeIP)
+	if len(activeEgressIPs) > 0 {
+		if !activeEgressIPsTheSame(ns.activeEgressIPs, activeEgressIPs) {
+			ns.activeEgressIPs = activeEgressIPs
+			ns.shouldDropTraffic = false
+			eit.watcher.SetNamespaceEgressViaEgressIPs(ns.vnid, ns.activeEgressIPs)
 		}
 	} else {
-		if ns.activeEgressIP != "dropped" {
-			ns.activeEgressIP = "dropped"
+		if !ns.shouldDropTraffic {
+			ns.activeEgressIPs = []EgressIPAssignment{}
+			ns.shouldDropTraffic = true
 			eit.watcher.SetNamespaceEgressDropped(ns.vnid)
 		}
 	}
@@ -677,4 +684,26 @@ func (eit *EgressIPTracker) ReallocateEgressIPs() map[string][]string {
 	}
 
 	return allocation
+}
+
+func activeEgressIPsTheSame(oldEIPs, newEIPs []EgressIPAssignment) bool {
+	if len(oldEIPs) != len(newEIPs) {
+		return false
+	}
+
+	for _, olderEIPAssignment := range oldEIPs {
+		found := false
+		for _, newerEIPAssignment := range newEIPs {
+			if newerEIPAssignment == olderEIPAssignment {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
+
 }

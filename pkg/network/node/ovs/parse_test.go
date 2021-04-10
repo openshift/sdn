@@ -508,3 +508,69 @@ func TestExternalIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGroup(t *testing.T) {
+	tests := []struct {
+		name      string
+		expectErr bool
+		input     string
+		expected  OVSGroup
+	}{
+		{
+			name:      "Group Properly set up",
+			expectErr: false,
+			input:     "group_id=42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+			expected: OVSGroup{
+				GroupID: 42,
+				Type:    SelectGroup,
+				Buckets: []Bucket{
+					{
+						Actions: []OvsField{
+							{
+								Name:  "ct",
+								Value: "(commit)",
+							},
+							{
+								Name:  "move",
+								Value: "NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31]",
+							},
+							{
+								Name:  "set_field",
+								Value: "172.17.0.3->tun_dst",
+							},
+							{
+								Name:  "output",
+								Value: "vxlan0",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "bad group ID",
+			input:     "group_id=-42,type=select,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+			expectErr: true,
+		},
+		{
+			name:      "unsupported type",
+			input:     "group_id=-42,type=all,bucket=actions=ct(commit),move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+			expectErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		parsed, err := ParseGroup(test.input)
+		if err != nil {
+			if !test.expectErr {
+				t.Fatalf("on test %q did not expect failure but did %v", test.input, err)
+			} else {
+				continue
+			}
+		}
+		if !GroupMatches(parsed, &test.expected) {
+			t.Fatalf("on test %q expected %#v but got %#v", test.name, test.expected, parsed)
+		}
+	}
+
+}

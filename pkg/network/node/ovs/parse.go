@@ -24,6 +24,23 @@ type OvsField struct {
 	Value string
 }
 
+// OVSGroup represents an OVS group
+type OVSGroup struct {
+	GroupID uint32
+	Type    GroupType
+	Buckets []Bucket
+}
+
+type GroupType string
+
+const (
+	SelectGroup GroupType = "select"
+)
+
+type Bucket struct {
+	Actions []OvsField
+}
+
 const (
 	minPriority     = 0
 	defaultPriority = 32768
@@ -396,4 +413,128 @@ func UnparseExternalIDs(externalIDs map[string]string) string {
 		ids = append(ids, key+"="+strconv.Quote(value))
 	}
 	return "{" + strings.Join(ids, ",") + "}"
+}
+
+func ParseGroup(group string) (*OVSGroup, error) {
+	// According to the man page "Such flow descriptions comprise a series  field=value
+	// assignments,  separated  by  commas or white space.  (Embedding spaces into a
+	// group description normally requires quoting to prevent the  shell  from breaking
+	// the description into multiple arguments.)."
+	parsed := &OVSGroup{}
+
+	origGroup := group
+	for group != "" {
+		field := ""
+		value := ""
+		end := strings.IndexAny(group, ", ")
+		if end == -1 {
+			end = len(group)
+		}
+		eq := strings.Index(group, "=")
+		if eq == -1 || eq > end {
+			field = group[:end]
+		} else {
+			field = group[:eq]
+			if field == "bucket" {
+				// find the index of the next bucket to determine the end of the value
+				nextBucket := strings.Index(group[eq+1:], "bucket")
+				if nextBucket == -1 {
+					nextBucket = len(group)
+				} else {
+					value = group[eq+1 : eq+1+nextBucket]
+					nextBucket = eq + 1 + nextBucket
+				}
+				end = nextBucket
+			}
+			value = strings.Trim(group[eq+1:end], ", ")
+			if value == "" {
+				return nil, fmt.Errorf("bad group definition %q (empty field %q)", origGroup, field)
+			}
+		}
+
+		switch field {
+		case "group_id":
+			converted, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("Cannot convert %s to group_id: %v", value, err)
+			}
+			parsed.GroupID = uint32(converted)
+		case "type":
+			if value == "select" {
+				parsed.Type = SelectGroup
+			} else {
+				return nil, fmt.Errorf("groups of type %s are not supported", value)
+			}
+		case "bucket":
+			actions := strings.SplitAfter(value, "actions=")
+			if len(actions) != 2 {
+				return nil, fmt.Errorf("improperly formatted bucket in ovs group %s", value)
+			}
+			parsedActions, err := parseActions(actions[1])
+			if err != nil {
+				return nil, fmt.Errorf("improperly formatted actions for ovs group: %v", err)
+			}
+			parsed.Buckets = append(parsed.Buckets, Bucket{parsedActions})
+
+		}
+
+		for end < len(group) && (group[end] == ',' || group[end] == ' ') {
+			end++
+		}
+		group = group[end:]
+	}
+	return parsed, nil
+}
+
+// GroupMatches checks if two Groups match. Returns true
+// if the GroupIDs, Types match exactly and if the two
+// have the same buckets regardless of order
+func GroupMatches(group, match *OVSGroup) bool {
+	if group.GroupID != match.GroupID ||
+		group.Type != match.Type {
+		return false
+	}
+	if len(group.Buckets) != len(match.Buckets) {
+		return false
+	}
+
+	for _, groupActions := range group.Buckets {
+		found := false
+		for _, matchActions := range match.Buckets {
+			result := areActionsTheSame(groupActions.Actions, matchActions.Actions)
+			if result {
+				found = true
+				break
+
+			}
+		}
+		if !found {
+			return false
+		}
+
+	}
+
+	return true
+}
+
+// takes two sets of actions and returns true if the actions are the same regardless of order
+func areActionsTheSame(groupActions, matchActions []OvsField) bool {
+	if len(groupActions) != len(matchActions) {
+		return false
+	}
+	for _, groupAction := range groupActions {
+		found := false
+		for _, matchAction := range matchActions {
+			if matchAction == groupAction {
+				found = true
+				break
+			}
+
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
 }

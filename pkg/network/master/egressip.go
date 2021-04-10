@@ -240,5 +240,5 @@ func (eim *egressIPManager) SetNamespaceEgressNormal(vnid uint32) {
 func (eim *egressIPManager) SetNamespaceEgressDropped(vnid uint32) {
 }
 
-func (eim *egressIPManager) SetNamespaceEgressViaEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eim *egressIPManager) SetNamespaceEgressViaEgressIPs(vnid uint32, activeEgressIPs []common.EgressIPAssignment) {
 }
