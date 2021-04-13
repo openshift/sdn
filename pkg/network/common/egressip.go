@@ -569,9 +569,6 @@ func (eit *EgressIPTracker) makeEmptyAllocation() (map[string][]string, map[stri
 		} else if len(eip.nodes) > 1 || len(eip.namespaces) > 1 {
 			// Erroneously allocated to multiple nodes or multiple namespaces
 			alreadyAllocated[egressIP] = true
-		} else if len(eip.namespaces) == 1 && len(eip.namespaces[0].requestedIPs) > 1 {
-			// Using multiple-egress-IP HA
-			alreadyAllocated[egressIP] = true
 		}
 	}
 
