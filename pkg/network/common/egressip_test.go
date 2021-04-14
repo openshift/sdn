@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	ktypes "k8s.io/apimachinery/pkg/types"
 
@@ -1088,10 +1089,16 @@ func TestEgressCIDRAllocation(t *testing.T) {
 
 	allocation = eit.ReallocateEgressIPs()
 	updateAllocations(eit, allocation)
+	time.Sleep(10 * time.Second)
 	err = w.assertChanges(
-		"release 172.17.0.102 on 172.17.0.4",
-		"namespace 45 dropped",
-		"update egress CIDRs",
+		"claim 172.17.1.102 on 172.17.0.3 for namespace 45",
+		"claim 172.17.1.109 on 172.17.0.3 for namespace 49",
+		"namespace 45 via 172.17.0.102 on 172.17.0.4",
+		"namespace 45 via 172.17.1.102 on 172.17.0.3",
+		"namespace 49 via 172.17.1.109 on 172.17.0.3",
+		"claim 172.17.0.109 on 172.17.0.4 for namespace 49",
+		"namespace 49 via 172.17.0.109 on 172.17.0.4",
+		"namespace 49 via 172.17.1.109 on 172.17.0.3",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
