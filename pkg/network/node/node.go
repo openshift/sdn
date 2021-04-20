@@ -174,7 +174,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		recorder:         c.Recorder,
 		oc:               oc,
 		networkInfo:      networkInfo,
-		podManager:       newPodManager(c.KClient, policy, networkInfo.MTU, oc),
+		podManager:       newPodManager(c.KClient, policy, networkInfo.MTU+50, oc),
 		localIP:          c.NodeIP,
 		hostName:         c.NodeName,
 		useConnTrack:     useConnTrack,

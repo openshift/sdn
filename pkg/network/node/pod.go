@@ -131,10 +131,6 @@ func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, localSubn
 		},
 	}
 
-	for _, cn := range clusterNetworks {
-		routes = append(routes, cnitypes.Route{Dst: *cn.ClusterCIDR})
-	}
-
 	return json.Marshal(&cniNetworkConfig{
 		CNIVersion: "0.3.1",
 		Name:       "openshift-sdn",
@@ -160,7 +156,7 @@ func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetwork
 
 	go m.processCNIRequests()
 
-	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, ServiceNetworkCIDR: serviceNetworkCIDR})
+	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, ServiceNetworkCIDR: serviceNetworkCIDR, ClusterNetworks: clusterNetworks})
 	return m.cniServer.Start(m.handleCNIRequest)
 }
 

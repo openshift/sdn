@@ -162,7 +162,7 @@ func (plugin *OsdnNode) FinishSetupSDN() error {
 func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error {
 	serviceNetworkCIDR := plugin.networkInfo.ServiceNetwork.String()
 
-	if err := plugin.oc.SetupOVS(plugin.clusterCIDRs, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway, plugin.networkInfo.MTU, plugin.networkInfo.VXLANPort); err != nil {
+	if err := plugin.oc.SetupOVS(plugin.clusterCIDRs, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway, plugin.networkInfo.MTU+50, plugin.networkInfo.VXLANPort); err != nil {
 		return err
 	}
 
@@ -183,6 +183,7 @@ func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error 
 				LinkIndex: l.Attrs().Index,
 				Scope:     netlink.SCOPE_LINK,
 				Dst:       clusterNetwork.ClusterCIDR,
+				MTU:       int(plugin.networkInfo.MTU),
 			}
 			if err = netlink.RouteAdd(route); err != nil {
 				return err
@@ -193,6 +194,7 @@ func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error 
 		route := &netlink.Route{
 			LinkIndex: l.Attrs().Index,
 			Dst:       plugin.networkInfo.ServiceNetwork,
+			MTU:       int(plugin.networkInfo.MTU),
 		}
 		err = netlink.RouteAdd(route)
 	}

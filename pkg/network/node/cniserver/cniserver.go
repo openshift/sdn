@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/openshift/sdn/pkg/network/common"
+
 	"github.com/gorilla/mux"
 	"k8s.io/klog/v2"
 
@@ -57,8 +59,9 @@ const CNIServerConfigFilePath string = CNIServerRunDir + "/" + CNIServerConfigFi
 
 // Server-to-plugin config data
 type Config struct {
-	MTU                uint32 `json:"mtu"`
-	ServiceNetworkCIDR string `json:"serviceNetworkCIDR"`
+	MTU                uint32                             `json:"mtu"`
+	ServiceNetworkCIDR string                             `json:"serviceNetworkCIDR"`
+	ClusterNetworks    []common.ParsedClusterNetworkEntry `json:"clusterNetworks"`
 }
 
 // Explicit type for CNI commands the server handles
