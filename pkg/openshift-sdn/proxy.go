@@ -67,9 +67,8 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		return
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice) ||
-		utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
-		klog.Warningf("kube-proxy has unsupported EndpointSlice/EndpointSliceProxying gates enabled")
+	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
+		klog.Warningf("kube-proxy has unsupported EndpointSliceProxying gates enabled")
 		close(waitChan)
 		return
 	}
