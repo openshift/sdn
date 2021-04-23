@@ -1068,10 +1068,10 @@ func TestEgressCIDRAllocation(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// You can't mix multiple-egress-IP HA with auto-allocated-egress-IP HA
+	// The controller can auto-allocate multiple egress IPs to the same namespace
 	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
 		NetID:     45,
-		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.102", "172.17.1.102"},
+		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.102", "172.17.1.102"}, // 172.17.0.102 is already allocated above
 	})
 	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
 		NetID:     49,
@@ -1089,9 +1089,14 @@ func TestEgressCIDRAllocation(t *testing.T) {
 	allocation = eit.ReallocateEgressIPs()
 	updateAllocations(eit, allocation)
 	err = w.assertChanges(
-		"release 172.17.0.102 on 172.17.0.4",
-		"namespace 45 dropped",
-		"update egress CIDRs",
+		"claim 172.17.0.109 on 172.17.0.4 for namespace 49",
+		"namespace 49 via 172.17.0.109 on 172.17.0.4",
+		"claim 172.17.1.109 on 172.17.0.3 for namespace 49",
+		"claim 172.17.1.102 on 172.17.0.3 for namespace 45",
+		"namespace 45 via 172.17.0.102 on 172.17.0.4",
+		"namespace 45 via 172.17.1.102 on 172.17.0.3",
+		"namespace 49 via 172.17.1.109 on 172.17.0.3",
+		"namespace 49 via 172.17.0.109 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
