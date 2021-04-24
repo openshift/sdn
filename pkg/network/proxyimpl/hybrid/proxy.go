@@ -227,7 +227,7 @@ func (p *HybridProxier) switchService(name types.NamespacedName) {
 
 	svc, err := p.serviceLister.Services(name.Namespace).Get(name.Name)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error while getting service %s/%s from cache: %v", name.Namespace, name.String(), err))
+		utilruntime.HandleError(fmt.Errorf("Error while getting service %s from cache: %v", name.String(), err))
 		return
 	}
 
