@@ -33,6 +33,7 @@ func ClusterNetworkListContains(clusterNetworks []ParsedClusterNetworkEntry, ipa
 }
 
 type ParsedClusterNetwork struct {
+	MachineNetwork  *net.IPNet
 	PluginName      string
 	ClusterNetworks []ParsedClusterNetworkEntry
 	ServiceNetwork  *net.IPNet
@@ -71,6 +72,15 @@ func ParseClusterNetwork(cn *networkv1.ClusterNetwork) (*ParsedClusterNetwork, e
 			return nil, fmt.Errorf("failed to parse ServiceNetwork CIDR %s: %v", cn.ServiceNetwork, err)
 		}
 		utilruntime.HandleError(fmt.Errorf("Configured serviceNetworkCIDR value %q is invalid; treating it as %q", cn.ServiceNetwork, pcn.ServiceNetwork.String()))
+	}
+
+	pcn.MachineNetwork, err = networkutils.ParseCIDRMask(cn.Network)
+	if err != nil {
+		_, pcn.MachineNetwork, err = net.ParseCIDR(cn.Network)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Machine Network CIDR %s: %v", cn.Network, err)
+		}
+		utilruntime.HandleError(fmt.Errorf("Configured MachineNetworkCIDR value %q is invalid; treating it as %q", cn.Network, pcn.MachineNetwork.String()))
 	}
 
 	if cn.VXLANPort != nil {

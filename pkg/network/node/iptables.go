@@ -17,6 +17,7 @@ import (
 
 type NodeIPTables struct {
 	ipt                iptables.Interface
+	machineNetwork     string
 	clusterNetworkCIDR []string
 	masqueradeServices bool
 	vxlanPort          uint32
@@ -27,9 +28,10 @@ type NodeIPTables struct {
 	egressIPs map[string]string
 }
 
-func newNodeIPTables(ipt iptables.Interface, clusterNetworkCIDR []string, masqueradeServices bool, vxlanPort uint32, masqueradeBit uint32) *NodeIPTables {
+func newNodeIPTables(ipt iptables.Interface, machineNetwork string, clusterNetworkCIDR []string, masqueradeServices bool, vxlanPort uint32, masqueradeBit uint32) *NodeIPTables {
 	return &NodeIPTables{
 		ipt:                ipt,
+		machineNetwork:     machineNetwork,
 		clusterNetworkCIDR: clusterNetworkCIDR,
 		masqueradeServices: masqueradeServices,
 		vxlanPort:          vxlanPort,
@@ -157,6 +159,10 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 		// This fixes a bug where traffic destined to a service's ExternalIP
 		// but also intended to go be SNAT'd to an EgressIP was dropped.
 		{"-m", "mark", "--mark", n.masqueradeBitHex + "/" + n.masqueradeBitHex, "-j", "RETURN"},
+		// intra-cluster traffic is not subject to MASQUERADE.
+		// Pods should be able to reach nodes without nat
+		// https://kubernetes.io/docs/tasks/administer-cluster/ip-masq-agent/
+		{"-d", n.machineNetwork, "-m", "comment", "--comment", "intra-cluster traffic is not subject to masquerade", "-j", "RETURN"},
 	}
 	var masq2Rules [][]string
 	var filterRules [][]string

@@ -349,7 +349,7 @@ func (node *OsdnNode) Start() error {
 		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
 
-	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	node.nodeIPTables = newNodeIPTables(node.ipt, node.networkInfo.MachineNetwork.String(), node.clusterCIDRs, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
 	if err = node.nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
 	}
