@@ -44,7 +44,7 @@ type proxyNamespace struct {
 	firewalls    map[ktypes.UID][]firewallItem
 	activePolicy *ktypes.UID
 
-	endpoints map[ktypes.UID]*proxyEndpoints
+	blockableEndpoints map[ktypes.UID]*proxyEndpoints
 }
 
 type OsdnProxy struct {
@@ -143,8 +143,8 @@ func (proxy *OsdnProxy) getNamespace(name string) *proxyNamespace {
 	ns := proxy.namespaces[name]
 	if ns == nil {
 		ns = &proxyNamespace{
-			firewalls: make(map[ktypes.UID][]firewallItem),
-			endpoints: make(map[ktypes.UID]*proxyEndpoints),
+			firewalls:          make(map[ktypes.UID][]firewallItem),
+			blockableEndpoints: make(map[ktypes.UID]*proxyEndpoints),
 		}
 		proxy.namespaces[name] = ns
 	}
@@ -153,7 +153,7 @@ func (proxy *OsdnProxy) getNamespace(name string) *proxyNamespace {
 
 // Assumes lock is held
 func (proxy *OsdnProxy) maybeGarbageCollectNamespace(name string, ns *proxyNamespace) {
-	if ns.global == false && len(ns.firewalls) == 0 && len(ns.endpoints) == 0 {
+	if ns.global == false && len(ns.firewalls) == 0 && len(ns.blockableEndpoints) == 0 {
 		delete(proxy.namespaces, name)
 	}
 }
@@ -279,7 +279,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 	}
 
 	// Update endpoints
-	for _, pep := range ns.endpoints {
+	for _, pep := range ns.blockableEndpoints {
 		wasBlocked := pep.blocked
 		pep.blocked = proxy.endpointsBlocked(ns, pep.endpoints)
 		switch {
@@ -295,15 +295,23 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 	}
 }
 
+// Returns true if ep contains at least one blockable (ie, non-local) endpoint.
 // Assumes lock is held
-func (ns *proxyNamespace) firewallBlocksIP(ip net.IP) bool {
-	if len(ns.firewalls) == 0 {
-		return false
-	} else if ns.activePolicy == nil {
-		// Block all connections if active policy is not set
-		return true
+func (proxy *OsdnProxy) endpointsBlockable(ns *proxyNamespace, ep *corev1.Endpoints) bool {
+	for _, ss := range ep.Subsets {
+		for _, addr := range ss.Addresses {
+			ip := net.ParseIP(addr.IP)
+			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
+				return true
+			}
+		}
 	}
+	return false
+}
 
+// Assumes lock is held
+func (ns *proxyNamespace) firewallBlocks(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
 	for _, item := range ns.firewalls[*ns.activePolicy] {
 		if item.net.Contains(ip) {
 			return item.ruleType == networkv1.EgressNetworkPolicyRuleDeny
@@ -312,20 +320,24 @@ func (ns *proxyNamespace) firewallBlocksIP(ip net.IP) bool {
 	return false
 }
 
+// Returns true if ep contains at least one endpoint that is blocked by current firewall rules
 // Assumes lock is held
 func (proxy *OsdnProxy) endpointsBlocked(ns *proxyNamespace, ep *corev1.Endpoints) bool {
+	if len(ns.firewalls) == 0 {
+		return false
+	} else if ns.activePolicy == nil {
+		// Block all connections if active policy is not set
+		return true
+	}
+
 	for _, ss := range ep.Subsets {
 		for _, addr := range ss.Addresses {
-			ip := net.ParseIP(addr.IP)
-			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
-				if ns.firewallBlocksIP(ip) {
-					klog.Warningf("Service '%s' in namespace '%s' has an Endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
-					return true
-				}
+			if ns.firewallBlocks(addr.IP) {
+				klog.Warningf("Service '%s' in namespace '%s' has an Endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
+				return true
 			}
 		}
 	}
-
 	return false
 }
 
@@ -343,11 +355,15 @@ func (proxy *OsdnProxy) OnEndpointsAdd(ep *corev1.Endpoints) {
 	defer proxy.Unlock()
 
 	ns := proxy.getNamespace(ep.Namespace)
-	pep := &proxyEndpoints{ep, proxy.endpointsBlocked(ns, ep)}
-	ns.endpoints[ep.UID] = pep
-	if !pep.blocked {
-		proxy.baseProxy.OnEndpointsAdd(ep)
+	if proxy.endpointsBlockable(ns, ep) {
+		pep := &proxyEndpoints{ep, proxy.endpointsBlocked(ns, ep)}
+		ns.blockableEndpoints[ep.UID] = pep
+		if pep.blocked {
+			return
+		}
 	}
+
+	proxy.baseProxy.OnEndpointsAdd(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
@@ -355,23 +371,36 @@ func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 	defer proxy.Unlock()
 
 	ns := proxy.getNamespace(ep.Namespace)
-	pep := ns.endpoints[ep.UID]
+	isBlockable := proxy.endpointsBlockable(ns, ep)
+	isBlocked := isBlockable && proxy.endpointsBlocked(ns, ep)
+
+	pep := ns.blockableEndpoints[ep.UID]
 	if pep == nil {
-		klog.Warningf("Got OnEndpointsUpdate for unknown Endpoints %#v", ep)
-		pep = &proxyEndpoints{ep, true}
-		ns.endpoints[ep.UID] = pep
+		if !isBlockable {
+			// Wasn't blockable before, still isn't
+			proxy.baseProxy.OnEndpointsUpdate(old, ep)
+			return
+		}
+		// Wasn't blockable before, but is now
+		pep = &proxyEndpoints{ep, false}
+		ns.blockableEndpoints[ep.UID] = pep
 	}
+
 	wasBlocked := pep.blocked
 	pep.endpoints = ep
-	pep.blocked = proxy.endpointsBlocked(ns, ep)
+	pep.blocked = isBlocked
 
 	switch {
-	case wasBlocked && !pep.blocked:
+	case wasBlocked && !isBlocked:
 		proxy.baseProxy.OnEndpointsAdd(ep)
-	case !wasBlocked && !pep.blocked:
+	case !wasBlocked && !isBlocked:
 		proxy.baseProxy.OnEndpointsUpdate(old, ep)
-	case !wasBlocked && pep.blocked:
+	case !wasBlocked && isBlocked:
 		proxy.baseProxy.OnEndpointsDelete(old)
+	}
+
+	if !isBlockable {
+		delete(ns.blockableEndpoints, ep.UID)
 	}
 }
 
@@ -383,17 +412,16 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 	if ns == nil {
 		return
 	}
-	pep := ns.endpoints[ep.UID]
-	if pep == nil {
-		klog.Warningf("Got OnEndpointsDelete for unknown Endpoints %#v", ep)
-		return
-	}
-	delete(ns.endpoints, ep.UID)
-	if !pep.blocked {
-		proxy.baseProxy.OnEndpointsDelete(ep)
+	pep := ns.blockableEndpoints[ep.UID]
+	if pep != nil {
+		delete(ns.blockableEndpoints, ep.UID)
+		proxy.maybeGarbageCollectNamespace(ep.Namespace, ns)
+		if pep.blocked {
+			return
+		}
 	}
 
-	proxy.maybeGarbageCollectNamespace(ep.Namespace, ns)
+	proxy.baseProxy.OnEndpointsDelete(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
