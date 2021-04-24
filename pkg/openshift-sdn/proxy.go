@@ -67,12 +67,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		return
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
-		klog.Warningf("kube-proxy has unsupported EndpointSliceProxying gates enabled")
-		close(waitChan)
-		return
-	}
-
 	bindAddr := net.ParseIP(sdn.ProxyConfig.BindAddress)
 	nodeAddr := bindAddr
 
@@ -109,6 +103,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 
 	enableUnidling := false
+	usingEndpointSlices := false
 	var err error
 
 	var proxier, unidlingProxy sdnproxy.HybridizableProxy
@@ -118,6 +113,8 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		fallthrough
 	case "iptables":
 		klog.V(0).Infof("Using %s Proxier.", sdn.ProxyConfig.Mode)
+		usingEndpointSlices = utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying)
+
 		if sdn.ProxyConfig.IPTables.MasqueradeBit == nil {
 			// IPTablesMasqueradeBit must be specified or defaulted.
 			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
@@ -212,12 +209,21 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	serviceConfig.RegisterEventHandler(sdn.OsdnProxy)
 	go serviceConfig.Run(utilwait.NeverStop)
 
-	endpointsConfig := pconfig.NewEndpointsConfig(
-		sdn.informers.KubeInformers.Core().V1().Endpoints(),
-		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-	)
-	endpointsConfig.RegisterEventHandler(sdn.OsdnProxy)
-	go endpointsConfig.Run(utilwait.NeverStop)
+	if usingEndpointSlices {
+		endpointSliceConfig := pconfig.NewEndpointSliceConfig(
+			sdn.informers.KubeInformers.Discovery().V1beta1().EndpointSlices(),
+			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		)
+		endpointSliceConfig.RegisterEventHandler(sdn.OsdnProxy)
+		go endpointSliceConfig.Run(utilwait.NeverStop)
+	} else {
+		endpointsConfig := pconfig.NewEndpointsConfig(
+			sdn.informers.KubeInformers.Core().V1().Endpoints(),
+			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		)
+		endpointsConfig.RegisterEventHandler(sdn.OsdnProxy)
+		go endpointsConfig.Run(utilwait.NeverStop)
+	}
 
 	// Start up healthz server
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {

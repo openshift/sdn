@@ -8,11 +8,12 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/kubernetes/pkg/proxy"
-	proxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/util/async"
 
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
@@ -76,8 +77,6 @@ func (hsvc *hybridProxierService) unidlingPeriodHasExpired() bool {
 // delegating idled services to the unidling proxy and other services to the
 // primary proxy.
 type HybridProxier struct {
-	proxyconfig.NoopEndpointSliceHandler
-
 	mainProxy     HybridizableProxy
 	unidlingProxy HybridizableProxy
 
@@ -310,6 +309,117 @@ func (p *HybridProxier) OnEndpointsSynced() {
 	p.unidlingProxy.OnEndpointsSynced()
 	p.mainProxy.OnEndpointsSynced()
 	klog.V(6).Infof("endpoints synced")
+}
+
+func sliceToEndpoints(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
+	if slice == nil {
+		return nil
+	}
+
+	endpoints := &corev1.Endpoints{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Endpoints",
+			APIVersion: "v1",
+		},
+		ObjectMeta: slice.ObjectMeta,
+		Subsets: []corev1.EndpointSubset{
+			{
+				Addresses: []corev1.EndpointAddress{},
+				Ports:     []corev1.EndpointPort{},
+			},
+		},
+	}
+	for _, ep := range slice.Endpoints {
+		addr := corev1.EndpointAddress{
+			NodeName:  ep.NodeName,
+			TargetRef: ep.TargetRef,
+		}
+		if ep.Hostname != nil {
+			addr.Hostname = *ep.Hostname
+		}
+		for _, ip := range ep.Addresses {
+			addr.IP = ip
+			endpoints.Subsets[0].Addresses = append(endpoints.Subsets[0].Addresses, addr)
+		}
+	}
+	for _, slicePort := range slice.Ports {
+		port := corev1.EndpointPort{AppProtocol: slicePort.AppProtocol}
+		if slicePort.Name != nil {
+			port.Name = *slicePort.Name
+		}
+		if slicePort.Port != nil {
+			port.Port = *slicePort.Port
+		}
+		if slicePort.Protocol != nil {
+			port.Protocol = *slicePort.Protocol
+		}
+		endpoints.Subsets[0].Ports = append(endpoints.Subsets[0].Ports, port)
+	}
+
+	return endpoints
+}
+
+func endpointsIfEmptySlice(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
+	for _, ep := range slice.Endpoints {
+		if len(ep.Addresses) > 0 {
+			return nil
+		}
+	}
+	return sliceToEndpoints(slice)
+}
+
+func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	hsvc := p.getService(svcName)
+	defer p.releaseService(svcName)
+
+	hsvc.knownEndpoints = true
+	hsvc.emptyEndpoints = endpointsIfEmptySlice(slice)
+
+	klog.V(6).Infof("hybrid proxy: add slice %s", svcName)
+	p.mainProxy.OnEndpointSliceAdd(slice)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsAdd(sliceToEndpoints(slice))
+	}
+}
+
+func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1beta1.EndpointSlice) {
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	hsvc := p.getService(svcName)
+	defer p.releaseService(svcName)
+
+	hsvc.emptyEndpoints = endpointsIfEmptySlice(slice)
+
+	klog.V(6).Infof("hybrid proxy: update slice %s", svcName)
+	p.mainProxy.OnEndpointSliceUpdate(oldSlice, slice)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsUpdate(sliceToEndpoints(oldSlice), sliceToEndpoints(slice))
+	} else if hsvc.unidlingPeriodHasExpired() {
+		p.unidlingProxy.OnEndpointsDelete(sliceToEndpoints(oldSlice))
+		hsvc.unidledAt = nil
+	}
+}
+
+func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	hsvc := p.getService(svcName)
+	defer p.releaseService(svcName)
+
+	hsvc.knownEndpoints = false
+	hsvc.emptyEndpoints = nil
+
+	klog.V(6).Infof("hybrid proxy: del slice %s", svcName)
+	p.mainProxy.OnEndpointSliceDelete(slice)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsDelete(sliceToEndpoints(slice))
+		hsvc.unidledAt = nil
+	}
+}
+
+func (p *HybridProxier) OnEndpointSlicesSynced() {
+	klog.V(6).Infof("hybrid proxy: endpointslices synced")
+	p.unidlingProxy.OnEndpointSlicesSynced()
+	p.mainProxy.OnEndpointSlicesSynced()
 }
 
 // Sync is called to synchronize the proxier state to iptables

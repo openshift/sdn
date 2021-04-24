@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -19,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	networkclient "github.com/openshift/client-go/network/clientset/versioned"
@@ -38,17 +38,22 @@ type proxyEndpoints struct {
 	blocked   bool
 }
 
+type proxyEndpointSlice struct {
+	endpointslice *discoveryv1beta1.EndpointSlice
+	blocked       bool
+}
+
 type proxyNamespace struct {
 	global bool
 
 	firewalls    map[ktypes.UID][]firewallItem
 	activePolicy *ktypes.UID
 
-	blockableEndpoints map[ktypes.UID]*proxyEndpoints
+	blockableEndpoints      map[ktypes.UID]*proxyEndpoints
+	blockableEndpointSlices map[ktypes.UID]*proxyEndpointSlice
 }
 
 type OsdnProxy struct {
-	kubeproxyconfig.NoopEndpointSliceHandler
 	sync.Mutex
 
 	kClient          kubernetes.Interface
@@ -143,8 +148,9 @@ func (proxy *OsdnProxy) getNamespace(name string) *proxyNamespace {
 	ns := proxy.namespaces[name]
 	if ns == nil {
 		ns = &proxyNamespace{
-			firewalls:          make(map[ktypes.UID][]firewallItem),
-			blockableEndpoints: make(map[ktypes.UID]*proxyEndpoints),
+			firewalls:               make(map[ktypes.UID][]firewallItem),
+			blockableEndpoints:      make(map[ktypes.UID]*proxyEndpoints),
+			blockableEndpointSlices: make(map[ktypes.UID]*proxyEndpointSlice),
 		}
 		proxy.namespaces[name] = ns
 	}
@@ -153,7 +159,8 @@ func (proxy *OsdnProxy) getNamespace(name string) *proxyNamespace {
 
 // Assumes lock is held
 func (proxy *OsdnProxy) maybeGarbageCollectNamespace(name string, ns *proxyNamespace) {
-	if ns.global == false && len(ns.firewalls) == 0 && len(ns.blockableEndpoints) == 0 {
+	if ns.global == false && len(ns.firewalls) == 0 &&
+		len(ns.blockableEndpoints) == 0 && len(ns.blockableEndpointSlices) == 0 {
 		delete(proxy.namespaces, name)
 	}
 }
@@ -278,7 +285,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 		}
 	}
 
-	// Update endpoints
+	// Update endpoints and slices
 	for _, pep := range ns.blockableEndpoints {
 		wasBlocked := pep.blocked
 		pep.blocked = proxy.endpointsBlocked(ns, pep.endpoints)
@@ -287,6 +294,16 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 			proxy.baseProxy.OnEndpointsAdd(pep.endpoints)
 		case !wasBlocked && pep.blocked:
 			proxy.baseProxy.OnEndpointsDelete(pep.endpoints)
+		}
+	}
+	for _, pes := range ns.blockableEndpointSlices {
+		wasBlocked := pes.blocked
+		pes.blocked = proxy.endpointSliceBlocked(ns, pes.endpointslice)
+		switch {
+		case wasBlocked && !pes.blocked:
+			proxy.baseProxy.OnEndpointSliceAdd(pes.endpointslice)
+		case !wasBlocked && pes.blocked:
+			proxy.baseProxy.OnEndpointSliceDelete(pes.endpointslice)
 		}
 	}
 
@@ -301,6 +318,20 @@ func (proxy *OsdnProxy) endpointsBlockable(ns *proxyNamespace, ep *corev1.Endpoi
 	for _, ss := range ep.Subsets {
 		for _, addr := range ss.Addresses {
 			ip := net.ParseIP(addr.IP)
+			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Returns true if slice contains at least one blockable (ie, non-local) endpoint
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointSliceBlockable(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+	for _, ep := range slice.Endpoints {
+		for _, addr := range ep.Addresses {
+			ip := net.ParseIP(addr)
 			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
 				return true
 			}
@@ -333,7 +364,28 @@ func (proxy *OsdnProxy) endpointsBlocked(ns *proxyNamespace, ep *corev1.Endpoint
 	for _, ss := range ep.Subsets {
 		for _, addr := range ss.Addresses {
 			if ns.firewallBlocks(addr.IP) {
-				klog.Warningf("Service '%s' in namespace '%s' has an Endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
+				klog.Warningf("Endpoint '%s' in namespace '%s' has an endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Returns true if slice contains at least one endpoint that is blocked by current firewall rules
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointSliceBlocked(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+	if len(ns.firewalls) == 0 {
+		return false
+	} else if ns.activePolicy == nil {
+		// Block all connections if active policy is not set
+		return true
+	}
+
+	for _, ep := range slice.Endpoints {
+		for _, addr := range ep.Addresses {
+			if ns.firewallBlocks(addr) {
+				klog.Warningf("EndpointSlice '%s' in namespace '%s' has an endpoint pointing to firewalled destination (%s)", slice.Name, slice.Namespace, addr)
 				return true
 			}
 		}
@@ -426,6 +478,90 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.baseProxy.OnEndpointsSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	proxy.endpointsSynced = true
+	proxy.checkInitialized()
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	if proxy.endpointSliceBlockable(ns, slice) {
+		pes := &proxyEndpointSlice{slice, proxy.endpointSliceBlocked(ns, slice)}
+		ns.blockableEndpointSlices[slice.UID] = pes
+		if pes.blocked {
+			return
+		}
+	}
+
+	proxy.baseProxy.OnEndpointSliceAdd(slice)
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	isBlockable := proxy.endpointSliceBlockable(ns, slice)
+	isBlocked := isBlockable && proxy.endpointSliceBlocked(ns, slice)
+
+	pes := ns.blockableEndpointSlices[slice.UID]
+	if pes == nil {
+		if !isBlockable {
+			// Wasn't blockable before, still isn't
+			proxy.baseProxy.OnEndpointSliceUpdate(old, slice)
+			return
+		}
+		// Wasn't blockable before, but is now
+		pes = &proxyEndpointSlice{slice, false}
+		ns.blockableEndpointSlices[slice.UID] = pes
+	}
+
+	wasBlocked := pes.blocked
+	pes.endpointslice = slice
+	pes.blocked = isBlocked
+
+	switch {
+	case wasBlocked && !isBlocked:
+		proxy.baseProxy.OnEndpointSliceAdd(slice)
+	case !wasBlocked && !isBlocked:
+		proxy.baseProxy.OnEndpointSliceUpdate(old, slice)
+	case !wasBlocked && isBlocked:
+		proxy.baseProxy.OnEndpointSliceDelete(old)
+	}
+
+	if !isBlockable {
+		delete(ns.blockableEndpointSlices, slice.UID)
+	}
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	if ns == nil {
+		return
+	}
+	pes := ns.blockableEndpointSlices[slice.UID]
+	if pes != nil {
+		delete(ns.blockableEndpointSlices, slice.UID)
+		proxy.maybeGarbageCollectNamespace(slice.Namespace, ns)
+		if pes.blocked {
+			return
+		}
+	}
+
+	proxy.baseProxy.OnEndpointSliceDelete(slice)
+}
+
+func (proxy *OsdnProxy) OnEndpointSlicesSynced() {
+	proxy.baseProxy.OnEndpointSlicesSynced()
 
 	proxy.Lock()
 	defer proxy.Unlock()
