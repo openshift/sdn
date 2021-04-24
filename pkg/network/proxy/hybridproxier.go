@@ -1,4 +1,4 @@
-package hybrid
+package proxy
 
 import (
 	"fmt"

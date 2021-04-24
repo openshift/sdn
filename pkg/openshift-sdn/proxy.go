@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
-	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -197,12 +196,12 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		if err != nil {
 			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
 		}
-		hp, ok := proxier.(hybrid.RunnableProxy)
+		hp, ok := proxier.(sdnproxy.RunnableProxy)
 		if !ok {
 			// unreachable
 			klog.Fatalf("unidling proxy must be used in iptables mode")
 		}
-		proxier, err = hybrid.NewHybridProxier(
+		proxier, err = sdnproxy.NewHybridProxier(
 			hp,
 			unidlingUserspaceProxy,
 			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,

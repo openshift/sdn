@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
+	"k8s.io/kubernetes/pkg/util/async"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
@@ -154,6 +155,12 @@ func (tp *testProxy) Sync() {
 func (tp *testProxy) SyncLoop() {
 }
 
+func (tp *testProxy) SyncProxyRules() {
+}
+
+func (tp *testProxy) SetSyncRunner(b *async.BoundedFrequencyRunner) {
+}
+
 func mustParseCIDR(cidr string) *net.IPNet {
 	_, net, err := net.ParseCIDR(cidr)
 	if err != nil {
@@ -165,9 +172,10 @@ func mustParseCIDR(cidr string) *net.IPNet {
 func makeEndpoints(namespace, name string, ips ...string) *corev1.Endpoints {
 	ep := &corev1.Endpoints{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-			UID:       ktypes.UID(namespace + "/" + name),
+			Namespace:   namespace,
+			Name:        name,
+			UID:         ktypes.UID(namespace + "/" + name),
+			Annotations: make(map[string]string),
 		},
 		Subsets: []corev1.EndpointSubset{
 			{
