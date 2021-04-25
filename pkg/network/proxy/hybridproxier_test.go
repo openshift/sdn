@@ -9,10 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/fake"
-	corev1listers "k8s.io/client-go/listers/core/v1"
 
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
 )
@@ -30,12 +26,13 @@ func makeService(namespace, name string) *corev1.Service {
 	return svc
 }
 
-func createServiceAndWait(svc *corev1.Service, kubeClient kubernetes.Interface, serviceLister corev1listers.ServiceLister) error {
-	_, err := kubeClient.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+func createServiceAndWait(svc *corev1.Service, proxy *OsdnProxy) error {
+	_, err := proxy.kClient.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
 
+	serviceLister := proxy.kubeInformers.Core().V1().Services().Lister()
 	return utilwait.Poll(10*time.Millisecond, time.Second, func() (bool, error) {
 		_, err := serviceLister.Services(svc.Namespace).Get(svc.Name)
 		if err != nil {
@@ -45,12 +42,13 @@ func createServiceAndWait(svc *corev1.Service, kubeClient kubernetes.Interface, 
 	})
 }
 
-func deleteServiceAndWait(svc *corev1.Service, kubeClient kubernetes.Interface, serviceLister corev1listers.ServiceLister) error {
-	err := kubeClient.CoreV1().Services(svc.Namespace).Delete(context.TODO(), svc.Name, metav1.DeleteOptions{})
+func deleteServiceAndWait(svc *corev1.Service, proxy *OsdnProxy) error {
+	err := proxy.kClient.CoreV1().Services(svc.Namespace).Delete(context.TODO(), svc.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
 
+	serviceLister := proxy.kubeInformers.Core().V1().Services().Lister()
 	return utilwait.Poll(10*time.Millisecond, time.Second, func() (bool, error) {
 		_, err := serviceLister.Services(svc.Namespace).Get(svc.Name)
 		if err == nil {
@@ -61,31 +59,16 @@ func deleteServiceAndWait(svc *corev1.Service, kubeClient kubernetes.Interface, 
 }
 
 func TestHybridProxy(t *testing.T) {
-	mainProxy := newTestProxy("main")
-	unidlingProxy := newTestProxy("unidling")
-
-	kubeClient := fake.NewSimpleClientset()
-	kubeInformers := informers.NewSharedInformerFactory(kubeClient, time.Hour)
-
-	proxy := &HybridProxier{
-		mainProxy:     mainProxy,
-		unidlingProxy: unidlingProxy,
-		serviceLister: kubeInformers.Core().V1().Services().Lister(),
-
-		usingUserspace:      make(map[ktypes.NamespacedName]bool),
-		switchedToUserspace: make(map[ktypes.NamespacedName]bool),
-		pendingDeletion:     make(map[ktypes.NamespacedName]bool),
+	proxy, mainProxy, unidlingProxy, err := newTestOsdnProxy()
+	if err != nil {
+		t.Fatalf("unexpected error creating OsdnProxy: %v", err)
 	}
-
-	stopCh := make(chan struct{})
-	kubeInformers.Start(stopCh)
-	defer close(stopCh)
 
 	// *****
 
 	// Create a Service...
 	svc1 := makeService("testns", "one")
-	err := createServiceAndWait(svc1, kubeClient, proxy.serviceLister)
+	err = createServiceAndWait(svc1, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -204,7 +187,7 @@ func TestHybridProxy(t *testing.T) {
 
 	// Now create the service
 	svc2 := makeService("testns", "two")
-	err = createServiceAndWait(svc2, kubeClient, proxy.serviceLister)
+	err = createServiceAndWait(svc2, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -271,7 +254,7 @@ func TestHybridProxy(t *testing.T) {
 	// then delete the Service while it's idle.
 
 	svc3 := makeService("testns", "three")
-	err = createServiceAndWait(svc3, kubeClient, proxy.serviceLister)
+	err = createServiceAndWait(svc3, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -329,7 +312,7 @@ func TestHybridProxy(t *testing.T) {
 	}
 
 	// Now delete it
-	err = deleteServiceAndWait(svc3idled, kubeClient, proxy.serviceLister)
+	err = deleteServiceAndWait(svc3idled, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error deleting service: %v", err)
 	}
@@ -365,7 +348,7 @@ func TestHybridProxy(t *testing.T) {
 	// Clean up
 	proxy.OnEndpointsDelete(ep1modified)
 
-	err = deleteServiceAndWait(svc2, kubeClient, proxy.serviceLister)
+	err = deleteServiceAndWait(svc2, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error deleting service: %v", err)
 	}
@@ -373,7 +356,7 @@ func TestHybridProxy(t *testing.T) {
 
 	proxy.OnEndpointsDelete(ep2)
 
-	err = deleteServiceAndWait(svc1, kubeClient, proxy.serviceLister)
+	err = deleteServiceAndWait(svc1, proxy)
 	if err != nil {
 		t.Fatalf("unexpected error deleting service: %v", err)
 	}

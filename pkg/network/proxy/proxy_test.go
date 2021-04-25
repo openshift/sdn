@@ -7,12 +7,15 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/util/async"
 
@@ -195,18 +198,36 @@ func makeEndpoints(namespace, name string, ips ...string) *corev1.Endpoints {
 	return ep
 }
 
-func TestOsdnProxy(t *testing.T) {
-	proxy, err := New(nil, nil, nil)
+func newTestOsdnProxy() (*OsdnProxy, *testProxy, *testProxy, error) {
+	kubeClient := fake.NewSimpleClientset()
+	kubeInformers := informers.NewSharedInformerFactory(kubeClient, time.Hour)
+
+	proxy, err := New(kubeClient, kubeInformers, nil, nil, 0)
 	if err != nil {
-		t.Fatalf("unexpected error creating Proxy: %v", err)
+		return nil, nil, nil, err
 	}
-	tp := newTestProxy("filtering")
-	proxy.baseProxy = tp
+
 	proxy.networkInfo = &common.ParsedClusterNetwork{
 		ClusterNetworks: []common.ParsedClusterNetworkEntry{
 			{ClusterCIDR: mustParseCIDR("10.128.0.0/14"), HostSubnetLength: 8},
 		},
 		ServiceNetwork: mustParseCIDR("172.30.0.0/16"),
+	}
+
+	mainProxy := newTestProxy("main")
+	unidlingProxy := newTestProxy("unidling")
+	proxy.SetBaseProxies(mainProxy, unidlingProxy)
+
+	stopCh := make(chan struct{})
+	proxy.kubeInformers.Start(stopCh)
+
+	return proxy, mainProxy, unidlingProxy, nil
+}
+
+func TestOsdnProxy(t *testing.T) {
+	proxy, tp, _, err := newTestOsdnProxy()
+	if err != nil {
+		t.Fatalf("unexpected error creating OsdnProxy: %v", err)
 	}
 
 	// Create NetNamespaces

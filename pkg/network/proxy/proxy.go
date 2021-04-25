@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -16,8 +17,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	kubeproxy "k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 
 	networkv1 "github.com/openshift/api/network/v1"
@@ -47,11 +48,14 @@ type OsdnProxy struct {
 	sync.Mutex
 
 	kClient          kubernetes.Interface
+	kubeInformers    informers.SharedInformerFactory
 	networkClient    networkclient.Interface
 	networkInformers networkinformers.SharedInformerFactory
 	networkInfo      *common.ParsedClusterNetwork
 	egressDNS        *common.EgressDNS
-	baseProxy        kubeproxy.Provider
+	minSyncPeriod    time.Duration
+
+	baseProxy HybridizableProxy
 
 	// waitChan will be closed when both services and endpoints have
 	// been synced in the proxy
@@ -67,16 +71,22 @@ type OsdnProxy struct {
 }
 
 // Called by higher layers to create the proxy plugin instance
-func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
-	networkInformers networkinformers.SharedInformerFactory) (*OsdnProxy, error) {
+func New(kClient kubernetes.Interface,
+	kubeInformers informers.SharedInformerFactory,
+	networkClient networkclient.Interface,
+	networkInformers networkinformers.SharedInformerFactory,
+	minSyncPeriod time.Duration) (*OsdnProxy, error) {
+
 	egressDNS, err := common.NewEgressDNS(true, false)
 	if err != nil {
 		return nil, err
 	}
 	return &OsdnProxy{
 		kClient:          kClient,
+		kubeInformers:    kubeInformers,
 		networkClient:    networkClient,
 		networkInformers: networkInformers,
+		minSyncPeriod:    minSyncPeriod,
 		ids:              make(map[string]uint32),
 		egressDNS:        egressDNS,
 		firewall:         make(map[string]*proxyFirewallItem),
@@ -84,7 +94,19 @@ func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) error {
+func (proxy *OsdnProxy) SetBaseProxies(mainProxy, unidlingProxy HybridizableProxy) {
+	if unidlingProxy == nil {
+		proxy.baseProxy = mainProxy
+	} else {
+		proxy.baseProxy = NewHybridProxier(
+			mainProxy, unidlingProxy,
+			proxy.minSyncPeriod,
+			proxy.kubeInformers.Core().V1().Services().Lister(),
+		)
+	}
+}
+
+func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error
@@ -92,7 +114,6 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) 
 	if err != nil {
 		return fmt.Errorf("could not get network info: %s", err)
 	}
-	proxy.baseProxy = proxier
 	proxy.waitChan = waitChan
 
 	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})

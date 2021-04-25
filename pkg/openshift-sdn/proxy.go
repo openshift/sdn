@@ -23,7 +23,6 @@ import (
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/pkg/features"
-	proxy "k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
@@ -50,9 +49,11 @@ func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, 
 func (sdn *OpenShiftSDN) initProxy() error {
 	var err error
 	sdn.OsdnProxy, err = sdnproxy.New(
-		sdn.informers.NetworkClient,
 		sdn.informers.KubeClient,
-		sdn.informers.NetworkInformers)
+		sdn.informers.KubeInformers,
+		sdn.informers.NetworkClient,
+		sdn.informers.NetworkInformers,
+		sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration)
 	return err
 }
 
@@ -96,7 +97,6 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	execer := utilexec.New()
 	iptInterface := utiliptables.New(execer, protocol)
 
-	var proxier proxy.Provider
 	var healthzServer healthcheck.ProxierHealthUpdater
 	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
@@ -111,6 +111,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	enableUnidling := false
 	var err error
 
+	var proxier, unidlingProxy sdnproxy.HybridizableProxy
 	switch string(sdn.ProxyConfig.Mode) {
 	case "unidling+iptables":
 		enableUnidling = true
@@ -181,51 +182,41 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		klog.Fatalf("Unknown proxy mode %q", sdn.ProxyConfig.Mode)
 	}
 
-	// Create configs (i.e. Watches for Services and Endpoints)
-	// Note: RegisterHandler() calls need to happen before creation of Sources because sources
-	// only notify on changes, and the initial update (on process start) may be lost if no handlers
-	// are registered yet.
-	serviceConfig := pconfig.NewServiceConfig(
-		sdn.informers.KubeInformers.Core().V1().Services(),
-		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-	)
-
 	if enableUnidling {
 		signaler := unidler.NewEventSignaler(recorder)
-		unidlingUserspaceProxy, err := unidler.NewUnidlerProxier(userspace.NewLoadBalancerRR(), bindAddr, iptInterface, execer, *portRange, sdn.ProxyConfig.IPTables.SyncPeriod.Duration, sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration, sdn.ProxyConfig.UDPIdleTimeout.Duration, sdn.ProxyConfig.NodePortAddresses, signaler)
-		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
-		}
-		hp, ok := proxier.(sdnproxy.RunnableProxy)
-		if !ok {
-			// unreachable
-			klog.Fatalf("unidling proxy must be used in iptables mode")
-		}
-		proxier, err = sdnproxy.NewHybridProxier(
-			hp,
-			unidlingUserspaceProxy,
+		unidlingProxy, err = unidler.NewUnidlerProxier(
+			userspace.NewLoadBalancerRR(),
+			bindAddr,
+			iptInterface,
+			execer,
+			*portRange,
+			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.informers.KubeInformers.Core().V1().Services().Lister(),
-		)
+			sdn.ProxyConfig.UDPIdleTimeout.Duration,
+			sdn.ProxyConfig.NodePortAddresses,
+			signaler)
 		if err != nil {
 			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
 		}
 	}
+
+	sdn.OsdnProxy.SetBaseProxies(proxier, unidlingProxy)
+	if err := sdn.OsdnProxy.Start(waitChan); err != nil {
+		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
+	}
+
+	serviceConfig := pconfig.NewServiceConfig(
+		sdn.informers.KubeInformers.Core().V1().Services(),
+		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+	)
+	serviceConfig.RegisterEventHandler(sdn.OsdnProxy)
+	go serviceConfig.Run(utilwait.NeverStop)
 
 	endpointsConfig := pconfig.NewEndpointsConfig(
 		sdn.informers.KubeInformers.Core().V1().Endpoints(),
 		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 	)
-	// customized handling registration that inserts a filter if needed
-	if err := sdn.OsdnProxy.Start(proxier, waitChan); err != nil {
-		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
-	}
-	proxier = sdn.OsdnProxy
-
-	serviceConfig.RegisterEventHandler(proxier)
-	go serviceConfig.Run(utilwait.NeverStop)
-
-	endpointsConfig.RegisterEventHandler(proxier)
+	endpointsConfig.RegisterEventHandler(sdn.OsdnProxy)
 	go endpointsConfig.Run(utilwait.NeverStop)
 
 	// Start up healthz server
@@ -237,7 +228,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	sdn.startMetricsServer()
 
 	// periodically sync k8s iptables rules
-	go utilwait.Forever(proxier.SyncLoop, 0)
+	go utilwait.Forever(sdn.OsdnProxy.SyncLoop, 0)
 	klog.Infof("Started Kubernetes Proxy on %s", sdn.ProxyConfig.BindAddress)
 }
 

@@ -18,9 +18,8 @@ import (
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
 )
 
-// RunnableProxy is an extra interface we layer on top of Provider that
-// lets us control exactly when the proxy is synced.
-type RunnableProxy interface {
+// HybridizableProxy is an extra interface we layer on top of Provider
+type HybridizableProxy interface {
 	proxy.Provider
 
 	SyncProxyRules()
@@ -33,8 +32,8 @@ type RunnableProxy interface {
 type HybridProxier struct {
 	proxyconfig.NoopEndpointSliceHandler
 
-	mainProxy     RunnableProxy
-	unidlingProxy RunnableProxy
+	mainProxy     HybridizableProxy
+	unidlingProxy HybridizableProxy
 	minSyncPeriod time.Duration
 	serviceLister corev1listers.ServiceLister
 
@@ -62,11 +61,11 @@ type HybridProxier struct {
 }
 
 func NewHybridProxier(
-	mainProxy RunnableProxy,
-	unidlingProxy RunnableProxy,
+	mainProxy HybridizableProxy,
+	unidlingProxy HybridizableProxy,
 	minSyncPeriod time.Duration,
 	serviceLister corev1listers.ServiceLister,
-) (*HybridProxier, error) {
+) *HybridProxier {
 	p := &HybridProxier{
 		mainProxy:     mainProxy,
 		unidlingProxy: unidlingProxy,
@@ -86,7 +85,7 @@ func NewHybridProxier(
 	mainProxy.SetSyncRunner(p.syncRunner)
 	unidlingProxy.SetSyncRunner(p.syncRunner)
 
-	return p, nil
+	return p
 }
 
 func (proxier *HybridProxier) OnNodeAdd(node *corev1.Node) {
@@ -377,4 +376,10 @@ func (p *HybridProxier) SyncLoop() {
 	// All this does is start our syncRunner, since we pass it *back* in to
 	// the mainProxy
 	p.mainProxy.SyncLoop()
+}
+
+func (p *HybridProxier) SyncProxyRules() {
+}
+
+func (p *HybridProxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
 }
