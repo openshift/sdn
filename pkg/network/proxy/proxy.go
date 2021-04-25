@@ -345,7 +345,7 @@ func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 	case !wasBlocked && !pep.blocked:
 		proxy.baseProxy.OnEndpointsUpdate(old, ep)
 	case !wasBlocked && pep.blocked:
-		proxy.baseProxy.OnEndpointsDelete(ep)
+		proxy.baseProxy.OnEndpointsDelete(old)
 	}
 }
 

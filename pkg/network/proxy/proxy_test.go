@@ -473,9 +473,7 @@ func TestOsdnProxy(t *testing.T) {
 	err = tp.assertEvents("after modifying endpoints",
 		// In namespace one, this blocks extnear and unblocks extbad
 		"update endpoints one/local 10.130.0.5 10.131.1.5",
-		// FIXME: we are passing the wrong Endpoints in the synthesized delete event!
-		// "delete endpoints one/extnear 192.168.2.5",
-		"delete endpoints one/extnear 192.168.2.5 192.168.1.4",
+		"delete endpoints one/extnear 192.168.2.5",
 		"add endpoints one/extbad 192.168.3.5",
 
 		// In namespace two, there is no effect on blocking; we just observe the
