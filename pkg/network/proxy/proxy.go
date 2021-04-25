@@ -27,14 +27,6 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
-// EndpointsConfigHandler is an abstract interface of objects which receive update notifications for the set of endpoints.
-type EndpointsConfigHandler interface {
-	// OnEndpointsUpdate gets called when endpoints configuration is changed for a given
-	// service on any of the configuration sources. An example is when a new
-	// service comes up, or when containers come up or down for an existing service.
-	OnEndpointsUpdate(endpoints []*corev1.Endpoints)
-}
-
 type firewallItem struct {
 	ruleType networkv1.EgressNetworkPolicyRuleType
 	net      *net.IPNet
