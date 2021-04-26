@@ -1073,14 +1073,8 @@ func TestEgressCIDRAllocation(t *testing.T) {
 		NetID:     45,
 		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.102", "172.17.1.102"}, // 172.17.0.102 is already allocated above
 	})
-	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
-		NetID:     49,
-		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.109", "172.17.1.109"},
-	})
 	err = w.assertChanges(
 		"update egress CIDRs",
-		"update egress CIDRs",
-		"namespace 49 dropped",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -1089,14 +1083,9 @@ func TestEgressCIDRAllocation(t *testing.T) {
 	allocation = eit.ReallocateEgressIPs()
 	updateAllocations(eit, allocation)
 	err = w.assertChanges(
-		"claim 172.17.0.109 on 172.17.0.4 for namespace 49",
-		"namespace 49 via 172.17.0.109 on 172.17.0.4",
-		"claim 172.17.1.109 on 172.17.0.3 for namespace 49",
 		"claim 172.17.1.102 on 172.17.0.3 for namespace 45",
 		"namespace 45 via 172.17.0.102 on 172.17.0.4",
 		"namespace 45 via 172.17.1.102 on 172.17.0.3",
-		"namespace 49 via 172.17.1.109 on 172.17.0.3",
-		"namespace 49 via 172.17.0.109 on 172.17.0.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
