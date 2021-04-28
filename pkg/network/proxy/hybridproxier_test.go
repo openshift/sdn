@@ -116,7 +116,7 @@ func TestHybridProxy(t *testing.T) {
 	err = mainProxy.assertEvents("after idling first service",
 		"update service testns/one",
 		"delete service testns/one",
-		"delete endpoints testns/one 1.2.3.4",
+		"update endpoints testns/one -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -135,7 +135,7 @@ func TestHybridProxy(t *testing.T) {
 
 	err = mainProxy.assertEvents("after unidling first service",
 		"add service testns/one",
-		"add endpoints testns/one 1.2.3.4",
+		"update endpoints testns/one 1.2.3.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -215,7 +215,7 @@ func TestHybridProxy(t *testing.T) {
 
 	err = mainProxy.assertEvents("after idling second service",
 		"delete service testns/two",
-		"delete endpoints testns/two 9.10.11.12",
+		"update endpoints testns/two -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -235,7 +235,7 @@ func TestHybridProxy(t *testing.T) {
 	err = mainProxy.assertEvents("after unidling second service",
 		"add service testns/two",
 		"update service testns/two",
-		"add endpoints testns/two 9.10.11.12",
+		"update endpoints testns/two 9.10.11.12",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -298,7 +298,7 @@ func TestHybridProxy(t *testing.T) {
 	err = mainProxy.assertEvents("after idling third service",
 		"update service testns/three",
 		"delete service testns/three",
-		"delete endpoints testns/three 1.2.3.4",
+		"update endpoints testns/three -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -332,7 +332,9 @@ func TestHybridProxy(t *testing.T) {
 	// And its endpoints
 	proxy.OnEndpointsDelete(ep3idled)
 
-	err = mainProxy.assertNoEvents("after deleting third endpoints")
+	err = mainProxy.assertEvents("after deleting third endpoints",
+		"delete endpoints testns/three -",
+	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

@@ -235,21 +235,15 @@ func (p *HybridProxier) switchService(svcName types.NamespacedName) {
 func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
 
-	// we track all endpoints in the unidling endpoints handler so that we can succesfully
-	// detect when a service become unidling
-	klog.V(6).Infof("(always) add ep %s in unidling proxy", svcName)
+	klog.V(6).Infof("add ep %s", svcName)
 	p.unidlingProxy.OnEndpointsAdd(endpoints)
+	p.mainProxy.OnEndpointsAdd(endpoints)
 
 	p.usingUserspaceLock.Lock()
 	defer p.usingUserspaceLock.Unlock()
 
 	wasUsingUserspace, knownEndpoints := p.usingUserspace[svcName]
 	p.usingUserspace[svcName] = p.shouldEndpointsUseUserspace(endpoints)
-
-	if !p.usingUserspace[svcName] {
-		klog.V(6).Infof("add ep %s in main proxy", svcName)
-		p.mainProxy.OnEndpointsAdd(endpoints)
-	}
 
 	// a service could appear before endpoints, so we have to treat this as a potential
 	// state modification for services, and not just an addition (since we could flip proxies).
@@ -261,10 +255,9 @@ func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoints) {
 	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
 
-	// we track all endpoints in the unidling endpoints handler so that we can succesfully
-	// detect when a service become unidling
-	klog.V(6).Infof("(always) update ep %s in unidling proxy", svcName)
+	klog.V(6).Infof("update ep %s", svcName)
 	p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
+	p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
 
 	p.usingUserspaceLock.Lock()
 	defer p.usingUserspaceLock.Unlock()
@@ -277,50 +270,17 @@ func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoi
 		return
 	}
 
-	isSwitch := wasUsingUserspace != p.usingUserspace[svcName]
-
-	if !isSwitch && !p.usingUserspace[svcName] {
-		klog.V(6).Infof("update ep %s in main proxy", svcName)
-		p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
-		return
+	if wasUsingUserspace != p.usingUserspace[svcName] {
+		p.switchService(svcName)
 	}
-
-	if p.usingUserspace[svcName] {
-		klog.V(6).Infof("del ep %s in main proxy", svcName)
-		p.mainProxy.OnEndpointsDelete(oldEndpoints)
-	} else {
-		klog.V(6).Infof("add ep %s in main proxy", svcName)
-		p.mainProxy.OnEndpointsAdd(endpoints)
-	}
-
-	p.switchService(svcName)
 }
 
 func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
 	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
 
-	// we track all endpoints in the unidling endpoints handler so that we can succesfully
-	// detect when a service become unidling
-	klog.V(6).Infof("(always) del ep %s in unidling proxy", svcName)
+	klog.V(6).Infof("del ep %s", svcName)
 	p.unidlingProxy.OnEndpointsDelete(endpoints)
-
-	// Careful - there is the potential for deadlocks here,
-	// except that we always get usingUserspaceLock first, then
-	// get switchedToUserspaceLock.
-	p.usingUserspaceLock.Lock()
-	defer p.usingUserspaceLock.Unlock()
-
-	usingUserspace, knownEndpoints := p.usingUserspace[svcName]
-
-	if !knownEndpoints {
-		utilruntime.HandleError(fmt.Errorf("received delete for unknown endpoints %s", svcName.String()))
-		return
-	}
-
-	if !usingUserspace {
-		klog.V(6).Infof("del ep %s in main proxy", svcName)
-		p.mainProxy.OnEndpointsDelete(endpoints)
-	}
+	p.mainProxy.OnEndpointsDelete(endpoints)
 
 	p.cleanupState(svcName)
 }
