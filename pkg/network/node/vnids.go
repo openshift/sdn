@@ -136,6 +136,16 @@ func (vmap *nodeVNIDMap) getVNID(name string) (uint32, error) {
 	return 0, fmt.Errorf("failed to find netid for namespace: %s in vnid map", name)
 }
 
+func (vmap *nodeVNIDMap) findDuplicateNetID(namespace string, netID uint32) (string, bool) {
+	names := vmap.GetNamespaces(netID)
+	for _, name := range names {
+		if name != namespace {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 func (vmap *nodeVNIDMap) setVNID(name string, id uint32, mcEnabled bool) {
 	vmap.lock.Lock()
 	defer vmap.lock.Unlock()
@@ -204,6 +214,13 @@ func (vmap *nodeVNIDMap) handleAddOrUpdateNetNamespace(obj, _ interface{}, event
 	netns := obj.(*networkapi.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
+	// Skip this event if NetID already exists under different netns name
+	if name, found := vmap.findDuplicateNetID(netns.NetName, netns.NetID); found == true {
+		klog.Warningf("Netid %d for namespace %s already exists under different namespace %s",
+			netns.NetID, netns.NetName, name)
+		return
+	}
+
 	// Skip this event if nothing has changed
 	oldNetID, err := vmap.getVNID(netns.NetName)
 	oldMCEnabled := vmap.mcEnabled[netns.NetName]
@@ -225,6 +242,9 @@ func (vmap *nodeVNIDMap) handleDeleteNetNamespace(obj interface{}) {
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", watch.Deleted, netns.Name)
 
 	// Unset VNID first so further operations don't see the deleted VNID
-	vmap.unsetVNID(netns.NetName)
+	if _, err := vmap.unsetVNID(netns.NetName); err != nil {
+		klog.Warningf("Failed to delete namespace %s with error %v", netns.NetName, err)
+		return
+	}
 	vmap.policy.DeleteNetNamespace(netns)
 }
