@@ -445,6 +445,7 @@ func (eit *EgressIPTracker) syncEgressNamespaceState(ns *namespaceEgress) {
 			activeEgressIPs = nil
 			break
 		}
+		eg.assignedVNID = ns.vnid
 		if eg.assignedNodeIP == "" {
 			klog.V(4).Infof("VNID %d cannot use unassigned egress IP %s", ns.vnid, eg.ip)
 		} else if len(ns.requestedIPs) > 1 && eg.nodes[0].offline {
@@ -528,9 +529,18 @@ func (eit *EgressIPTracker) Ping(ip string, timeout time.Duration) bool {
 	return true
 }
 
+func (eit *EgressIPTracker) nodeHasEgressIPForNamespace(node *nodeEgress, eip *egressIPInfo, allocation map[string][]string) bool {
+	if namespace, ok := eit.namespacesByVNID[eip.assignedVNID]; ok {
+		if sets.NewString(allocation[node.nodeName]...).HasAny(namespace.requestedIPs...) {
+			return true
+		}
+	}
+	return false
+}
+
 // Finds the best node to allocate the egress IP to, given the existing allocation. The
 // boolean return value indicates whether multiple nodes could host the IP.
-func (eit *EgressIPTracker) findEgressIPAllocation(ip net.IP, allocation map[string][]string) (string, bool) {
+func (eit *EgressIPTracker) findEgressIPAllocation(eip *egressIPInfo, allocation map[string][]string) (string, bool) {
 	bestNode := ""
 	otherNodes := false
 
@@ -538,9 +548,12 @@ func (eit *EgressIPTracker) findEgressIPAllocation(ip net.IP, allocation map[str
 		if node.offline {
 			continue
 		}
+		if eit.nodeHasEgressIPForNamespace(node, eip, allocation) {
+			continue
+		}
 		egressIPs := allocation[node.nodeName]
 		for _, parsed := range node.parsedCIDRs {
-			if parsed.Contains(ip) {
+			if parsed.Contains(eip.parsed) {
 				if bestNode != "" {
 					otherNodes = true
 					if len(allocation[bestNode]) < len(egressIPs) {
@@ -617,7 +630,7 @@ func (eit *EgressIPTracker) allocateNewEgressIPs(allocation map[string][]string,
 		if alreadyAllocated[egressIP] {
 			continue
 		}
-		nodeName, otherNodes := eit.findEgressIPAllocation(eip.parsed, allocation)
+		nodeName, otherNodes := eit.findEgressIPAllocation(eip, allocation)
 		if nodeName != "" && !otherNodes {
 			allocation[nodeName] = append(allocation[nodeName], egressIP)
 			alreadyAllocated[egressIP] = true
@@ -628,7 +641,7 @@ func (eit *EgressIPTracker) allocateNewEgressIPs(allocation map[string][]string,
 		if alreadyAllocated[egressIP] {
 			continue
 		}
-		nodeName, _ := eit.findEgressIPAllocation(eip.parsed, allocation)
+		nodeName, _ := eit.findEgressIPAllocation(eip, allocation)
 		if nodeName != "" {
 			allocation[nodeName] = append(allocation[nodeName], egressIP)
 		}
