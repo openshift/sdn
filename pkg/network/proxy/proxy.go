@@ -119,12 +119,6 @@ func (proxy *OsdnProxy) ReloadIPTables() error {
 	return nil
 }
 
-func (proxy *OsdnProxy) updateEgressNetworkPolicyLocked(policy networkv1.EgressNetworkPolicy) {
-	proxy.Lock()
-	defer proxy.Unlock()
-	proxy.updateEgressNetworkPolicy(policy)
-}
-
 func (proxy *OsdnProxy) watchEgressNetworkPolicies() {
 	funcs := common.InformerFuncs(&networkv1.EgressNetworkPolicy{}, proxy.handleAddOrUpdateEgressNetworkPolicy, proxy.handleDeleteEgressNetworkPolicy)
 	proxy.networkInformers.Network().V1().EgressNetworkPolicies().Informer().AddEventHandler(funcs)
@@ -149,7 +143,9 @@ func (proxy *OsdnProxy) handleDeleteEgressNetworkPolicy(obj interface{}) {
 	proxy.egressDNS.Delete(*policy)
 	policy.Spec.Egress = nil
 
-	proxy.updateEgressNetworkPolicyLocked(*policy)
+	proxy.Lock()
+	defer proxy.Unlock()
+	proxy.updateEgressNetworkPolicy(*policy)
 }
 
 func (proxy *OsdnProxy) watchNetNamespaces() {
@@ -185,6 +181,7 @@ func (proxy *OsdnProxy) isNamespaceGlobal(ns string) bool {
 	return false
 }
 
+// Assumes lock is held
 func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetworkPolicy) {
 	ns := policy.Namespace
 	if proxy.isNamespaceGlobal(ns) {
@@ -298,6 +295,7 @@ func (proxy *OsdnProxy) endpointsBlocked(ep *corev1.Endpoints) bool {
 	return false
 }
 
+// Assumes lock is held
 func (proxy *OsdnProxy) checkInitialized() {
 	if proxy.servicesSynced && proxy.endpointsSynced && proxy.waitChan != nil {
 		klog.V(2).Info("openshift-sdn proxy services and endpoints initialized")
@@ -358,6 +356,10 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.baseProxy.OnEndpointsSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
 	proxy.endpointsSynced = true
 	proxy.checkInitialized()
 }
@@ -393,6 +395,10 @@ func (proxy *OsdnProxy) OnServiceDelete(service *corev1.Service) {
 
 func (proxy *OsdnProxy) OnServiceSynced() {
 	proxy.baseProxy.OnServiceSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
 	proxy.servicesSynced = true
 	proxy.checkInitialized()
 }
@@ -434,7 +440,11 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 				}
 			}
 
-			proxy.updateEgressNetworkPolicyLocked(policy)
+			func() {
+				proxy.Lock()
+				defer proxy.Unlock()
+				proxy.updateEgressNetworkPolicy(policy)
+			}()
 		}
 	}
 }
