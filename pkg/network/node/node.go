@@ -25,7 +25,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	kapi "k8s.io/kubernetes/pkg/apis/core"
@@ -298,58 +297,89 @@ func (node *OsdnNode) validateMTU() error {
 	}
 	tainted := taints.TaintExists(nodeObj.Spec.Taints, mtuTooSmallTaint)
 	if needsTaint != tainted {
-		resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			nodeObj, err = node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
+		if needsTaint && !tainted {
+			klog.V(2).Infof("Default interface MTU is less than VXLAN overhead, tainting node...")
+			err = node.AddOrRemoveTaint(true, mtuTooSmallTaint)
 			if err != nil {
-				return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
+				return fmt.Errorf("could not taint the node with key %s: %v", MTUTaintKey, err)
 			}
-			nodeObjCopy := nodeObj.DeepCopy()
-			var nodeWithTaintMods *corev1.Node
-
-			if needsTaint && !tainted {
-				klog.V(2).Infof("Default interface MTU is less than VXLAN overhead, tainting node...")
-				nodeWithTaintMods, _, err = taints.AddOrUpdateTaint(nodeObjCopy, mtuTooSmallTaint)
-				if err != nil {
-					return fmt.Errorf("could not taint the node with key %s: %v", MTUTaintKey, err)
-				}
-			} else if !needsTaint && tainted {
-				klog.V(2).Infof("Node has too small MTU taint but default interface MTU is big enough, untainting node...")
-				nodeWithTaintMods, _, err = taints.RemoveTaint(nodeObjCopy, mtuTooSmallTaint)
-				if err != nil {
-					return fmt.Errorf("could not untaint the node with key %s: %v", MTUTaintKey, err)
-				}
-			}
-
-			nodeObjJson, err := json.Marshal(nodeObj)
+		} else if !needsTaint && tainted {
+			klog.V(2).Infof("Node has too small MTU taint but default interface MTU is big enough, untainting node...")
+			err = node.AddOrRemoveTaint(false, mtuTooSmallTaint)
 			if err != nil {
-				return fmt.Errorf("could not marshal old Node object: %v", err)
+				return fmt.Errorf("could not untaint the node with key %s: %v", MTUTaintKey, err)
 			}
-
-			newNodeObjJson, err := json.Marshal(nodeWithTaintMods)
-			if err != nil {
-				return fmt.Errorf("could not marshal new Node object: %v", err)
-			}
-
-			patchBytes, err := strategicpatch.CreateTwoWayMergePatch(nodeObjJson, newNodeObjJson, corev1.Node{})
-			if err != nil {
-				return fmt.Errorf("could not create patch for object: %v", err)
-			}
-
-			_, err = node.kClient.CoreV1().Nodes().Patch(context.TODO(), node.hostName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
-
-			return err
-		})
-
-		if resultErr != nil {
-			return fmt.Errorf("could not update node taints after many retries: %v", resultErr)
 		}
 	}
 
 	return nil
 }
 
-func (node *OsdnNode) Start() error {
+//AddOrRemoveTaint adds or removes the specified taint on the node depending on the setTaint value
+func (node *OsdnNode) AddOrRemoveTaint(setTaint bool, taint *corev1.Taint) error {
+	action := ""
+	if setTaint {
+		action = "adding"
+	} else {
+		action = "removing"
+	}
+
+	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
+	}
+
+	nodeObjJson, err := json.Marshal(nodeObj)
+	if err != nil {
+		klog.Infof("Unable to marshal original node %s object for %s taint %s: %v", node.hostName, action, taint.Key, err)
+		return err
+	}
+
+	var taintedNodeObj *corev1.Node
+	if setTaint {
+		taintedNodeObj, _, err = taints.AddOrUpdateTaint(nodeObj, taint)
+	} else {
+		taintedNodeObj, _, err = taints.RemoveTaint(nodeObj, taint)
+	}
+
+	if err != nil {
+		klog.Infof("Failed %s taint %s on node %s: %v", action, taint.Key, node.hostName, err)
+		return err
+	}
+
+	taintedNodeObjJson, err := json.Marshal(taintedNodeObj)
+	if err != nil {
+		klog.Infof("Unable to marshal updated node %s object for %s taint %s: %v", node.hostName, action, taint.Key, err)
+		return err
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(nodeObjJson, taintedNodeObjJson, kapi.Node{})
+	if err != nil {
+		klog.Infof("Unable to patch the updated node %s object for %s taint %s: %v", node.hostName, action, taint.Key, err)
+		return err
+	}
+
+	if _, err = node.kClient.CoreV1().Nodes().Patch(context.TODO(), node.hostName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil {
+		klog.Infof("Unable to patch the updated node %s object for %s taint %s: %v", node.hostName, action, taint.Key, err)
+		return err
+	}
+
+	klog.Infof("Successful in %s taint %s on node %v", action, taint.Key, node.hostName)
+	return nil
+}
+
+func (node *OsdnNode) Start(stopCh <-chan struct{}) error {
 	klog.V(2).Infof("Starting openshift-sdn network plugin")
+	const networkUnavailableKey string = "network.openshift.io/network-unavailable"
+	networkUnavailableTaint := &corev1.Taint{Key: networkUnavailableKey, Value: "value", Effect: "NoSchedule"}
+
+	go func() {
+		<-stopCh
+		// Add the NoSchedule Taint on the node, before sdn pod gets deleted. Ignore errors.
+		if err := node.AddOrRemoveTaint(true, networkUnavailableTaint); err != nil {
+			klog.Infof("Unsuccessful in adding %s taint on node %v: %v", networkUnavailableKey, node.hostName, err)
+		}
+	}()
 
 	var err error
 	node.localSubnetCIDR, err = node.getLocalSubnet()
@@ -424,6 +454,11 @@ func (node *OsdnNode) Start() error {
 		metrics.GatherPeriodicMetrics()
 		node.oc.ovs.UpdateOVSMetrics()
 	}, time.Minute*2)
+
+	// Remove the NoSchedule Taint from the node, now that networking setup is done. Ignore errors, only issue warning.
+	if err := node.AddOrRemoveTaint(false, networkUnavailableTaint); err != nil {
+		klog.Warningf("Unsuccessful in removing %s taint on node %v: %v", networkUnavailableKey, node.hostName, err)
+	}
 
 	return nil
 }
