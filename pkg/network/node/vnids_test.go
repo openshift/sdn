@@ -143,6 +143,27 @@ func TestNodeVNIDMap(t *testing.T) {
 	checkNamespaces(t, vmap, 5, []string{"foxtrot"})
 
 	checkAllocatedVNIDs(t, vmap, []uint32{1, 2, 5})
+
+	vmap.setVNID("dup_ns1", 10, false)
+	vmap.setVNID("dup_ns2", 20, false)
+
+	checkForDuplicateNetID(t, vmap, "ns1", 10) // duplicate with dup_ns1
+	checkForDuplicateNetID(t, vmap, "ns2", 20) // duplicate with dup_ns2
+
+	checkForNoDuplicateNetID(t, vmap, "ns1", 15)
+	checkForNoDuplicateNetID(t, vmap, "ns2", 25)
+}
+
+func checkForDuplicateNetID(t *testing.T, vmap *nodeVNIDMap, name string, id uint32) {
+	if _, found := vmap.findDuplicateNetID(name, id); found == false {
+		t.Fatalf("Unexpected failure: name %s id %d", name, id)
+	}
+}
+
+func checkForNoDuplicateNetID(t *testing.T, vmap *nodeVNIDMap, name string, id uint32) {
+	if _, found := vmap.findDuplicateNetID(name, id); found == true {
+		t.Fatalf("Unexpected failure: name %s id %d", name, id)
+	}
 }
 
 func checkExists(t *testing.T, vmap *nodeVNIDMap, name string, expected uint32) {
