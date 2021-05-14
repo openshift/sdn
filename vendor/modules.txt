@@ -985,7 +985,7 @@ k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/proto/validation
-# k8s.io/kube-proxy v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20210406190112-0dcf98c648c8
+# k8s.io/kube-proxy v0.0.0 => github.com/danwinship/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20210513170149-7c11feda59b3
 k8s.io/kube-proxy/config/v1alpha1
 # k8s.io/kubectl v1.21.0-rc.0 => github.com/openshift/kubernetes/staging/src/k8s.io/kubectl v0.0.0-20210406190112-0dcf98c648c8
 k8s.io/kubectl/pkg/cmd/util
@@ -996,7 +996,7 @@ k8s.io/kubectl/pkg/util/openapi/validation
 k8s.io/kubectl/pkg/util/templates
 k8s.io/kubectl/pkg/util/term
 k8s.io/kubectl/pkg/validation
-# k8s.io/kubernetes v1.21.0-rc.0 => github.com/openshift/kubernetes v1.21.0-beta.1.0.20210406190112-0dcf98c648c8
+# k8s.io/kubernetes v1.21.0-rc.0 => github.com/danwinship/kubernetes v1.1.0-alpha.0.0.20210513170149-7c11feda59b3
 k8s.io/kubernetes/cmd/kube-proxy
 k8s.io/kubernetes/cmd/kube-proxy/app
 k8s.io/kubernetes/pkg/api/legacyscheme
