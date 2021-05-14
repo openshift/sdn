@@ -117,6 +117,27 @@ func (p *HybridProxier) releaseService(svcName types.NamespacedName) {
 		return
 	}
 
+	// If necessary, switch the service to the other proxy
+	if hsvc.knownService && (hsvc.usingUserspace != hsvc.switchedToUserspace) {
+		service, err := p.serviceLister.Services(svcName.Namespace).Get(svcName.Name)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("Error while getting service %s from cache: %v", svcName, err))
+			return
+		}
+
+		if hsvc.usingUserspace {
+			klog.Infof("switching svc %s to unidling proxy", svcName)
+			p.mainProxy.OnServiceDelete(service)
+			p.unidlingProxy.OnServiceAdd(service)
+		} else {
+			klog.Infof("switching svc %s to main proxy", svcName)
+			p.unidlingProxy.OnServiceDelete(service)
+			p.mainProxy.OnServiceAdd(service)
+		}
+
+		hsvc.switchedToUserspace = hsvc.usingUserspace
+	}
+
 	if !hsvc.knownService && !hsvc.knownEndpoints {
 		delete(p.services, svcName)
 	}
@@ -138,6 +159,8 @@ func (p *HybridProxier) OnServiceAdd(service *corev1.Service) {
 		klog.V(6).Infof("add svc %s in main proxy", svcName)
 		p.mainProxy.OnServiceAdd(service)
 	}
+
+	hsvc.switchedToUserspace = hsvc.usingUserspace
 }
 
 func (p *HybridProxier) OnServiceUpdate(oldService, service *corev1.Service) {
@@ -170,6 +193,8 @@ func (p *HybridProxier) OnServiceDelete(service *corev1.Service) {
 		klog.V(6).Infof("del svc %s in main proxy", svcName)
 		p.mainProxy.OnServiceDelete(service)
 	}
+
+	hsvc.switchedToUserspace = false
 }
 
 func (p *HybridProxier) OnServiceSynced() {
@@ -198,54 +223,17 @@ func (p *HybridProxier) shouldEndpointsUseUserspace(endpoints *corev1.Endpoints)
 	return false
 }
 
-// switchService moves a service between the unidling and main proxies.
-func (p *HybridProxier) switchService(svcName types.NamespacedName, hsvc *hybridProxierService) {
-	// We shouldn't call switchService more than once (per switch), but there
-	// are some logic bugs where this happens
-	// So, cache the real state and don't allow this to be called twice.
-	// This assumes the caller already holds serviceLock
-	if hsvc.usingUserspace == hsvc.switchedToUserspace {
-		klog.V(6).Infof("ignoring duplicate switchService(%s)", svcName)
-		return
-	}
-
-	svc, err := p.serviceLister.Services(svcName.Namespace).Get(svcName.Name)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error while getting service %s from cache: %v", svcName, err))
-		return
-	}
-
-	if hsvc.usingUserspace {
-		klog.Infof("switching svc %s to unidling proxy", svcName)
-		p.unidlingProxy.OnServiceAdd(svc)
-		p.mainProxy.OnServiceDelete(svc)
-	} else {
-		klog.Infof("switching svc %s to main proxy", svcName)
-		p.mainProxy.OnServiceAdd(svc)
-		p.unidlingProxy.OnServiceDelete(svc)
-	}
-
-	hsvc.switchedToUserspace = hsvc.usingUserspace
-}
-
 func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
 	hsvc.knownEndpoints = true
-	wasUsingUserspace := hsvc.usingUserspace
 	hsvc.usingUserspace = p.shouldEndpointsUseUserspace(endpoints)
 
 	klog.V(6).Infof("add ep %s", svcName)
 	p.unidlingProxy.OnEndpointsAdd(endpoints)
 	p.mainProxy.OnEndpointsAdd(endpoints)
-
-	// a service could appear before endpoints, so we have to treat this as a potential
-	// state modification for services, and not just an addition (since we could flip proxies).
-	if hsvc.knownService && wasUsingUserspace != hsvc.usingUserspace {
-		p.switchService(svcName, hsvc)
-	}
 }
 
 func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoints) {
@@ -253,16 +241,12 @@ func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoi
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
-	wasUsingUserspace := hsvc.usingUserspace
 	hsvc.usingUserspace = p.shouldEndpointsUseUserspace(endpoints)
 
 	klog.V(6).Infof("update ep %s", svcName)
 	p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
 	p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
 
-	if wasUsingUserspace != hsvc.usingUserspace {
-		p.switchService(svcName, hsvc)
-	}
 }
 
 func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
@@ -271,6 +255,7 @@ func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
 	defer p.releaseService(svcName)
 
 	hsvc.knownEndpoints = false
+	hsvc.usingUserspace = false
 
 	klog.V(6).Infof("del ep %s", svcName)
 	p.unidlingProxy.OnEndpointsDelete(endpoints)
