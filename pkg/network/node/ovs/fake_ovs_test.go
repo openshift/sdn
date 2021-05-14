@@ -247,7 +247,7 @@ func TestFakeDumpFlows(t *testing.T) {
 	otx.AddFlow("table=0, priority=250, in_port=2, ip, nw_dst=224.0.0.0/4, actions=drop")
 	otx.AddFlow("table=80, priority=300, ip, nw_src=%s/32, actions=output:NXM_NX_REG2[]", localSubnetGateway)
 	otx.AddFlow("table=21, priority=0, actions=goto_table:30")
-	otx.AddFlow("table=30, priority=0, ip, actions=goto_table:100")
+	otx.AddFlow("table=30, priority=0, ip, actions=goto_table:99")
 	otx.AddFlow("table=0, priority=0, actions=drop")
 	otx.AddFlow("table=0, priority=100, ip, actions=goto_table:20")
 	otx.AddFlow("table=0, priority=200, in_port=1, arp, nw_src=%s, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10", clusterNetworkCIDR, localSubnetCIDR)
@@ -285,7 +285,7 @@ func TestFakeDumpFlows(t *testing.T) {
 		" cookie=0, table=30, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120",
 		" cookie=0, table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110",
 		" cookie=0, table=30, priority=0, arp, actions=drop",
-		" cookie=0, table=30, priority=0, ip, actions=goto_table:100",
+		" cookie=0, table=30, priority=0, ip, actions=goto_table:99",
 		" cookie=0, table=35, priority=300, ip, nw_dst=10.129.0.1, actions=ct(commit,exec(set_field:1->ct_mark),table=70)",
 		" cookie=0, table=40, priority=0, actions=drop",
 		" cookie=0, table=50, priority=0, actions=drop",
@@ -316,7 +316,7 @@ func TestFakeDumpFlows(t *testing.T) {
 		" cookie=0, table=30, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120",
 		" cookie=0, table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110",
 		" cookie=0, table=30, priority=0, arp, actions=drop",
-		" cookie=0, table=30, priority=0, ip, actions=goto_table:100",
+		" cookie=0, table=30, priority=0, ip, actions=goto_table:99",
 	})
 	if err != nil {
 		t.Fatalf(err.Error())

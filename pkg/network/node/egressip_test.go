@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	//"strconv"
 	"strings"
 	"testing"
 
@@ -72,7 +71,7 @@ type egressOVSChange struct {
 // the new/current set of flows in flows.
 func assertOVSChanges(eip *egressIPWatcher, flows *[]string, changes ...egressOVSChange) error {
 	oldFlows := *flows
-	newFlows, err := eip.oc.ovs.DumpFlows("table=100")
+	newFlows, err := eip.oc.ovs.DumpFlows("table=101")
 	if err != nil {
 		return fmt.Errorf("unexpected error dumping OVS flows: %v", err)
 	}
@@ -176,7 +175,7 @@ func setupEgressIPWatcher(t *testing.T) (*egressIPWatcher, []string) {
 	eip := newEgressIPWatcher(oc, "172.17.0.4", &masqBit)
 	eip.testModeChan = make(chan string, 10)
 
-	flows, err := eip.oc.ovs.DumpFlows("table=100")
+	flows, err := eip.oc.ovs.DumpFlows("table=101")
 	if err != nil {
 		t.Fatalf("unexpected error dumping OVS flows: %v", err)
 	}
