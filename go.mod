@@ -85,11 +85,11 @@ replace (
 	k8s.io/csi-translation-lib => github.com/openshift/kubernetes/staging/src/k8s.io/csi-translation-lib v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/kube-aggregator => github.com/openshift/kubernetes/staging/src/k8s.io/kube-aggregator v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/kube-controller-manager => github.com/openshift/kubernetes/staging/src/k8s.io/kube-controller-manager v0.0.0-20210406190112-0dcf98c648c8
-	k8s.io/kube-proxy => github.com/openshift/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20210406190112-0dcf98c648c8
+	k8s.io/kube-proxy => github.com/danwinship/kubernetes/staging/src/k8s.io/kube-proxy v0.0.0-20210513170149-7c11feda59b3
 	k8s.io/kube-scheduler => github.com/openshift/kubernetes/staging/src/k8s.io/kube-scheduler v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/kubectl => github.com/openshift/kubernetes/staging/src/k8s.io/kubectl v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/kubelet => github.com/openshift/kubernetes/staging/src/k8s.io/kubelet v0.0.0-20210406190112-0dcf98c648c8
-	k8s.io/kubernetes => github.com/openshift/kubernetes v1.21.0-beta.1.0.20210406190112-0dcf98c648c8
+	k8s.io/kubernetes => github.com/danwinship/kubernetes v1.1.0-alpha.0.0.20210513170149-7c11feda59b3
 	k8s.io/legacy-cloud-providers => github.com/openshift/kubernetes/staging/src/k8s.io/legacy-cloud-providers v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/metrics => github.com/openshift/kubernetes/staging/src/k8s.io/metrics v0.0.0-20210406190112-0dcf98c648c8
 	k8s.io/mount-utils => github.com/openshift/kubernetes/staging/src/k8s.io/mount-utils v0.0.0-20210406190112-0dcf98c648c8

@@ -121,6 +121,8 @@ type serviceInfo struct {
 	servicePortChainName     utiliptables.Chain
 	serviceFirewallChainName utiliptables.Chain
 	serviceLBChainName       utiliptables.Chain
+
+	preferLocal bool
 }
 
 // returns a new proxy.ServicePort which abstracts a serviceInfo
@@ -135,6 +137,10 @@ func newServiceInfo(port *v1.ServicePort, service *v1.Service, baseInfo *proxy.B
 	info.servicePortChainName = servicePortChainName(info.serviceNameString, protocol)
 	info.serviceFirewallChainName = serviceFirewallChainName(info.serviceNameString, protocol)
 	info.serviceLBChainName = serviceLBChainName(info.serviceNameString, protocol)
+
+	if _, set := service.Annotations["traffic-policy.network.openshift.io/prefer-local"]; set {
+		info.preferLocal = true
+	}
 
 	return info
 }
@@ -1027,27 +1033,36 @@ func (proxier *Proxier) syncProxyRules() {
 		allEndpoints = proxy.FilterEndpoints(allEndpoints, svcInfo, proxier.nodeLabels)
 
 		readyEndpoints := make([]proxy.Endpoint, 0, len(allEndpoints))
+		localEndpoints := make([]proxy.Endpoint, 0, len(allEndpoints))
 		for _, endpoint := range allEndpoints {
 			if !endpoint.IsReady() {
 				continue
 			}
 
 			readyEndpoints = append(readyEndpoints, endpoint)
+			if endpoint.GetIsLocal() {
+				localEndpoints = append(localEndpoints, endpoint)
+			}
 		}
 		hasEndpoints := len(readyEndpoints) > 0
+		hasLocalEndpoints := len(localEndpoints) > 0
 
 		// Prefer local endpoint for the DNS service.
 		// Fixes <https://bugzilla.redhat.com/show_bug.cgi?id=1919737>.
 		// TODO: Delete this if-block once internal traffic policy is
 		// implemented and the DNS operator is updated to use it.
 		if svcNameString == "openshift-dns/dns-default:dns" {
-			for _, ep := range allEndpoints {
-				if ep.GetIsLocal() {
-					klog.V(4).Infof("Found a local endpoint %q for service %q; preferring the local endpoint and ignoring %d other endpoints", ep.String(), svcNameString, len(allEndpoints) - 1)
-					allEndpoints = []proxy.Endpoint{ep}
-					break
-				}
+			if hasLocalEndpoints {
+				klog.V(4).Infof("Found %d local endpoint(s) for service %q; preferring the local endpoint and ignoring %d other endpoint(s)", len(localEndpoints), svcNameString, len(allEndpoints) - len(localEndpoints))
+				readyEndpoints = localEndpoints
 			}
+		}
+
+		// Prefer *but don't require* local endpoints for
+		// "externalTrafficPolicy: Local" services with the "prefer-local" annotation
+		nodeLocalExternal := svcInfo.NodeLocalExternal()
+		if nodeLocalExternal && svcInfo.preferLocal && !hasLocalEndpoints {
+			nodeLocalExternal = false
 		}
 
 		svcChain := svcInfo.servicePortChainName
@@ -1062,7 +1077,7 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		svcXlbChain := svcInfo.serviceLBChainName
-		if svcInfo.NodeLocalExternal() {
+		if nodeLocalExternal {
 			// Only for services request OnlyLocal traffic
 			// create the per-service LB chain, retaining counters if possible.
 			if lbChain, ok := existingNATChains[svcXlbChain]; ok {
@@ -1155,7 +1170,7 @@ func (proxier *Proxier) syncProxyRules() {
 				// and the traffic is NOT Local. Local traffic coming from Pods and Nodes will
 				// be always forwarded to the corresponding Service, so no need to SNAT
 				// If we can't differentiate the local traffic we always SNAT.
-				if !svcInfo.NodeLocalExternal() {
+				if !nodeLocalExternal {
 					destChain = svcChain
 					// This masquerades off-cluster traffic to a External IP.
 					if proxier.localDetector.IsImplemented() {
@@ -1215,7 +1230,7 @@ func (proxier *Proxier) syncProxyRules() {
 					chosenChain := svcXlbChain
 					// If we are proxying globally, we need to masquerade in case we cross nodes.
 					// If we are proxying only locally, we can retain the source IP.
-					if !svcInfo.NodeLocalExternal() {
+					if !nodeLocalExternal {
 						utilproxy.WriteLine(proxier.natRules, append(args, "-j", string(KubeMarkMasqChain))...)
 						chosenChain = svcChain
 					}
@@ -1312,7 +1327,7 @@ func (proxier *Proxier) syncProxyRules() {
 					"-m", protocol, "-p", protocol,
 					"--dport", strconv.Itoa(svcInfo.NodePort()),
 				)
-				if !svcInfo.NodeLocalExternal() {
+				if !nodeLocalExternal {
 					// Nodeports need SNAT, unless they're local.
 					utilproxy.WriteLine(proxier.natRules, append(args, "-j", string(KubeMarkMasqChain))...)
 					// Jump to the service chain.
@@ -1406,7 +1421,7 @@ func (proxier *Proxier) syncProxyRules() {
 		localEndpointChains := make([]utiliptables.Chain, 0)
 		for i, endpointChain := range endpointChains {
 			// Write ingress loadbalancing & DNAT rules only for services that request OnlyLocal traffic.
-			if svcInfo.NodeLocalExternal() && endpoints[i].IsLocal {
+			if nodeLocalExternal && endpoints[i].IsLocal {
 				localEndpointChains = append(localEndpointChains, endpointChains[i])
 			}
 
@@ -1447,7 +1462,7 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		// The logic below this applies only if this service is marked as OnlyLocal
-		if !svcInfo.NodeLocalExternal() {
+		if !nodeLocalExternal {
 			continue
 		}
 
