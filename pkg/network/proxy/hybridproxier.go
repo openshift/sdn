@@ -34,8 +34,9 @@ type HybridProxier struct {
 
 	mainProxy     HybridizableProxy
 	unidlingProxy HybridizableProxy
-	minSyncPeriod time.Duration
+
 	serviceLister corev1listers.ServiceLister
+	syncRunner    *async.BoundedFrequencyRunner
 
 	// TODO(directxman12): figure out a good way to avoid duplicating this information
 	// (it's saved in the individual proxies as well)
@@ -52,9 +53,6 @@ type HybridProxier struct {
 	switchedToUserspace     map[types.NamespacedName]bool
 	switchedToUserspaceLock sync.Mutex
 
-	// A gate that prevents iptables from being exhausted by proxy calls.
-	syncRunner *async.BoundedFrequencyRunner
-
 	// This map is used in unidling proxy mode to ensure the service is correctly deleted
 	// if it's deletion occurs after the deletion of the endpoint.
 	pendingDeletion map[types.NamespacedName]bool
@@ -69,7 +67,7 @@ func NewHybridProxier(
 	p := &HybridProxier{
 		mainProxy:     mainProxy,
 		unidlingProxy: unidlingProxy,
-		minSyncPeriod: minSyncPeriod,
+
 		serviceLister: serviceLister,
 
 		usingUserspace:      make(map[types.NamespacedName]bool),
