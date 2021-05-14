@@ -108,13 +108,21 @@ func TestHybridProxy(t *testing.T) {
 	svc1idled := svc1.DeepCopy()
 	svc1idled.Annotations[unidlingapi.IdledAtAnnotation] = "now"
 	proxy.OnServiceUpdate(svc1, svc1idled)
+
+	// Because a service needs both an annotation and empty endpoints in order to
+	// become idle, it should not be idle yet (which means also that the service
+	// update gets passed through).
+	mainProxy.assertEvents("after annotating service but not removing endpoints",
+		"update service testns/one",
+	)
+	unidlingProxy.assertNoEvents("after annotating service but not removing endpoints")
+
 	ep1idled := ep1.DeepCopy()
 	ep1idled.Subsets[0].Addresses = nil
 	ep1idled.Annotations[unidlingapi.IdledAtAnnotation] = "now"
 	proxy.OnEndpointsUpdate(ep1, ep1idled)
 
 	err = mainProxy.assertEvents("after idling first service",
-		"update service testns/one",
 		"delete service testns/one",
 		"update endpoints testns/one -",
 	)
@@ -129,7 +137,9 @@ func TestHybridProxy(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// Unidle the service, reverting the previous change
+	// Unidle the service, reverting the previous change. This time neither proxy
+	// sees the "service update testns/one" because removing the annotation immediately
+	// unidles the service, so that event gets translated into the delete/add.
 	proxy.OnServiceUpdate(svc1idled, svc1)
 	proxy.OnEndpointsUpdate(ep1idled, ep1)
 
@@ -141,7 +151,6 @@ func TestHybridProxy(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	err = unidlingProxy.assertEvents("after unidling first service",
-		"update service testns/one",
 		"delete service testns/one",
 		"update endpoints testns/one 1.2.3.4",
 	)
@@ -222,13 +231,14 @@ func TestHybridProxy(t *testing.T) {
 	}
 	err = unidlingProxy.assertEvents("after idling second service",
 		"add service testns/two",
-		"update service testns/two",
 		"update endpoints testns/two -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
+	// Since we modify the Endpoints first this time, the service will be unidled
+	// then, and so the Service change will be seen by the main proxy.
 	proxy.OnEndpointsUpdate(ep2idled, ep2)
 	proxy.OnServiceUpdate(svc2idled, svc2)
 
@@ -376,6 +386,85 @@ func TestHybridProxy(t *testing.T) {
 	err = unidlingProxy.assertEvents("after cleanup",
 		"delete endpoints testns/one 5.6.7.8",
 		"delete endpoints testns/two 9.10.11.12",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestHybridProxyPreIdled(t *testing.T) {
+	proxy, mainProxy, unidlingProxy, err := newTestOsdnProxy()
+	if err != nil {
+		t.Fatalf("unexpected error creating OsdnProxy: %v", err)
+	}
+
+	// Create a Service which is already idled when it is first created
+
+	eppi := makeEndpoints("testns", "pre-idled")
+	proxy.OnEndpointsAdd(eppi)
+
+	svcpi := makeService("testns", "pre-idled")
+	svcpi.Annotations[unidlingapi.IdledAtAnnotation] = "now"
+	err = createServiceAndWait(svcpi, proxy)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+	proxy.OnServiceAdd(svcpi)
+
+	err = mainProxy.assertEvents("after creating pre-idled service",
+		"add endpoints testns/pre-idled -",
+		"add service testns/pre-idled",
+		"delete service testns/pre-idled",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after creating pre-idled service",
+		"add service testns/pre-idled",
+		"add endpoints testns/pre-idled -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Now un-idle the service
+	svcpiUnidled := makeService("testns", "pre-idled")
+	proxy.OnServiceUpdate(svcpi, svcpiUnidled)
+	eppiUnidled := makeEndpoints("testns", "pre-idled", "1.2.3.4")
+	proxy.OnEndpointsUpdate(eppi, eppiUnidled)
+
+	err = mainProxy.assertEvents("after unidling pre-idled service",
+		"add service testns/pre-idled",
+		"update endpoints testns/pre-idled 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after unidling pre-idled service",
+		"delete service testns/pre-idled",
+		"update endpoints testns/pre-idled 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Now delete it
+	err = deleteServiceAndWait(svcpiUnidled, proxy)
+	if err != nil {
+		t.Fatalf("unexpected error deleting service: %v", err)
+	}
+	proxy.OnServiceDelete(svcpiUnidled)
+	proxy.OnEndpointsDelete(eppiUnidled)
+
+	err = mainProxy.assertEvents("after deleting pre-idled service",
+		"delete service testns/pre-idled",
+		"delete endpoints testns/pre-idled 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after deleting pre-idled service",
+		"delete endpoints testns/pre-idled 1.2.3.4",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
