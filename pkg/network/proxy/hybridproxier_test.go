@@ -63,6 +63,7 @@ func TestHybridProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating OsdnProxy: %v", err)
 	}
+	hybridProxy := proxy.baseProxy.(*HybridProxier)
 
 	// *****
 
@@ -96,9 +97,7 @@ func TestHybridProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = unidlingProxy.assertEvents("after creating first endpoints",
-		"add endpoints testns/one 1.2.3.4",
-	)
+	err = unidlingProxy.assertNoEvents("after creating first endpoints")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -112,10 +111,16 @@ func TestHybridProxy(t *testing.T) {
 	// Because a service needs both an annotation and empty endpoints in order to
 	// become idle, it should not be idle yet (which means also that the service
 	// update gets passed through).
-	mainProxy.assertEvents("after annotating service but not removing endpoints",
+	err = mainProxy.assertEvents("after annotating service but not removing endpoints",
 		"update service testns/one",
 	)
-	unidlingProxy.assertNoEvents("after annotating service but not removing endpoints")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertNoEvents("after annotating service but not removing endpoints")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
 
 	ep1idled := ep1.DeepCopy()
 	ep1idled.Subsets[0].Addresses = nil
@@ -131,7 +136,7 @@ func TestHybridProxy(t *testing.T) {
 	}
 	err = unidlingProxy.assertEvents("after idling first service",
 		"add service testns/one",
-		"update endpoints testns/one -",
+		"add endpoints testns/one -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -158,7 +163,8 @@ func TestHybridProxy(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// Modify the endpoints; both proxies will see the change
+	// Modify the endpoints; the unidling proxy will see the change since
+	// the Service is still in the Unidling state
 	ep1modified := makeEndpoints("testns", "one", "5.6.7.8")
 	proxy.OnEndpointsUpdate(ep1, ep1modified)
 
@@ -175,6 +181,32 @@ func TestHybridProxy(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
+	// Fake out the passage of time and do another update; now the unidling
+	// proxy should see it as a delete
+	svcName := ktypes.NamespacedName{Namespace: "testns", Name: "one"}
+	hsvc := hybridProxy.getService(svcName)
+	expiredTime := time.Now().Add(-time.Hour)
+	hsvc.unidledAt = &expiredTime
+	hybridProxy.releaseService(svcName)
+
+	ep1modified2 := makeEndpoints("testns", "one", "9.10.11.12")
+	proxy.OnEndpointsUpdate(ep1modified, ep1modified2)
+
+	mainProxy.assertEvents("after re-modifying first service",
+		"update endpoints testns/one 9.10.11.12",
+	)
+	unidlingProxy.assertEvents("after re-modifying first service",
+		"delete endpoints testns/one 5.6.7.8",
+	)
+
+	// Change the endpoints back; the unidling proxy should not see the event
+	proxy.OnEndpointsUpdate(ep1, ep1modified)
+
+	mainProxy.assertEvents("after re-re-modifying first service",
+		"update endpoints testns/one 5.6.7.8",
+	)
+	unidlingProxy.assertNoEvents("after re-re-modifying first service")
+
 	// *****
 
 	// Create another service, but this time create the endpoints first
@@ -187,9 +219,7 @@ func TestHybridProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = unidlingProxy.assertEvents("after creating second endpoints",
-		"add endpoints testns/two 9.10.11.12",
-	)
+	err = unidlingProxy.assertNoEvents("after creating second endpoints")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -231,7 +261,7 @@ func TestHybridProxy(t *testing.T) {
 	}
 	err = unidlingProxy.assertEvents("after idling second service",
 		"add service testns/two",
-		"update endpoints testns/two -",
+		"add endpoints testns/two -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -290,9 +320,7 @@ func TestHybridProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	err = unidlingProxy.assertEvents("after creating third endpoints",
-		"add endpoints testns/three 1.2.3.4",
-	)
+	err = unidlingProxy.assertNoEvents("after creating third endpoints")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -315,7 +343,7 @@ func TestHybridProxy(t *testing.T) {
 	}
 	err = unidlingProxy.assertEvents("after idling third service",
 		"add service testns/three",
-		"update endpoints testns/three -",
+		"add endpoints testns/three -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -384,7 +412,6 @@ func TestHybridProxy(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	err = unidlingProxy.assertEvents("after cleanup",
-		"delete endpoints testns/one 5.6.7.8",
 		"delete endpoints testns/two 9.10.11.12",
 	)
 	if err != nil {
@@ -465,6 +492,178 @@ func TestHybridProxyPreIdled(t *testing.T) {
 	}
 	err = unidlingProxy.assertEvents("after deleting pre-idled service",
 		"delete endpoints testns/pre-idled 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestHybridProxyReIdling(t *testing.T) {
+	proxy, mainProxy, unidlingProxy, err := newTestOsdnProxy()
+	if err != nil {
+		t.Fatalf("unexpected error creating OsdnProxy: %v", err)
+	}
+	hybridProxy := proxy.baseProxy.(*HybridProxier)
+
+	// ****
+
+	// Create a Service, idle and unidle it, then re-idle it again while it's still in
+	// the Unidling state.
+
+	svcri := makeService("testns", "re-idle")
+	err = createServiceAndWait(svcri, proxy)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+	proxy.OnServiceAdd(svcri)
+
+	epri := makeEndpoints("testns", "re-idle", "1.2.3.4")
+	proxy.OnEndpointsAdd(epri)
+
+	err = mainProxy.assertEvents("after creating re-idling service",
+		"add service testns/re-idle",
+		"add endpoints testns/re-idle 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertNoEvents("after creating re-idle service")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Idle and then un-idle the service
+	epriIdled := makeEndpoints("testns", "re-idle")
+	proxy.OnEndpointsUpdate(epri, epriIdled)
+	svcriIdled := svcri.DeepCopy()
+	svcriIdled.Annotations[unidlingapi.IdledAtAnnotation] = "now"
+	proxy.OnServiceUpdate(svcri, svcriIdled)
+
+	err = mainProxy.assertEvents("after idling re-idle service",
+		"delete service testns/re-idle",
+		"update endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after idling re-idle service",
+		"add service testns/re-idle",
+		"add endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	proxy.OnServiceUpdate(svcriIdled, svcri)
+	proxy.OnEndpointsUpdate(epriIdled, epri)
+
+	err = mainProxy.assertEvents("after unidling re-idle service",
+		"add service testns/re-idle",
+		"update endpoints testns/re-idle 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after unidling re-idle service",
+		"delete service testns/re-idle",
+		"update endpoints testns/re-idle 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Now re-idle the Service; note in particular that the unidling proxy
+	// should see an "update endpoints" event this time.
+	proxy.OnEndpointsUpdate(epri, epriIdled)
+	proxy.OnServiceUpdate(svcri, svcriIdled)
+
+	err = mainProxy.assertEvents("after re-idling re-idle service",
+		"delete service testns/re-idle",
+		"update endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after re-idling re-idle service",
+		"add service testns/re-idle",
+		"update endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Unidle
+	proxy.OnServiceUpdate(svcriIdled, svcri)
+	proxy.OnEndpointsUpdate(epriIdled, epri)
+
+	err = mainProxy.assertEvents("after unidling re-idle service",
+		"add service testns/re-idle",
+		"update endpoints testns/re-idle 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after unidling re-idle service",
+		"delete service testns/re-idle",
+		"update endpoints testns/re-idle 1.2.3.4",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Fake out the passage of time...
+	svcName := ktypes.NamespacedName{Namespace: "testns", Name: "re-idle"}
+	hsvc := hybridProxy.getService(svcName)
+	expiredTime := time.Now().Add(-time.Hour)
+	hsvc.unidledAt = &expiredTime
+	hybridProxy.releaseService(svcName)
+
+	// Idle again; because the Unidling period expired this time, the events on the
+	// unidlingProxy are slightly different this time
+
+	proxy.OnEndpointsUpdate(epri, epriIdled)
+	proxy.OnServiceUpdate(svcri, svcriIdled)
+
+	err = mainProxy.assertEvents("after re-idling re-idle service after time passed",
+		"delete service testns/re-idle",
+		"update endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after re-idling re-idle service after time passed",
+		"add service testns/re-idle",
+		"delete endpoints testns/re-idle 1.2.3.4",
+		"add endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// More time passes
+	svcName = ktypes.NamespacedName{Namespace: "testns", Name: "re-idle"}
+	hsvc = hybridProxy.getService(svcName)
+	expiredTime = time.Now().Add(-time.Hour)
+	hsvc.unidledAt = &expiredTime
+	hybridProxy.releaseService(svcName)
+
+	// And delete it
+	err = deleteServiceAndWait(svcriIdled, proxy)
+	if err != nil {
+		t.Fatalf("unexpected error deleting service: %v", err)
+	}
+	proxy.OnServiceDelete(svcriIdled)
+	proxy.OnEndpointsDelete(epriIdled)
+
+	err = mainProxy.assertEvents("after deleting re-idle service",
+		"delete endpoints testns/re-idle -",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	err = unidlingProxy.assertEvents("after deleting re-idle service",
+		"delete service testns/re-idle",
+		"delete endpoints testns/re-idle -",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)

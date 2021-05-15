@@ -26,7 +26,24 @@ type HybridizableProxy interface {
 	SetSyncRunner(b *async.BoundedFrequencyRunner)
 }
 
-// hybridProxierService is our cached state for a given Service/Endpoints
+// hybridProxierService is our cached state for a given Service/Endpoints.
+//
+// A running Service can be in one of three states:
+//
+//   - Not Idled (known to the mainProxy but not the unidlingProxy). A Not Idled Service
+//     becomes Idled when its Service gets annotated and its Endpoints is empty. (Both
+//     conditions must be true.)
+//
+//   - Idled (known to the unidlingProxy but not the mainProxy). An Idled Service becomes
+//     Unidling when either its Service annotation is removed or its Endpoints become
+//     non-empty.
+//
+//   - Unidling (the Service and Endpoints are known to the mainProxy, and the Endpoints
+//     are known to the unidling proxy). While a Service is Unidling, Endpoints events are
+//     sent to both proxies (so the unidling proxy socket can redirect its connection to
+//     the correct place). An Unidling Service becomes Not Idled if its Endpoints are
+//     deleted, or else the next time it receives an Endpoints event more than 1 minute
+//     after becoming Unidling. (Alternatively it could also become Idled again.)
 type hybridProxierService struct {
 	// whether the Service/Endpoints are known to us
 	knownService   bool
@@ -34,14 +51,25 @@ type hybridProxierService struct {
 
 	// cached info about the Service/Endpoints
 	serviceHasIdleAnnotation bool
-	endpointsNonEmpty        bool
+	emptyEndpoints           *corev1.Endpoints
 
 	// idling/unidling state
-	isIdled bool
+	isIdled   bool
+	unidledAt *time.Time
 }
 
+const unidlingEndpointsLag = time.Minute
+
 func (hsvc *hybridProxierService) shouldBeIdled() bool {
-	return hsvc.serviceHasIdleAnnotation && !hsvc.endpointsNonEmpty
+	return hsvc.serviceHasIdleAnnotation && hsvc.emptyEndpoints != nil
+}
+
+func (hsvc *hybridProxierService) unidlingProxyWantsEndpoints() bool {
+	return hsvc.isIdled || (hsvc.unidledAt != nil && time.Since(*hsvc.unidledAt) < unidlingEndpointsLag)
+}
+
+func (hsvc *hybridProxierService) unidlingPeriodHasExpired() bool {
+	return hsvc.unidledAt != nil && !hsvc.unidlingProxyWantsEndpoints()
 }
 
 // HybridProxier runs an unidling proxy and a primary proxy at the same time,
@@ -138,12 +166,18 @@ func (p *HybridProxier) releaseService(svcName types.NamespacedName) {
 			klog.Infof("switching svc %s to unidling proxy", svcName)
 			p.mainProxy.OnServiceDelete(service)
 			p.unidlingProxy.OnServiceAdd(service)
+			if !hsvc.unidlingProxyWantsEndpoints() {
+				p.unidlingProxy.OnEndpointsAdd(hsvc.emptyEndpoints)
+			}
 			hsvc.isIdled = true
+			hsvc.unidledAt = nil
 		} else {
 			klog.Infof("switching svc %s to main proxy", svcName)
 			p.unidlingProxy.OnServiceDelete(service)
 			p.mainProxy.OnServiceAdd(service)
 			hsvc.isIdled = false
+			now := time.Now()
+			hsvc.unidledAt = &now
 		}
 	}
 
@@ -189,7 +223,8 @@ func (p *HybridProxier) OnServiceUpdate(oldService, service *corev1.Service) {
 			p.mainProxy.OnServiceUpdate(oldService, service)
 		}
 	}
-	// otherwise, releaseService will deal with switching the service to the other proxy
+	// otherwise, releaseService will deal with deleting the service from one proxy
+	// and adding it to the other.
 }
 
 func (p *HybridProxier) OnServiceDelete(service *corev1.Service) {
@@ -214,13 +249,13 @@ func (p *HybridProxier) OnServiceSynced() {
 	p.mainProxy.OnServiceSynced()
 }
 
-func endpointsNonEmpty(endpoints *corev1.Endpoints) bool {
+func endpointsIfEmpty(endpoints *corev1.Endpoints) *corev1.Endpoints {
 	for _, subset := range endpoints.Subsets {
 		if len(subset.Addresses) > 0 {
-			return true
+			return nil
 		}
 	}
-	return false
+	return endpoints
 }
 
 func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
@@ -229,11 +264,13 @@ func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
 	defer p.releaseService(svcName)
 
 	hsvc.knownEndpoints = true
-	hsvc.endpointsNonEmpty = endpointsNonEmpty(endpoints)
+	hsvc.emptyEndpoints = endpointsIfEmpty(endpoints)
 
 	klog.V(6).Infof("add ep %s", svcName)
-	p.unidlingProxy.OnEndpointsAdd(endpoints)
 	p.mainProxy.OnEndpointsAdd(endpoints)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsAdd(endpoints)
+	}
 }
 
 func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoints) {
@@ -241,11 +278,16 @@ func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoi
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
-	hsvc.endpointsNonEmpty = endpointsNonEmpty(endpoints)
+	hsvc.emptyEndpoints = endpointsIfEmpty(endpoints)
 
 	klog.V(6).Infof("update ep %s", svcName)
-	p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
 	p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
+	} else if hsvc.unidlingPeriodHasExpired() {
+		p.unidlingProxy.OnEndpointsDelete(oldEndpoints)
+		hsvc.unidledAt = nil
+	}
 }
 
 func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
@@ -254,11 +296,14 @@ func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
 	defer p.releaseService(svcName)
 
 	hsvc.knownEndpoints = false
-	hsvc.endpointsNonEmpty = false
+	hsvc.emptyEndpoints = nil
 
 	klog.V(6).Infof("del ep %s", svcName)
-	p.unidlingProxy.OnEndpointsDelete(endpoints)
 	p.mainProxy.OnEndpointsDelete(endpoints)
+	if hsvc.unidlingProxyWantsEndpoints() {
+		p.unidlingProxy.OnEndpointsDelete(endpoints)
+		hsvc.unidledAt = nil
+	}
 }
 
 func (p *HybridProxier) OnEndpointsSynced() {
