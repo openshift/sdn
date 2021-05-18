@@ -21,9 +21,9 @@ import (
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 )
 
-type nodeEgress struct {
-	nodeName string
-	nodeIP   string
+type NodeEgress struct {
+	NodeName string
+	NodeIP   string
 	sdnIP    string
 
 	requestedIPs   sets.String
@@ -50,7 +50,7 @@ type egressIPInfo struct {
 	ip     string
 	parsed net.IP
 
-	nodes      []*nodeEgress
+	nodes      []*NodeEgress
 	namespaces []*namespaceEgress
 
 	assignedNodeIP string
@@ -75,8 +75,8 @@ type EgressIPTracker struct {
 
 	watcher EgressIPWatcher
 
-	nodes            map[ktypes.UID]*nodeEgress
-	nodesByNodeIP    map[string]*nodeEgress
+	nodes            map[ktypes.UID]*NodeEgress
+	nodesByNodeIP    map[string]*NodeEgress
 	namespacesByVNID map[uint32]*namespaceEgress
 	egressIPs        map[string]*egressIPInfo
 	nodesWithCIDRs   int
@@ -90,8 +90,8 @@ func NewEgressIPTracker(watcher EgressIPWatcher) *EgressIPTracker {
 	return &EgressIPTracker{
 		watcher: watcher,
 
-		nodes:            make(map[ktypes.UID]*nodeEgress),
-		nodesByNodeIP:    make(map[string]*nodeEgress),
+		nodes:            make(map[ktypes.UID]*NodeEgress),
+		nodesByNodeIP:    make(map[string]*NodeEgress),
 		namespacesByVNID: make(map[uint32]*namespaceEgress),
 		egressIPs:        make(map[string]*egressIPInfo),
 
@@ -132,14 +132,14 @@ func (eit *EgressIPTracker) egressIPChanged(eg *egressIPInfo) {
 	}
 }
 
-func (eit *EgressIPTracker) addNodeEgressIP(node *nodeEgress, egressIP string) {
+func (eit *EgressIPTracker) addNodeEgressIP(node *NodeEgress, egressIP string) {
 	eg := eit.ensureEgressIPInfo(egressIP)
 	eg.nodes = append(eg.nodes, node)
 
 	eit.egressIPChanged(eg)
 }
 
-func (eit *EgressIPTracker) deleteNodeEgressIP(node *nodeEgress, egressIP string) {
+func (eit *EgressIPTracker) deleteNodeEgressIP(node *NodeEgress, egressIP string) {
 	eg := eit.egressIPs[egressIP]
 	if eg == nil {
 		return
@@ -221,9 +221,9 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 		if len(hs.EgressIPs) == 0 && len(hs.EgressCIDRs) == 0 {
 			return
 		}
-		node = &nodeEgress{
-			nodeName:     hs.Host,
-			nodeIP:       hs.HostIP,
+		node = &NodeEgress{
+			NodeName:     hs.Host,
+			NodeIP:       hs.HostIP,
 			sdnIP:        sdnIP,
 			requestedIPs: sets.NewString(),
 		}
@@ -231,7 +231,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 		eit.nodesByNodeIP[hs.HostIP] = node
 	} else if len(hs.EgressIPs) == 0 && len(hs.EgressCIDRs) == 0 {
 		delete(eit.nodes, hs.UID)
-		delete(eit.nodesByNodeIP, node.nodeIP)
+		delete(eit.nodesByNodeIP, node.NodeIP)
 	}
 
 	// Process EgressCIDRs
@@ -255,22 +255,22 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 		eit.updateEgressCIDRs = true
 	}
 
-	if node.nodeIP != hs.HostIP {
+	if node.NodeIP != hs.HostIP {
 		// We have to clean up the old egress IP mappings and call syncEgressIPs
-		// before we can change node.nodeIP
+		// before we can change node.NodeIP
 		movedEgressIPs := make([]string, 0, node.requestedIPs.Len())
 		for _, ip := range node.requestedIPs.UnsortedList() {
 			eg := eit.egressIPs[ip]
-			if eg != nil && eg.assignedNodeIP == node.nodeIP {
+			if eg != nil && eg.assignedNodeIP == node.NodeIP {
 				movedEgressIPs = append(movedEgressIPs, ip)
 				eit.deleteNodeEgressIP(node, ip)
 			}
 		}
 		eit.syncEgressIPs()
 
-		delete(eit.nodesByNodeIP, node.nodeIP)
-		node.nodeIP = hs.HostIP
-		eit.nodesByNodeIP[node.nodeIP] = node
+		delete(eit.nodesByNodeIP, node.NodeIP)
+		node.NodeIP = hs.HostIP
+		eit.nodesByNodeIP[node.NodeIP] = node
 
 		for _, ip := range movedEgressIPs {
 			eit.addNodeEgressIP(node, ip)
@@ -361,7 +361,7 @@ func (eit *EgressIPTracker) egressIPActive(eg *egressIPInfo) (bool, error) {
 		return false, nil
 	}
 	if len(eg.nodes) > 1 {
-		return false, fmt.Errorf("Multiple nodes (%s, %s) claiming EgressIP %s", eg.nodes[0].nodeIP, eg.nodes[1].nodeIP, eg.ip)
+		return false, fmt.Errorf("Multiple nodes (%s, %s) claiming EgressIP %s", eg.nodes[0].NodeIP, eg.nodes[1].NodeIP, eg.ip)
 	}
 	if len(eg.namespaces) > 1 {
 		return false, fmt.Errorf("Multiple namespaces (%d, %d) claiming EgressIP %s", eg.namespaces[0].vnid, eg.namespaces[1].vnid, eg.ip)
@@ -369,7 +369,7 @@ func (eit *EgressIPTracker) egressIPActive(eg *egressIPInfo) (bool, error) {
 	for _, ip := range eg.namespaces[0].requestedIPs {
 		eg2 := eit.egressIPs[ip]
 		if eg2 != nil && eg2 != eg && len(eg2.nodes) == 1 && eg2.nodes[0] == eg.nodes[0] {
-			return false, fmt.Errorf("Multiple EgressIPs (%s, %s) for VNID %d on node %s", eg.ip, eg2.ip, eg.namespaces[0].vnid, eg.nodes[0].nodeIP)
+			return false, fmt.Errorf("Multiple EgressIPs (%s, %s) for VNID %d on node %s", eg.ip, eg2.ip, eg.namespaces[0].vnid, eg.nodes[0].NodeIP)
 		}
 	}
 	return true, nil
@@ -409,9 +409,9 @@ func (eit *EgressIPTracker) syncEgressIPs() {
 }
 
 func (eit *EgressIPTracker) syncEgressNodeState(eg *egressIPInfo, active bool) {
-	if active && eg.assignedNodeIP != eg.nodes[0].nodeIP {
-		klog.V(4).Infof("Assigning egress IP %s to node %s", eg.ip, eg.nodes[0].nodeIP)
-		eg.assignedNodeIP = eg.nodes[0].nodeIP
+	if active && eg.assignedNodeIP != eg.nodes[0].NodeIP {
+		klog.V(4).Infof("Assigning egress IP %s to node %s", eg.ip, eg.nodes[0].NodeIP)
+		eg.assignedNodeIP = eg.nodes[0].NodeIP
 		eit.watcher.ClaimEgressIP(eg.namespaces[0].vnid, eg.ip, eg.assignedNodeIP)
 	} else if !active && eg.assignedNodeIP != "" {
 		klog.V(4).Infof("Removing egress IP %s from node %s", eg.ip, eg.assignedNodeIP)
@@ -529,9 +529,9 @@ func (eit *EgressIPTracker) Ping(ip string, timeout time.Duration) bool {
 	return true
 }
 
-func (eit *EgressIPTracker) nodeHasEgressIPForNamespace(node *nodeEgress, eip *egressIPInfo, allocation map[string][]string) bool {
+func (eit *EgressIPTracker) nodeHasEgressIPForNamespace(node *NodeEgress, eip *egressIPInfo, allocation map[string][]string) bool {
 	if namespace, ok := eit.namespacesByVNID[eip.assignedVNID]; ok {
-		if sets.NewString(allocation[node.nodeName]...).HasAny(namespace.requestedIPs...) {
+		if sets.NewString(allocation[node.NodeName]...).HasAny(namespace.requestedIPs...) {
 			return true
 		}
 	}
@@ -551,7 +551,7 @@ func (eit *EgressIPTracker) findEgressIPAllocation(eip *egressIPInfo, allocation
 		if eit.nodeHasEgressIPForNamespace(node, eip, allocation) {
 			continue
 		}
-		egressIPs := allocation[node.nodeName]
+		egressIPs := allocation[node.NodeName]
 		for _, parsed := range node.parsedCIDRs {
 			if parsed.Contains(eip.parsed) {
 				if bestNode != "" {
@@ -560,7 +560,7 @@ func (eit *EgressIPTracker) findEgressIPAllocation(eip *egressIPInfo, allocation
 						break
 					}
 				}
-				bestNode = node.nodeName
+				bestNode = node.NodeName
 				break
 			}
 		}
@@ -593,7 +593,7 @@ func (eit *EgressIPTracker) allocateExistingEgressIPs(allocation map[string][]st
 
 	for _, node := range eit.nodes {
 		if len(node.parsedCIDRs) > 0 {
-			allocation[node.nodeName] = make([]string, 0, node.requestedIPs.Len())
+			allocation[node.NodeName] = make([]string, 0, node.requestedIPs.Len())
 		}
 	}
 	// For each active egress IP, if it still fits within some egress CIDR on its node,
@@ -611,7 +611,7 @@ func (eit *EgressIPTracker) allocateExistingEgressIPs(allocation map[string][]st
 			}
 		}
 		if found && !node.offline {
-			allocation[node.nodeName] = append(allocation[node.nodeName], egressIP)
+			allocation[node.NodeName] = append(allocation[node.NodeName], egressIP)
 		} else {
 			removedEgressIPs = true
 		}

@@ -806,13 +806,13 @@ func TestOfflineEgressIPs(t *testing.T) {
 func updateAllocations(eit *EgressIPTracker, allocation map[string][]string) {
 	for nodeName, egressIPs := range allocation {
 		for _, node := range eit.nodesByNodeIP {
-			if node.nodeName == nodeName {
+			if node.NodeName == nodeName {
 				ec := []networkv1.HostSubnetEgressCIDR{}
 				for _, cidr := range node.requestedCIDRs.List() {
 					ec = append(ec, networkv1.HostSubnetEgressCIDR(cidr))
 				}
 				updateHostSubnetEgress(eit, &networkv1.HostSubnet{
-					HostIP:      node.nodeIP,
+					HostIP:      node.NodeIP,
 					EgressIPs:   StringsToHSEgressIPs(egressIPs),
 					EgressCIDRs: ec,
 				})
