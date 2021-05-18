@@ -383,7 +383,7 @@ func (node *OsdnNode) Start() error {
 		if err := node.SetupEgressNetworkPolicy(); err != nil {
 			return err
 		}
-		if err := node.egressIP.Start(node.networkInformers, node.nodeIPTables); err != nil {
+		if err := node.egressIP.Start(node.networkInformers, node.kubeInformers, node.nodeIPTables); err != nil {
 			return err
 		}
 	}

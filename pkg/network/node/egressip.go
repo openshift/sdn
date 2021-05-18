@@ -5,7 +5,6 @@ package node
 import (
 	"fmt"
 	"os/exec"
-	"sync"
 	"syscall"
 	"time"
 
@@ -13,11 +12,11 @@ import (
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilwait "k8s.io/apimachinery/pkg/util/wait"
 
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/vishvananda/netlink"
+	"k8s.io/client-go/informers"
 )
 
 const (
@@ -46,10 +45,6 @@ type egressIPWatcher struct {
 	iptables     *NodeIPTables
 	iptablesMark map[string]string
 
-	monitorNodesLock sync.Mutex
-	monitorNodes     map[string]*egressNode
-	stop             chan struct{}
-
 	testModeChan chan string
 }
 
@@ -62,7 +57,6 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 	eip := &egressIPWatcher{
 		oc:           oc,
 		localIP:      localIP,
-		monitorNodes: make(map[string]*egressNode),
 		iptablesMark: make(map[string]string),
 	}
 	if masqueradeBit != nil {
@@ -73,9 +67,9 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 	return eip
 }
 
-func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, iptables *NodeIPTables) error {
+func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, kubeInformers informers.SharedInformerFactory, iptables *NodeIPTables) error {
 	eip.iptables = iptables
-	eip.tracker.Start(networkInformers.Network().V1().HostSubnets(), networkInformers.Network().V1().NetNamespaces())
+	eip.tracker.Start(networkInformers.Network().V1().HostSubnets(), networkInformers.Network().V1().NetNamespaces(), kubeInformers.Core().V1().Nodes())
 	return nil
 }
 
@@ -132,7 +126,7 @@ func getMarkForVNID(vnid, masqueradeBit uint32) string {
 	return fmt.Sprintf("0x%08x", vnid)
 }
 
-func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, nodeName string) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
@@ -140,7 +134,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) 
 			utilruntime.HandleError(fmt.Errorf("Error assigning Egress IP %q: %v", egressIP, err))
 		}
 	} else {
-		eip.addEgressIP(nodeIP, egressIP)
+		eip.tracker.AddEgressIP(nodeIP, nodeName, egressIP)
 	}
 }
 
@@ -152,102 +146,8 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 			utilruntime.HandleError(fmt.Errorf("Error releasing Egress IP %q: %v", egressIP, err))
 		}
 	} else {
-		eip.removeEgressIP(nodeIP, egressIP)
+		eip.tracker.RemoveEgressIP(nodeIP, egressIP)
 	}
-}
-
-func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP string) {
-	eip.monitorNodesLock.Lock()
-	defer eip.monitorNodesLock.Unlock()
-
-	if eip.monitorNodes[nodeIP] != nil {
-		eip.monitorNodes[nodeIP].egressIPs.Insert(egressIP)
-		return
-	}
-	klog.V(4).Infof("Monitoring node %s", nodeIP)
-
-	eip.monitorNodes[nodeIP] = &egressNode{
-		nodeIP:    nodeIP,
-		egressIPs: sets.NewString(egressIP),
-	}
-	if len(eip.monitorNodes) == 1 {
-		eip.stop = make(chan struct{})
-		go utilwait.PollUntil(defaultPollInterval, eip.poll, eip.stop)
-	}
-}
-
-func (eip *egressIPWatcher) removeEgressIP(nodeIP, egressIP string) {
-	eip.monitorNodesLock.Lock()
-	defer eip.monitorNodesLock.Unlock()
-
-	if eip.monitorNodes[nodeIP] == nil {
-		return
-	}
-	eip.monitorNodes[nodeIP].egressIPs.Delete(egressIP)
-	if eip.monitorNodes[nodeIP].egressIPs.Len() == 0 {
-		klog.V(4).Infof("Unmonitoring node %s", nodeIP)
-		delete(eip.monitorNodes, nodeIP)
-		if len(eip.monitorNodes) == 0 && eip.stop != nil {
-			close(eip.stop)
-			eip.stop = nil
-		}
-	}
-}
-
-func (eip *egressIPWatcher) poll() (bool, error) {
-	retry := eip.check(false)
-	for retry {
-		time.Sleep(repollInterval)
-		retry = eip.check(true)
-	}
-	return false, nil
-}
-
-func (eip *egressIPWatcher) check(retrying bool) bool {
-	offlineResult, needRetry := eip.getOfflineResult(retrying)
-	for nodeIP, offline := range offlineResult {
-		eip.tracker.SetNodeOffline(nodeIP, offline)
-	}
-	return needRetry
-}
-
-func (eip *egressIPWatcher) getOfflineResult(retrying bool) (map[string]bool, bool) {
-	eip.monitorNodesLock.Lock()
-	defer eip.monitorNodesLock.Unlock()
-
-	var timeout time.Duration
-	if retrying {
-		timeout = repollInterval
-	} else {
-		timeout = defaultPollInterval
-	}
-
-	needRetry := false
-	offlineResult := make(map[string]bool)
-	for _, node := range eip.monitorNodes {
-		if retrying && node.retries == 0 {
-			continue
-		}
-
-		online := eip.tracker.Ping(node.nodeIP, timeout)
-		if node.offline && online {
-			klog.Infof("Node %s is back online", node.nodeIP)
-			node.offline = false
-			offlineResult[node.nodeIP] = false
-		} else if !node.offline && !online {
-			node.retries++
-			if node.retries > maxRetries {
-				klog.Warningf("Node %s is offline", node.nodeIP)
-				node.retries = 0
-				node.offline = true
-				offlineResult[node.nodeIP] = true
-			} else {
-				klog.V(2).Infof("Node %s may be offline... retrying", node.nodeIP)
-				needRetry = true
-			}
-		}
-	}
-	return offlineResult, needRetry
 }
 
 func (eip *egressIPWatcher) UpdateEgressCIDRs() {
