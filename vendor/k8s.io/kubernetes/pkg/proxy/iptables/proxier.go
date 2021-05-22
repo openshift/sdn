@@ -1044,7 +1044,7 @@ func (proxier *Proxier) syncProxyRules() {
 			for _, ep := range allEndpoints {
 				if ep.GetIsLocal() {
 					klog.V(4).Infof("Found a local endpoint %q for service %q; preferring the local endpoint and ignoring %d other endpoints", ep.String(), svcNameString, len(allEndpoints) - 1)
-					allEndpoints = []proxy.Endpoint{ep}
+					readyEndpoints = []proxy.Endpoint{ep}
 					break
 				}
 			}
