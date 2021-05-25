@@ -144,6 +144,9 @@ func (fake *ovsFake) Get(table, record, column string) (string, error) {
 		return "", err
 	}
 	if column == "options:dst_port" {
+		if _, exists := fake.ports[record]; !exists {
+			return "", fmt.Errorf("unknown OVS port")
+		}
 		return fmt.Sprintf("\"%s\"", fake.ports[record].dst_port), nil
 	}
 	return "", nil

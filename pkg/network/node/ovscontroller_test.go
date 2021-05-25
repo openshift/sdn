@@ -770,7 +770,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 	}
 }
 
-func TestAlreadySetUp(t *testing.T) {
+func TestAlreadySetUpWithSDNSetupVerification(t *testing.T) {
 	testcases := []struct {
 		flow    string
 		success bool
@@ -814,7 +814,61 @@ func TestAlreadySetUp(t *testing.T) {
 		if err := otx.Commit(); err != nil {
 			t.Fatalf("(%d) unexpected error from AddFlow: %v", i, err)
 		}
-		if success := oc.AlreadySetUp(4789); success != tc.success {
+		if success := oc.AlreadySetUp(4789, true); success != tc.success {
+			t.Fatalf("(%d) unexpected setup value %v (expected %v)", i, success, tc.success)
+		}
+	}
+}
+
+func TestAlreadySetUpWithoutSDNSetupVerification(t *testing.T) {
+	var oc *ovsController
+	testcases := []struct {
+		setup   func()
+		success bool
+	}{
+		{
+			// Good setup with existing bridge and port
+			func() {
+				ovsif := ovs.NewFake(Br0)
+				if err := ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13"); err != nil {
+					t.Fatalf("unexpected error from AddBridge: %v", err)
+				}
+				oc = NewOVSController(ovsif, 0, true, "172.17.0.4")
+				/* In order to test AlreadySetUp the vxlan port has to be added, we are not testing AddPort here */
+				_, err := ovsif.AddPort("vxlan0", 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`, fmt.Sprintf("options:dst_port=%d", 4789))
+				if err != nil {
+					t.Fatalf("unexpected error from AddPort: %v", err)
+				}
+			},
+			true,
+		},
+		{
+			// Bad setup, invalid bridge set up
+			func() {
+				ovsif := ovs.NewFake(Br0)
+				ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13", "-=blahhh")
+				oc = NewOVSController(ovsif, 0, true, "172.17.0.4")
+			},
+			false,
+		},
+		{
+			// Bad setup invalid port set up
+			func() {
+				ovsif := ovs.NewFake(Br0)
+				if err := ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13"); err != nil {
+					t.Fatalf("unexpected error from AddBridge: %v", err)
+				}
+				oc = NewOVSController(ovsif, 0, true, "172.17.0.4")
+				/* In order to test AlreadySetUp the vxlan port has to be added, we are not testing AddPort here */
+				ovsif.AddPort("vxlan0", 1, "type=vxlan", "-=blahhh", `options:remote_ip="flow"`, `options:key="flow"`, fmt.Sprintf("options:dst_port=%d", 4789))
+			},
+			false,
+		},
+	}
+
+	for i, tc := range testcases {
+		tc.setup()
+		if success := oc.AlreadySetUp(4789, false); success != tc.success {
 			t.Fatalf("(%d) unexpected setup value %v (expected %v)", i, success, tc.success)
 		}
 	}

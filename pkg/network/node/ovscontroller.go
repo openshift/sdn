@@ -52,22 +52,32 @@ func (oc *ovsController) getVersionNote() string {
 	return fmt.Sprintf("%02X.%02X", oc.pluginId, ruleVersion)
 }
 
-func (oc *ovsController) AlreadySetUp(vxlanPort uint32) bool {
+func (oc *ovsController) AlreadySetUp(vxlanPort uint32, withSDNSetupVerification bool) bool {
 	flows, err := oc.ovs.DumpFlows("table=%d", ruleVersionTable)
-	if err != nil || len(flows) != 1 {
+	if err != nil {
 		return false
 	}
 
 	port, err := oc.ovs.Get("Interface", Vxlan0, "options:dst_port")
-	// the call to ovs.Get() returns the port number surrounded by double quotes
-	// so add them to the structs value for purposes of comparison
-	if err != nil || fmt.Sprintf("\"%d\"", vxlanPort) != port {
+	if err != nil {
 		return false
 	}
-	if parsed, err := ovs.ParseFlow(ovs.ParseForDump, flows[0]); err == nil {
-		return parsed.NoteHasPrefix(oc.getVersionNote())
+
+	if withSDNSetupVerification {
+		if len(flows) != 1 {
+			return false
+		}
+		// the call to ovs.Get() returns the port number surrounded by double quotes
+		// so add them to the structs value for purposes of comparison
+		if fmt.Sprintf("\"%d\"", vxlanPort) != port {
+			return false
+		}
+		if parsed, err := ovs.ParseFlow(ovs.ParseForDump, flows[0]); err == nil {
+			return parsed.NoteHasPrefix(oc.getVersionNote())
+		}
+		return false
 	}
-	return false
+	return true
 }
 
 func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway string, mtu uint32, vxlanPort uint32) error {

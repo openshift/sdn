@@ -20,7 +20,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-func (plugin *OsdnNode) alreadySetUp() error {
+func (plugin *OsdnNode) alreadySetUp(withSDNSetupVerification bool) error {
 	var found bool
 
 	l, err := netlink.LinkByName(Tun0)
@@ -59,11 +59,9 @@ func (plugin *OsdnNode) alreadySetUp() error {
 			return errors.New("cluster CIDR not found")
 		}
 	}
-
-	if !plugin.oc.AlreadySetUp(plugin.networkInfo.VXLANPort) {
+	if !plugin.oc.AlreadySetUp(plugin.networkInfo.VXLANPort, withSDNSetupVerification) {
 		return errors.New("plugin is not setup")
 	}
-
 	return nil
 }
 
@@ -133,7 +131,7 @@ func (plugin *OsdnNode) SetupSDN() (bool, map[string]podNetworkInfo, error) {
 		klog.Warningf("[SDN setup] Could not get details of existing pods: %v", err)
 	}
 
-	if err := plugin.alreadySetUp(); err == nil {
+	if err := plugin.alreadySetUp(true); err == nil {
 		klog.Infof("[SDN setup] SDN is already set up")
 	} else {
 		klog.Infof("[SDN setup] full SDN setup required (%v)", err)
@@ -143,20 +141,11 @@ func (plugin *OsdnNode) SetupSDN() (bool, map[string]podNetworkInfo, error) {
 		changed = true
 	}
 
-	return changed, existingPods, nil
-}
-
-func (plugin *OsdnNode) FinishSetupSDN() error {
-	err := plugin.oc.FinishSetupOVS()
-	if err != nil {
-		return err
-	}
-
 	// TODO: make it possible to safely reestablish node configuration after restart
 	// If OVS goes down and fails the health check, restart the entire process
-	runOVSHealthCheck(ovsDialDefaultNetwork, ovsDialDefaultAddress, plugin.alreadySetUp)
+	runOVSHealthCheck(ovsDialDefaultNetwork, ovsDialDefaultAddress, func() error { return plugin.alreadySetUp(false) })
 
-	return nil
+	return changed, existingPods, nil
 }
 
 func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error {

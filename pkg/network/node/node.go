@@ -399,7 +399,7 @@ func (node *OsdnNode) Start() error {
 		}
 	}
 
-	if err := node.FinishSetupSDN(); err != nil {
+	if err := node.oc.FinishSetupOVS(); err != nil {
 		return fmt.Errorf("could not complete SDN setup: %v", err)
 	}
 
