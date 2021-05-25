@@ -4,6 +4,14 @@ package userspace
 
 import "k8s.io/kubernetes/pkg/util/async"
 
+func (p *Proxier) UsesEndpoints() bool {
+	return true
+}
+
+func (p *Proxier) UsesEndpointSlices() bool {
+	return false
+}
+
 func (p *Proxier) SyncProxyRules() {
 	p.syncProxyRules()
 }
