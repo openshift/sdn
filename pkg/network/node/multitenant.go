@@ -41,6 +41,10 @@ func (mp *multiTenantPlugin) SupportsVNIDs() bool {
 	return true
 }
 
+func (mp *multiTenantPlugin) AllowDuplicateNetID() bool {
+	return true
+}
+
 func (mp *multiTenantPlugin) Start(node *OsdnNode) error {
 	mp.node = node
 	mp.vnidInUse = node.oc.FindPolicyVNIDs()

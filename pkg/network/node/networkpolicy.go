@@ -101,6 +101,10 @@ func (np *networkPolicyPlugin) SupportsVNIDs() bool {
 	return true
 }
 
+func (np *networkPolicyPlugin) AllowDuplicateNetID() bool {
+	return false
+}
+
 func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 	np.lock.Lock()
 	defer np.lock.Unlock()

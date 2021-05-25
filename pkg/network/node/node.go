@@ -51,6 +51,7 @@ type osdnPolicy interface {
 	Name() string
 	Start(node *OsdnNode) error
 	SupportsVNIDs() bool
+	AllowDuplicateNetID() bool
 
 	AddNetNamespace(netns *networkapi.NetNamespace)
 	UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32)
