@@ -11,7 +11,7 @@ import (
 )
 
 func TestNodeVNIDMap(t *testing.T) {
-	vmap := newNodeVNIDMap(nil, nil)
+	vmap := newNodeVNIDMap(NewNetworkPolicyPlugin(), nil)
 
 	// empty vmap
 

@@ -137,6 +137,11 @@ func (vmap *nodeVNIDMap) getVNID(name string) (uint32, error) {
 }
 
 func (vmap *nodeVNIDMap) findDuplicateNetID(namespace string, netID uint32) (string, bool) {
+	// Need to prevent duplicate NetID only for networkpolicy mode
+	if vmap.policy.AllowDuplicateNetID() {
+		return "", false
+	}
+
 	names := vmap.GetNamespaces(netID)
 	for _, name := range names {
 		if name != namespace {
