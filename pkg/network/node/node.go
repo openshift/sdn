@@ -129,8 +129,14 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	var useConnTrack bool
 	switch strings.ToLower(networkInfo.PluginName) {
 	case networkutils.SingleTenantPluginName:
-		policy = NewSingleTenantPlugin()
-		pluginId = 0
+		// policy = NewSingleTenantPlugin()
+		// pluginId = 0
+		policy = NewMultiTenantPlugin()
+		pluginId = 1
+		// Userspace proxy is incompatible with conntrack.
+		if c.ProxyMode != kubeproxyconfig.ProxyModeUserspace {
+			useConnTrack = true
+		}
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
@@ -139,9 +145,15 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 			useConnTrack = true
 		}
 	case networkutils.NetworkPolicyPluginName:
-		policy = NewNetworkPolicyPlugin()
-		pluginId = 2
-		useConnTrack = true
+		// policy = NewNetworkPolicyPlugin()
+		// pluginId = 2
+		// useConnTrack = true
+		policy = NewMultiTenantPlugin()
+		pluginId = 1
+		// Userspace proxy is incompatible with conntrack.
+		if c.ProxyMode != kubeproxyconfig.ProxyModeUserspace {
+			useConnTrack = true
+		}
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
 	}
