@@ -822,6 +822,52 @@ func updateAllocations(eit *EgressIPTracker, allocation map[string][]string) {
 	}
 }
 
+func TestEgressCIDRAllocationWithMultipleAssignmentOptions(t *testing.T) {
+	eit, w := setupEgressIPTracker(t)
+
+	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
+		HostIP:      "172.17.0.3",
+		EgressIPs:   []networkv1.HostSubnetEgressIP{},
+		EgressCIDRs: []networkv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
+		HostIP:      "172.17.0.4",
+		EgressIPs:   []networkv1.HostSubnetEgressIP{},
+		EgressCIDRs: []networkv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &networkv1.HostSubnet{
+		HostIP:      "172.17.0.5",
+		EgressIPs:   []networkv1.HostSubnetEgressIP{},
+		EgressCIDRs: []networkv1.HostSubnetEgressCIDR{},
+	})
+	err := w.assertChanges(
+		"update egress CIDRs",
+		"update egress CIDRs",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	updateNetNamespaceEgress(eit, &networkv1.NetNamespace{
+		NetID:     42,
+		EgressIPs: []networkv1.NetNamespaceEgressIP{"172.17.0.100", "172.17.0.101", "172.17.0.102"},
+	})
+	err = w.assertChanges(
+		"namespace 42 dropped",
+		"update egress CIDRs",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	allocation := eit.ReallocateEgressIPs()
+	node3ips := allocation["node-3"]
+	node4ips := allocation["node-4"]
+	if len(node3ips) != 1 || len(node4ips) != 1 {
+		t.Fatalf("Bad IP allocation: %#v", allocation)
+	}
+}
+
 func TestEgressCIDRAllocation(t *testing.T) {
 	eit, w := setupEgressIPTracker(t)
 
