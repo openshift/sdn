@@ -268,6 +268,19 @@ func (node *OsdnNode) validateMTU() error {
 			return fmt.Errorf("could not retrieve link id %d while validating MTU", route.LinkIndex)
 		}
 
+		// we want to check the mtu only for the interface assigned to the node's primary ip
+		found := false
+		addresses, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		for _, address := range addresses {
+			if node.localIP == address.IP.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
 		newmtu := link.Attrs().MTU
 		if newmtu > 0 && newmtu < mtu {
 			mtu = newmtu
