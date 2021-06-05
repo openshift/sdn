@@ -734,6 +734,46 @@ func TestNetworkPolicy(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	}
+
+	// Create the special namespace that indicates host network traffic
+	addNamespace(np, "openshift-host-network", 200, map[string]string{"network.openshift.io/policy-group": "ingress"})
+	// Create the namespace to add network policy for
+	addNamespace(np, "host-network-target", 10, map[string]string{"foo": "bar"})
+	npns := np.namespaces[10]
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-host-network-ns",
+			UID:       uid(npns, "allow-from-host-network-ns"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"network.openshift.io/policy-group": "ingress",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	// make sure we add the right flows
+	err = assertPolicies(npns, 1, map[string]*npPolicy{
+		"allow-from-host-network-ns": {
+			watchesNamespaces: true,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows: []string{
+				"reg0=0", //make sure host network namespace is classified into vnid 0
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
 }
 
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
