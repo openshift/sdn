@@ -234,11 +234,30 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 			}
 		}
 
+		// add routes from config.clusterNetworks array here with overlay mtu.
+		routeMTU := int(config.MTU) - 50
+
+		link, err = netlink.LinkByName(args.IfName)
+		if err != nil {
+			return fmt.Errorf("failed to get link: %v via SDN: %v", args.IfName, err)
+		}
+		for _, cn := range config.ClusterNetworks {
+			route := &netlink.Route{
+				Dst:       cn.ClusterCIDR,
+				LinkIndex: link.Attrs().Index,
+				MTU:       routeMTU,
+			}
+			if err := netlink.RouteAdd(route); err != nil && !os.IsExist(err) {
+				return fmt.Errorf("failed to add mtu based route to dst: %v via SDN: %v", cn.ClusterCIDR, err)
+			}
+		}
+
 		dsts = append(dsts, serviceIPNet)
 		for _, dst := range dsts {
 			route := &netlink.Route{
 				Dst: dst,
 				Gw:  defaultGW,
+				MTU: routeMTU,
 			}
 			if err := netlink.RouteAdd(route); err != nil && !os.IsExist(err) {
 				return fmt.Errorf("failed to add route to dst: %v via SDN: %v", dst, err)
