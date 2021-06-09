@@ -457,7 +457,7 @@ func assertENPFlowAdditions(origFlows, newFlows []string, additions ...enpFlowAd
 			var change flowChange
 			change.kind = flowAdded
 			change.match = []string{
-				"table=101",
+				"table=100",
 				fmt.Sprintf("reg0=%d", addition.vnid),
 				fmt.Sprintf("priority=%d", len(addition.policy.Spec.Egress)-i),
 			}
@@ -467,7 +467,7 @@ func assertENPFlowAdditions(origFlows, newFlows []string, additions ...enpFlowAd
 				change.match = append(change.match, fmt.Sprintf("nw_dst=%s", rule.To.CIDRSelector))
 			}
 			if rule.Type == networkapi.EgressNetworkPolicyRuleAllow {
-				change.match = append(change.match, "actions=output")
+				change.match = append(change.match, "actions=goto_table:101")
 			} else {
 				change.match = append(change.match, "actions=drop")
 			}
@@ -1101,6 +1101,7 @@ var expectedFlows = []string{
 	" cookie=0, table=0, priority=0, actions=drop",
 	" cookie=0x0f46ee1a, table=10, priority=100, tun_src=10.0.123.45, actions=goto_table:30",
 	" cookie=0, table=10, priority=0, actions=drop",
+	" cookie=0, table=20, priority=300, udp, udp_dst=4789, actions=drop",
 	" cookie=0, table=20, priority=100, in_port=3, arp, arp_spa=10.128.0.2, arp_sha=00:00:0a:80:00:02/00:00:ff:ff:ff:ff, actions=load:42->NXM_NX_REG0[],goto_table:21",
 	" cookie=0, table=20, priority=100, in_port=3, ip, nw_src=10.128.0.2, actions=load:42->NXM_NX_REG0[],goto_table:21",
 	" cookie=0, table=20, priority=0, actions=drop",
@@ -1117,7 +1118,7 @@ var expectedFlows = []string{
 	" cookie=0, table=30, priority=100, ip, nw_dst=10.128.0.0/14, actions=goto_table:90",
 	" cookie=0, table=30, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120",
 	" cookie=0, table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110",
-	" cookie=0, table=30, priority=0, ip, actions=goto_table:100",
+	" cookie=0, table=30, priority=0, ip, actions=goto_table:99",
 	" cookie=0, table=30, priority=0, arp, actions=drop",
 	" cookie=0, table=40, priority=100, arp, arp_tpa=10.128.0.2, actions=output:3",
 	" cookie=0, table=40, priority=0, actions=drop",
@@ -1134,22 +1135,22 @@ var expectedFlows = []string{
 	" cookie=0, table=80, priority=0, actions=drop",
 	" cookie=0x0f46ee1a, table=90, priority=100, ip, nw_dst=10.128.2.0/23, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1",
 	" cookie=0, table=90, priority=0, actions=drop",
-	" cookie=0, table=100, priority=300, udp, udp_dst=4789, actions=drop",
-	" cookie=0, table=100, priority=200, tcp, tcp_dst=53, nw_dst=172.17.0.4, actions=output:2",
-	" cookie=0, table=100, priority=200, udp, udp_dst=53, nw_dst=172.17.0.4, actions=output:2",
-	" cookie=0, table=100, priority=150, ct_state=+rpl, actions=goto_table:101",
-	" cookie=0, table=100, priority=100, ip, reg0=37, actions=group:37",
+	" cookie=0, table=99, priority=200, tcp, tcp_dst=53, nw_dst=172.17.0.4, actions=output:2",
+	" cookie=0, table=99, priority=200, udp, udp_dst=53, nw_dst=172.17.0.4, actions=output:2",
+	" cookie=0, table=99, priority=0, actions=goto_table:100",
+	" cookie=0, table=100, priority=3, reg0=42, ip, nw_dst=192.168.0.0/16, actions=goto_table:101",
+	" cookie=0, table=100, priority=2, reg0=42, ip, nw_dst=192.168.1.0/24, actions=drop",
+	" cookie=0, table=100, priority=1, reg0=42, ip, nw_dst=192.168.1.1/32, actions=goto_table:101",
 	" cookie=0, table=100, priority=0, actions=goto_table:101",
-	" cookie=0, table=101, priority=3, reg0=42, ip, nw_dst=192.168.0.0/16, actions=output:2",
-	" cookie=0, table=101, priority=2, reg0=42, ip, nw_dst=192.168.1.0/24, actions=drop",
-	" cookie=0, table=101, priority=1, reg0=42, ip, nw_dst=192.168.1.1/32, actions=output:2",
+	" cookie=0, table=101, priority=150, ct_state=+rpl, actions=output:2",
+	" cookie=0, table=101, priority=100, ip, reg0=37, actions=group:37",
 	" cookie=0, table=101, priority=0, actions=output:2",
 	" cookie=0, table=110, reg0=99, actions=goto_table:111",
 	" cookie=0, table=110, priority=0, actions=drop",
 	" cookie=0, table=111, priority=100, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1,set_field:10.0.45.123->tun_dst,output:1,goto_table:120",
 	" cookie=0, table=120, priority=100, reg0=99, actions=output:4,output:5,output:6",
 	" cookie=0, table=120, priority=0, actions=drop",
-	" cookie=0, table=253, actions=note:00.0A",
+	" cookie=0, table=253, actions=note:00.0B",
 }
 
 // Ensure that we do not change the OVS flows without bumping ruleVersion

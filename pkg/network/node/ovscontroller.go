@@ -36,7 +36,7 @@ const (
 	Vxlan0 = "vxlan0"
 
 	// rule versioning; increment each time flow rules change
-	ruleVersion = 10
+	ruleVersion = 11
 
 	ruleVersionTable = 253
 )
@@ -133,6 +133,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// eg, "table=20, priority=100, in_port=${ovs_port}, arp, nw_src=${ipaddr}, arp_sha=${macaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
 	//     "table=20, priority=100, in_port=${ovs_port}, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
 	// (${tenant_id} is always 0 for single-tenant)
+	otx.AddFlow("table=20, priority=300, udp, udp_dst=%d, actions=drop", vxlanPort)
 	otx.AddFlow("table=20, priority=0, actions=drop")
 
 	// Table 21: from OpenShift container; NetworkPolicy plugin uses this for connection tracking
@@ -165,7 +166,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// Multicast coming from local pods
 	otx.AddFlow("table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110")
 
-	otx.AddFlow("table=30, priority=0, ip, actions=goto_table:100")
+	otx.AddFlow("table=30, priority=0, ip, actions=goto_table:99")
 	otx.AddFlow("table=30, priority=0, arp, actions=drop")
 
 	// Table 40: ARP to local container, filled in by setupPodFlows
@@ -199,16 +200,21 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// eg, "table=90, priority=100, ip, nw_dst=${remote_subnet_cidr}, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31], set_field:${remote_node_ip}->tun_dst,output:1"
 	otx.AddFlow("table=90, priority=0, actions=drop")
 
-	// Table 100: egress routing; edited by SetNamespaceEgress*()
-	otx.AddFlow("table=100, priority=300,udp,udp_dst=%d,actions=drop", vxlanPort)
-	otx.AddFlow("table=100, priority=200,tcp,tcp_dst=53,nw_dst=%s,actions=output:2", oc.localIP)
-	otx.AddFlow("table=100, priority=200,udp,udp_dst=53,nw_dst=%s,actions=output:2", oc.localIP)
-	otx.AddFlow("table=100, priority=150,ct_state=+rpl,actions=goto_table:101")
-	// eg, "table=100, priority=100, reg0=${tenant_id}, ip, actions=set_field:${tun0_mac}->eth_dst,set_field:${egress_mark}->pkt_mark,goto_table:101"
+	// Table 99: legacy DNS rules needed to override egress IP and egress
+	// network policy, from 3.11. These are used in case someone has configured
+	// pod DNS to talk to the node IP, and also has an EgressNetworkPolicy
+	// saying "Deny 0.0.0.0/0", then DNS to the node IP is still expected to
+	// work
+	otx.AddFlow("table=99, priority=200, tcp, tcp_dst=53, nw_dst=%s, actions=output:2", oc.localIP)
+	otx.AddFlow("table=99, priority=200, udp, udp_dst=53, nw_dst=%s, actions=output:2", oc.localIP)
+	otx.AddFlow("table=99, priority=0, actions=goto_table:100")
+
+	// Table 100: egress network policy dispatch; edited by UpdateEgressNetworkPolicy()
+	// eg, "table=100, reg0=${tenant_id}, priority=2, ip, nw_dst=${external_cidr}, actions=drop
 	otx.AddFlow("table=100, priority=0, actions=goto_table:101")
 
-	// Table 101: egress network policy dispatch; edited by UpdateEgressNetworkPolicy()
-	// eg, "table=101, reg0=${tenant_id}, priority=2, ip, nw_dst=${external_cidr}, actions=drop
+	// Table 101: egress routing; edited by SetNamespaceEgress*()
+	otx.AddFlow("table=101, priority=150, ct_state=+rpl, actions=output:2")
 	otx.AddFlow("table=101, priority=0, actions=output:2")
 
 	// Table 110: outbound multicast filtering, updated by UpdateLocalMulticastFlows()
@@ -494,7 +500,7 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.Eg
 	errs := []error{}
 
 	if len(policies) == 0 {
-		otx.DeleteFlows("table=101, reg0=%d", vnid)
+		otx.DeleteFlows("table=100, reg0=%d", vnid)
 	} else if vnid == 0 {
 		errs = append(errs, fmt.Errorf("EgressNetworkPolicy in global network namespace is not allowed (%s); ignoring", policyNames(policies)))
 	} else if len(namespaces) > 1 {
@@ -502,23 +508,23 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.Eg
 		// Even though Egress network policy is defined per namespace, its implementation is based on VNIDs.
 		// So in case of shared network namespaces, egress policy of one namespace will affect all other namespaces that are sharing the network which might not be desirable.
 		errs = append(errs, fmt.Errorf("EgressNetworkPolicy not allowed in shared NetNamespace (%s); dropping all traffic", strings.Join(namespaces, ", ")))
-		otx.DeleteFlows("table=101, reg0=%d", vnid)
-		otx.AddFlow("table=101, reg0=%d, priority=1, actions=drop", vnid)
+		otx.DeleteFlows("table=100, reg0=%d", vnid)
+		otx.AddFlow("table=100, reg0=%d, priority=1, actions=drop", vnid)
 	} else if len(policies) > 1 {
 		// Rationale: If we have allowed more than one policy, we could end up with different network restrictions depending
 		// on the order of policies that were processed and also it doesn't give more expressive power than a single policy.
 		errs = append(errs, fmt.Errorf("multiple EgressNetworkPolicies in same network namespace (%s) is not allowed; dropping all traffic", policyNames(policies)))
-		otx.DeleteFlows("table=101, reg0=%d", vnid)
-		otx.AddFlow("table=101, reg0=%d, priority=1, actions=drop", vnid)
+		otx.DeleteFlows("table=100, reg0=%d", vnid)
+		otx.AddFlow("table=100, reg0=%d, priority=1, actions=drop", vnid)
 	} else /* vnid != 0 && len(policies) == 1 */ {
-		otx.DeleteFlows("table=101, reg0=%d", vnid)
+		otx.DeleteFlows("table=100, reg0=%d", vnid)
 
 		for i, rule := range policies[0].Spec.Egress {
 			priority := len(policies[0].Spec.Egress) - i
 
 			var action string
 			if rule.Type == networkapi.EgressNetworkPolicyRuleAllow {
-				action = "output:2"
+				action = "goto_table:101"
 			} else {
 				action = "drop"
 			}
@@ -544,7 +550,7 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.Eg
 					dst = fmt.Sprintf(", nw_dst=%s", selector)
 				}
 
-				otx.AddFlow("table=101, reg0=%d, priority=%d, ip%s, actions=%s", vnid, priority, dst, action)
+				otx.AddFlow("table=100, reg0=%d, priority=%d, ip%s, actions=%s", vnid, priority, dst, action)
 			}
 		}
 	}
@@ -768,7 +774,7 @@ func (oc *ovsController) ensureTunMAC() error {
 
 func (oc *ovsController) SetNamespaceEgressNormal(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
-	otx.DeleteFlows("table=100, reg0=%d", vnid)
+	otx.DeleteFlows("table=101, reg0=%d", vnid)
 	otx.DeleteGroup(vnid)
 	return otx.Commit()
 }
@@ -776,14 +782,14 @@ func (oc *ovsController) SetNamespaceEgressNormal(vnid uint32) error {
 func (oc *ovsController) SetNamespaceEgressDropped(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteGroup(vnid)
-	otx.DeleteFlows("table=100, reg0=%d", vnid)
-	otx.AddFlow("table=100, priority=100, reg0=%d, actions=drop", vnid)
+	otx.DeleteFlows("table=101, reg0=%d", vnid)
+	otx.AddFlow("table=101, priority=100, reg0=%d, actions=drop", vnid)
 	return otx.Commit()
 }
 
 func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMetaData []egressIPMetaData) error {
 	otx := oc.ovs.NewTransaction()
-	otx.DeleteFlows("table=100, reg0=%d", vnid)
+	otx.DeleteFlows("table=101, reg0=%d", vnid)
 	otx.DeleteGroup(vnid)
 
 	var buildBuckets []string
@@ -807,12 +813,12 @@ func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMe
 
 	if len(egressIPsMetaData) == 0 {
 		// Namespace wants egressIP, but no node hosts it, so drop
-		otx.AddFlow("table=100, priority=100, reg0=%d, actions=drop", vnid)
+		otx.AddFlow("table=101, priority=100, reg0=%d, actions=drop", vnid)
 	} else {
 		// there is at least one egressIP hosted by one other node. Use a group
 		// to load balance between the egressIPs
 		otx.AddGroup(vnid, "select", buildBuckets)
-		otx.AddFlow("table=100, priority=100,ip,reg0=%d, actions=group:%d", vnid, vnid)
+		otx.AddFlow("table=101, priority=100,ip,reg0=%d, actions=group:%d", vnid, vnid)
 	}
 	return otx.Commit()
 }
