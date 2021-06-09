@@ -15,6 +15,7 @@ import (
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/vishvananda/netlink"
+	"k8s.io/client-go/informers"
 )
 
 type egressIPWatcher struct {
@@ -29,8 +30,6 @@ type egressIPWatcher struct {
 	iptables     *NodeIPTables
 	iptablesMark map[string]string
 
-	vxlanMonitor *egressVXLANMonitor
-
 	testModeChan chan string
 }
 
@@ -41,9 +40,8 @@ type egressIPMetaData struct {
 
 func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32) *egressIPWatcher {
 	eip := &egressIPWatcher{
-		oc:      oc,
-		localIP: localIP,
-
+		oc:           oc,
+		localIP:      localIP,
 		iptablesMark: make(map[string]string),
 	}
 	if masqueradeBit != nil {
@@ -54,13 +52,9 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 	return eip
 }
 
-func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, iptables *NodeIPTables) error {
+func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, kubeInformers informers.SharedInformerFactory, iptables *NodeIPTables) error {
 	eip.iptables = iptables
-
-	updates := make(chan struct{}, 1)
-	eip.vxlanMonitor = newEgressVXLANMonitor(eip.oc.ovs, eip.tracker, updates)
-	go eip.watchVXLAN(updates)
-	eip.tracker.Start(networkInformers.Network().V1().HostSubnets(), networkInformers.Network().V1().NetNamespaces())
+	eip.tracker.Start(networkInformers.Network().V1().HostSubnets(), networkInformers.Network().V1().NetNamespaces(), kubeInformers.Core().V1().Nodes())
 	return nil
 }
 
@@ -117,15 +111,15 @@ func getMarkForVNID(vnid, masqueradeBit uint32) string {
 	return fmt.Sprintf("0x%08x", vnid)
 }
 
-func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, nodeName string) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
 		if err := eip.assignEgressIP(egressIP, mark); err != nil {
 			utilruntime.HandleError(fmt.Errorf("Error assigning Egress IP %q: %v", egressIP, err))
 		}
-	} else if eip.vxlanMonitor != nil {
-		eip.vxlanMonitor.AddEgressIP(nodeIP, egressIP)
+	} else {
+		eip.tracker.AddEgressIP(nodeIP, nodeName, egressIP)
 	}
 }
 
@@ -136,8 +130,8 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 		if err := eip.releaseEgressIP(egressIP, mark); err != nil {
 			utilruntime.HandleError(fmt.Errorf("Error releasing Egress IP %q: %v", egressIP, err))
 		}
-	} else if eip.vxlanMonitor != nil {
-		eip.vxlanMonitor.RemoveEgressIP(nodeIP, egressIP)
+	} else {
+		eip.tracker.RemoveEgressIP(nodeIP, egressIP)
 	}
 }
 
@@ -253,12 +247,4 @@ func (eip *egressIPWatcher) releaseEgressIP(egressIP, mark string) error {
 	}
 
 	return nil
-}
-
-func (eip *egressIPWatcher) watchVXLAN(updates chan struct{}) {
-	for range updates {
-		for _, node := range eip.vxlanMonitor.GetUpdates() {
-			eip.tracker.SetNodeOffline(node.nodeIP, node.offline)
-		}
-	}
 }

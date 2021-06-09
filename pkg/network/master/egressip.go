@@ -6,9 +6,6 @@ import (
 	"sync"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -27,20 +24,9 @@ type egressIPManager struct {
 	tracker            *common.EgressIPTracker
 	networkClient      networkclient.Interface
 	hostSubnetInformer networkinformers.HostSubnetInformer
-	nodeInformer       kcoreinformers.NodeInformer
 
 	updatePending bool
 	updatedAgain  bool
-
-	monitorNodes map[string]*egressNode
-	stop         chan struct{}
-}
-
-type egressNode struct {
-	ip      string
-	name    string
-	offline bool
-	retries int
 }
 
 func newEgressIPManager() *egressIPManager {
@@ -52,8 +38,7 @@ func newEgressIPManager() *egressIPManager {
 func (eim *egressIPManager) Start(networkClient networkclient.Interface, hostSubnetInformer networkinformers.HostSubnetInformer, netNamespaceInformer networkinformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
 	eim.networkClient = networkClient
 	eim.hostSubnetInformer = hostSubnetInformer
-	eim.nodeInformer = nodeInformer
-	eim.tracker.Start(hostSubnetInformer, netNamespaceInformer)
+	eim.tracker.Start(hostSubnetInformer, netNamespaceInformer, nodeInformer)
 }
 
 func (eim *egressIPManager) UpdateEgressCIDRs() {
@@ -94,7 +79,10 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 	// we won't process that until this reallocation is complete.
 
 	allocation := eim.tracker.ReallocateEgressIPs()
-	monitorNodes := make(map[string]*egressNode, len(allocation))
+	eim.tracker.Lock()
+	defer eim.tracker.Unlock()
+	newMonitorNodes := make(map[string]*common.NodeEgress, len(allocation))
+	oldMonitorNodes := eim.tracker.GetMonitorNodes()
 	for nodeName, egressIPs := range allocation {
 		resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 			hs, err := eim.hostSubnetInformer.Lister().Get(nodeName)
@@ -102,10 +90,10 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 				return err
 			}
 
-			if node := eim.monitorNodes[hs.HostIP]; node != nil {
-				monitorNodes[hs.HostIP] = node
+			if node := oldMonitorNodes[hs.HostIP]; node != nil {
+				newMonitorNodes[hs.HostIP] = node
 			} else {
-				monitorNodes[hs.HostIP] = &egressNode{ip: hs.HostIP, name: nodeName}
+				newMonitorNodes[hs.HostIP] = &common.NodeEgress{NodeIP: hs.HostIP, NodeName: nodeName}
 			}
 
 			oldIPs := sets.NewString(common.HSEgressIPsToStrings(hs.EgressIPs)...)
@@ -121,114 +109,14 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 		}
 	}
 
-	eim.monitorNodes = monitorNodes
-	if len(monitorNodes) > 0 {
-		if eim.stop == nil {
-			eim.stop = make(chan struct{})
-			go eim.poll(eim.stop)
-		}
-	} else {
-		if eim.stop != nil {
-			close(eim.stop)
-			eim.stop = nil
-		}
-	}
-
+	eim.tracker.SetMonitorNodes(newMonitorNodes)
 	return true, nil
-}
-
-const (
-	pollInterval   = 5 * time.Second
-	repollInterval = time.Second
-	maxRetries     = 2
-)
-
-func (eim *egressIPManager) poll(stop chan struct{}) {
-	retry := false
-	for {
-		select {
-		case <-stop:
-			return
-		default:
-		}
-
-		start := time.Now()
-		retry, err := eim.check(retry)
-		if err != nil {
-			klog.Warningf("Node may have been deleted or not exist anymore")
-		}
-		if !retry {
-			// If less than pollInterval has passed since start, then sleep until it has
-			time.Sleep(start.Add(pollInterval).Sub(time.Now()))
-		}
-	}
-}
-
-func nodeIsReady(node *v1.Node) bool {
-	nodeReady := true
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady {
-			if cond.Status == v1.ConditionFalse || cond.Status == v1.ConditionUnknown {
-				nodeReady = false
-			}
-		}
-	}
-	return nodeReady
-}
-
-func (eim *egressIPManager) check(retrying bool) (bool, error) {
-	var timeout time.Duration
-	if retrying {
-		timeout = repollInterval
-	} else {
-		timeout = pollInterval
-	}
-
-	needRetry := false
-	for _, node := range eim.monitorNodes {
-		if retrying && node.retries == 0 {
-			continue
-		}
-
-		nn, err := eim.nodeInformer.Lister().Get(node.name)
-		if err != nil {
-			return false, err
-		}
-
-		if !nodeIsReady(nn) {
-			klog.Warningf("Node %s is not Ready", node.name)
-			node.offline = true
-			eim.tracker.SetNodeOffline(node.ip, true)
-			// Return when there's a not Ready node
-			return false, nil
-		}
-
-		online := eim.tracker.Ping(node.ip, timeout)
-		if node.offline && online {
-			klog.Infof("Node %s is back online", node.ip)
-			node.offline = false
-			eim.tracker.SetNodeOffline(node.ip, false)
-		} else if !node.offline && !online {
-			node.retries++
-			if node.retries > maxRetries {
-				klog.Warningf("Node %s is offline", node.ip)
-				node.retries = 0
-				node.offline = true
-				eim.tracker.SetNodeOffline(node.ip, true)
-			} else {
-				klog.V(2).Infof("Node %s may be offline... retrying", node.ip)
-				needRetry = true
-			}
-		}
-	}
-
-	return needRetry, nil
 }
 
 func (eim *egressIPManager) Synced() {
 }
 
-func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, nodeName string) {
 }
 
 func (eim *egressIPManager) ReleaseEgressIP(egressIP, nodeIP string) {
