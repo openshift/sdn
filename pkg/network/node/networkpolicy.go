@@ -71,8 +71,8 @@ type npPolicy struct {
 	watchesAllPods    bool
 	watchesOwnPods    bool
 
-	flows       []string
-	selectedIPs []string
+	flows         []string
+	selectedIPs   []string
 	selectsAllIPs bool
 }
 
@@ -502,7 +502,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		// policy that only affects egress is, for our purposes, equivalent to one
 		// that affects ingress but does not select any pods.
 		npp.selectedIPs = nil
-		npp.selectsAllIPs = true
+		npp.selectsAllIPs = false
 		return npp
 	}
 
