@@ -73,6 +73,7 @@ type npPolicy struct {
 
 	flows       []string
 	selectedIPs []string
+	selectsAllIPs bool
 }
 
 // npCacheEntry caches information about matches for a LabelSelector
@@ -306,7 +307,7 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			for _, flow := range npp.flows {
 				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
 			}
-			if npp.selectedIPs == nil {
+			if npp.selectsAllIPs {
 				allPodsSelected = true
 			}
 		}
@@ -500,7 +501,8 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		// The rest of this function assumes that all policies affect ingress: a
 		// policy that only affects egress is, for our purposes, equivalent to one
 		// that affects ingress but does not select any pods.
-		npp.selectedIPs = []string{""}
+		npp.selectedIPs = nil
+		npp.selectsAllIPs = true
 		return npp
 	}
 
@@ -513,6 +515,7 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 		}
 	} else {
 		npp.selectedIPs = nil
+		npp.selectsAllIPs = true
 		destFlows = []string{""}
 	}
 
@@ -617,7 +620,7 @@ func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *ne
 	oldNPP, existed := npns.policies[policy.UID]
 	npns.policies[policy.UID] = npp
 
-	changed := !existed || !reflect.DeepEqual(oldNPP.flows, npp.flows) || !reflect.DeepEqual(oldNPP.selectedIPs, npp.selectedIPs)
+	changed := !existed || !reflect.DeepEqual(oldNPP.flows, npp.flows) || !reflect.DeepEqual(oldNPP.selectedIPs, npp.selectedIPs) || oldNPP.selectsAllIPs != npp.selectsAllIPs
 	if !changed {
 		klog.V(5).Infof("NetworkPolicy %s/%s is unchanged", policy.Namespace, policy.Name)
 	}
