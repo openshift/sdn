@@ -39,10 +39,10 @@ func waitForOVS(network, addr string) error {
 	return utilwait.PollImmediate(time.Second, time.Minute, func() (bool, error) {
 		dialErr, pingErr := dialAndPing(network, addr)
 		if dialErr != nil {
-			klog.V(2).Infof("waiting for OVS to start: %v", dialErr)
+			klog.Warningf("waiting for OVS to start: %v", dialErr)
 			return false, nil
 		} else if pingErr != nil {
-			klog.V(2).Infof("waiting for OVS to start, ping failed: %v", pingErr)
+			klog.Warningf("waiting for OVS to start, ping failed: %v", pingErr)
 			return false, nil
 		}
 		return true, nil
@@ -56,6 +56,7 @@ func waitForOVS(network, addr string) error {
 func runOVSHealthCheck(network, addr string, healthFn func() error) {
 	// this loop holds an open socket connection to OVS until it times out, then
 	// checks for health
+	klog.Infof("Starting SDN healthcheck go-routines")
 	go utilwait.Until(func() {
 		c, err := ovsclient.DialTimeout(network, addr, ovsDialTimeout)
 		if err != nil {
@@ -81,18 +82,18 @@ func runOVSHealthCheck(network, addr string, healthFn func() error) {
 			// TODO: make openshift-sdn able to reconcile without a restart
 			klog.Fatalf("SDN healthcheck detected OVS server change, restarting: %v", err)
 		}
-		klog.V(2).Infof("SDN healthcheck reconnected to OVS server")
+		klog.Infof("SDN healthcheck reconnected to OVS server")
 	}, ovsDialTimeout, utilwait.NeverStop)
 
 	// this loop periodically verifies we can still connect to the OVS server and
-	// is an upper bound on the time we wait before detecting a failed OVS configuartion
+	// is an upper bound on the time we wait before detecting a failed OVS configuration
 	go utilwait.Until(func() {
 		dialErr, pingErr := dialAndPing(network, addr)
 		if dialErr != nil {
-			klog.V(2).Infof("SDN healthcheck unable to reconnect to OVS server: %v", dialErr)
+			klog.Warningf("SDN healthcheck unable to reconnect to OVS server: %v", dialErr)
 			return
 		} else if pingErr != nil {
-			klog.V(2).Infof("SDN healthcheck unable to ping OVS server: %v", pingErr)
+			klog.Warningf("SDN healthcheck unable to ping OVS server: %v", pingErr)
 			return
 		}
 		if err := healthFn(); err != nil {
