@@ -162,7 +162,7 @@ func (ovsif *ovsExec) execWithStdin(cmd string, stdinArgs []string, args ...stri
 
 	output, err := kcmd.CombinedOutput()
 	if err != nil {
-		klog.V(2).Infof("Error executing %s: %s", cmd, string(output))
+		klog.Errorf("Error executing cmd: %s with args: %v, output: \n%s", cmd, args, string(output))
 		return "", err
 	}
 
