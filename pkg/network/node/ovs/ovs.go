@@ -107,9 +107,9 @@ const (
 )
 
 var ovsBackoff utilwait.Backoff = utilwait.Backoff{
-	Duration: 500 * time.Millisecond,
+	Duration: 10 * time.Millisecond,
 	Factor:   1.25,
-	Steps:    10,
+	Steps:    4,
 }
 
 // ovsExec implements ovs.Interface via calls to ovs-ofctl and ovs-vsctl
