@@ -163,7 +163,10 @@ func uid(npns *npNamespace, name string) ktypes.UID {
 // watches/flows. It does not require that matches lists every policy in npns; any extra
 // policies in npns that aren't in matches will just be ignored (other than the fact that
 // nPolicies must still be correct).
-func assertPolicies(npns *npNamespace, nPolicies int, matches map[string]*npPolicy) error {
+func assertPolicies(np *networkPolicyPlugin, npns *npNamespace, nPolicies int, matches map[string]*npPolicy) error {
+	np.lock.Lock()
+	defer np.lock.Unlock()
+
 	var matched []string
 	for _, npp := range npns.policies {
 		match := matches[npp.policy.Name]
@@ -352,7 +355,7 @@ func TestNetworkPolicy(t *testing.T) {
 
 	// Each namespace should now have 2 policies, each with a single flow
 	for _, npns := range np.namespaces {
-		err := assertPolicies(npns, 2, map[string]*npPolicy{
+		err := assertPolicies(np, npns, 2, map[string]*npPolicy{
 			"allow-from-self": {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
@@ -384,7 +387,7 @@ func TestNetworkPolicy(t *testing.T) {
 		addPods(np, npns)
 
 		// There are no pod-selecting policies yet, so nothing should have changed
-		err := assertPolicies(npns, 2, nil)
+		err := assertPolicies(np, npns, 2, nil)
 		if err != nil {
 			t.Error(err.Error())
 		}
@@ -416,7 +419,7 @@ func TestNetworkPolicy(t *testing.T) {
 		})
 		waitForSync(np, synced, "networkpolicy sync")
 
-		err = assertPolicies(npns, 3, map[string]*npPolicy{
+		err = assertPolicies(np, npns, 3, map[string]*npPolicy{
 			"allow-client-to-server": {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
@@ -458,7 +461,7 @@ func TestNetworkPolicy(t *testing.T) {
 	})
 	waitForSync(np, synced, "networkpolicy sync")
 
-	err := assertPolicies(npns1, 4, map[string]*npPolicy{
+	err := assertPolicies(np, npns1, 4, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
@@ -507,7 +510,7 @@ func TestNetworkPolicy(t *testing.T) {
 	})
 	waitForSync(np, synced, "networkpolicy sync")
 
-	err = assertPolicies(npns1, 5, map[string]*npPolicy{
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-odd-primes": {
 			watchesNamespaces: true,
 			watchesAllPods:    true,
@@ -551,7 +554,7 @@ func TestNetworkPolicy(t *testing.T) {
 	})
 	waitForSync(np, synced, "networkpolicy sync")
 
-	err = assertPolicies(npns2, 4, map[string]*npPolicy{
+	err = assertPolicies(np, npns2, 4, map[string]*npPolicy{
 		"allow-from-all-clients": {
 			watchesNamespaces: true,
 			watchesAllPods:    true,
@@ -593,7 +596,7 @@ func TestNetworkPolicy(t *testing.T) {
 	for vnid, npns := range np.namespaces {
 		switch vnid {
 		case 0:
-			err := assertPolicies(npns, 2, map[string]*npPolicy{
+			err := assertPolicies(np, npns, 2, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
@@ -616,7 +619,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}
 
 		case 1:
-			err := assertPolicies(npns, 5, map[string]*npPolicy{
+			err := assertPolicies(np, npns, 5, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
@@ -669,7 +672,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}
 
 		case 2:
-			err := assertPolicies(npns, 4, map[string]*npPolicy{
+			err := assertPolicies(np, npns, 4, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
@@ -716,7 +719,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}
 
 		case 3, 4, 5:
-			err := assertPolicies(npns, 3, map[string]*npPolicy{
+			err := assertPolicies(np, npns, 3, map[string]*npPolicy{
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
@@ -747,7 +750,7 @@ func TestNetworkPolicy(t *testing.T) {
 			}
 
 		case 6, 7, 8, 9:
-			err := assertPolicies(npns, 0, nil)
+			err := assertPolicies(np, npns, 0, nil)
 			if err != nil {
 				t.Error(err.Error())
 			}
@@ -760,7 +763,7 @@ func TestNetworkPolicy(t *testing.T) {
 	// If we delete a namespace, then stale policies may be left behind...
 	forceSync(np, synced)
 	delNamespace(np, "two", 2)
-	err = assertPolicies(npns1, 5, map[string]*npPolicy{
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
@@ -781,7 +784,7 @@ func TestNetworkPolicy(t *testing.T) {
 	synced.Store(false)
 	addNamespace(np, "unrelated", 100, nil)
 	waitForSync(np, synced, "namespace addition")
-	err = assertPolicies(npns1, 5, map[string]*npPolicy{
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
@@ -822,7 +825,7 @@ func TestNetworkPolicy(t *testing.T) {
 	})
 	waitForSync(np, synced, "namespace deletion")
 
-	err = assertPolicies(npns4, 2, map[string]*npPolicy{
+	err = assertPolicies(np, npns4, 2, map[string]*npPolicy{
 		"allow-from-self": {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
@@ -844,7 +847,7 @@ func TestNetworkPolicy(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	err = assertPolicies(npns1, 5, map[string]*npPolicy{
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-default": {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
@@ -887,7 +890,7 @@ func TestNetworkPolicy(t *testing.T) {
 	waitForSync(np, synced, "host-network NP addition")
 
 	// make sure we add the right flows
-	err = assertPolicies(npns, 1, map[string]*npPolicy{
+	err = assertPolicies(np, npns, 1, map[string]*npPolicy{
 		"allow-from-host-network-ns": {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
@@ -1119,7 +1122,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 		addPods(np, npns)
 		waitForSync(np, synced, "pod addition")
 		// both policies should be updated
-		err := assertPolicies(npns, 2, map[string]*npPolicy{
+		err := assertPolicies(np, npns, 2, map[string]*npPolicy{
 			"allow-client-to-server-1": {
 				watchesNamespaces: false,
 				watchesAllPods:    false,

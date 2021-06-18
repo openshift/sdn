@@ -44,7 +44,7 @@ type networkPolicyPlugin struct {
 	// namespaces includes only the namespaces that we have a VNID for, and is used
 	// for all flow-generating methods
 	namespaces map[uint32]*npNamespace
-	// nsMatchCache caches matches for namespaceSelectors; see selectNamespaceInternal
+	// nsMatchCache caches matches for namespaceSelectors; see selectNamespacesInternal
 	nsMatchCache map[string]*npCacheEntry
 }
 
