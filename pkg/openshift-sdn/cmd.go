@@ -57,7 +57,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 		Run: func(c *cobra.Command, _ []string) {
 			ch := make(chan struct{})
 			interrupt.New(func(s os.Signal) {
-				fmt.Fprintf(errout, "interrupt: Gracefully shutting down ...\n")
+				fmt.Fprintf(errout, "interrupt: Signal %s received. Gracefully shutting down ...\n", s.String())
 				close(ch)
 			}).Run(func() error {
 				sdn.Run(c, errout, ch)
