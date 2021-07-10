@@ -126,6 +126,7 @@ func (plugin *OsdnNode) SetupSDN() (bool, map[string]podNetworkInfo, error) {
 	if err := waitForOVS(ovsDialDefaultNetwork, ovsDialDefaultAddress); err != nil {
 		return false, nil, err
 	}
+	runOVSHealthCheck(ovsDialDefaultNetwork, ovsDialDefaultAddress)
 
 	var changed bool
 	existingPods, err := plugin.oc.GetPodNetworkInfo()
@@ -151,11 +152,6 @@ func (plugin *OsdnNode) FinishSetupSDN() error {
 	if err != nil {
 		return err
 	}
-
-	// TODO: make it possible to safely reestablish node configuration after restart
-	// If OVS goes down and fails the health check, restart the entire process
-	runOVSHealthCheck(ovsDialDefaultNetwork, ovsDialDefaultAddress, plugin.alreadySetUp)
-
 	return nil
 }
 

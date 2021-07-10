@@ -13,11 +13,9 @@ import (
 )
 
 const (
-	ovsDialTimeout         = 5 * time.Second
-	ovsHealthcheckInterval = 30 * time.Second
-	ovsRecoveryTimeout     = 10 * time.Second
-	ovsDialDefaultNetwork  = "unix"
-	ovsDialDefaultAddress  = "/var/run/openvswitch/db.sock"
+	ovsDialTimeout        = 5 * time.Second
+	ovsDialDefaultNetwork = "unix"
+	ovsDialDefaultAddress = "/var/run/openvswitch/db.sock"
 )
 
 // dialAndPing connects to OVS once and pings the server. It returns
@@ -40,67 +38,31 @@ func waitForOVS(network, addr string) error {
 	return utilwait.PollImmediate(time.Second, time.Minute, func() (bool, error) {
 		dialErr, pingErr := dialAndPing(network, addr)
 		if dialErr != nil {
-			klog.V(2).Infof("waiting for OVS to start: %v", dialErr)
+			klog.Warningf("waiting for OVS to start: %v", dialErr)
 			return false, nil
 		} else if pingErr != nil {
-			klog.V(2).Infof("waiting for OVS to start, ping failed: %v", pingErr)
+			klog.Warningf("waiting for OVS to start, ping failed: %v", pingErr)
 			return false, nil
 		}
 		return true, nil
 	})
 }
 
-// runOVSHealthCheck runs two background loops - one that waits for disconnection
-// from the OVS server and then checks healthFn, and one that periodically checks
-// healthFn. If healthFn returns false in either of these two cases while the OVS
-// server is responsive the node process will terminate.
-func runOVSHealthCheck(network, addr string, healthFn func() error) {
-	// this loop holds an open socket connection to OVS until it times out, then
-	// checks for health
+// runOVSHealthCheck runs one background loop - one that waits for disconnection
+// from the OVS server
+func runOVSHealthCheck(network, addr string) {
+	klog.Infof("[SDN healthcheck] starting SDN-OVS disconnection go-routine")
 	go utilwait.Until(func() {
 		c, err := ovsclient.DialTimeout(network, addr, ovsDialTimeout)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("SDN healthcheck unable to connect to OVS server: %v", err))
+			utilruntime.HandleError(fmt.Errorf("[SDN healthcheck] SDN healthcheck unable to connect to OVS server: %v", err))
 			return
 		}
 		defer c.Close()
 
 		_ = c.WaitForDisconnect()
 
-		// Poll OVS in a tight loop waiting for reconnect
-		err = utilwait.PollImmediate(100*time.Millisecond, ovsRecoveryTimeout, func() (bool, error) {
-			if dialErr, pingErr := dialAndPing(network, addr); dialErr != nil || pingErr != nil {
-				return false, nil
-			}
-			if err := healthFn(); err != nil {
-				return false, fmt.Errorf("OVS reinitialization required: %v", err)
-			}
-			return true, nil
-		})
-		if err != nil {
-			// If OVS restarts and our health check fails, we exit
-			// TODO: make openshift-sdn able to reconcile without a restart
-			klog.Warningf("SDN healthcheck detected OVS server change, restarting: %v", err)
-			os.Exit(1)
-		}
-		klog.V(2).Infof("SDN healthcheck reconnected to OVS server")
+		klog.Errorf("[SDN healthcheck] detected OVS server change, restarting")
+		os.Exit(1)
 	}, ovsDialTimeout, utilwait.NeverStop)
-
-	// this loop periodically verifies we can still connect to the OVS server and
-	// is an upper bound on the time we wait before detecting a failed OVS configuartion
-	go utilwait.Until(func() {
-		dialErr, pingErr := dialAndPing(network, addr)
-		if dialErr != nil {
-			klog.V(2).Infof("SDN healthcheck unable to reconnect to OVS server: %v", dialErr)
-			return
-		} else if pingErr != nil {
-			klog.V(2).Infof("SDN healthcheck unable to ping OVS server: %v", pingErr)
-			return
-		}
-		if err := healthFn(); err != nil {
-			klog.Warningf("SDN healthcheck detected unhealthy OVS server, restarting: %v", err)
-			os.Exit(1)
-		}
-		klog.V(4).Infof("SDN healthcheck succeeded")
-	}, ovsHealthcheckInterval, utilwait.NeverStop)
 }
