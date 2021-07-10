@@ -350,8 +350,69 @@ func (node *OsdnNode) validateMTU() error {
 	return nil
 }
 
-func (node *OsdnNode) Start() error {
+//AddOrRemoveTaint adds or removes the network-unavailable taint on the node depending on the setTaint value
+func (node *OsdnNode) AddOrRemoveTaint(setTaint bool, taint *corev1.Taint) error {
+	action := ""
+	if setTaint {
+		action = "adding"
+	} else {
+		action = "removing"
+	}
+
+	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
+	}
+
+	nodeObjJson, err := json.Marshal(nodeObj)
+	if err != nil {
+		klog.Infof("Unable to marshal original node %s object for %s taint: %v", node.hostName, action, err)
+		return err
+	}
+
+	var taintedNodeObj *corev1.Node
+	if setTaint {
+		taintedNodeObj, _, err = taints.AddOrUpdateTaint(nodeObj, taint)
+	} else {
+		taintedNodeObj, _, err = taints.RemoveTaint(nodeObj, taint)
+	}
+
+	if err != nil {
+		klog.Infof("Unable to (un)taint node %s: %v", node.hostName, err)
+		return err
+	}
+
+	taintedNodeObjJson, err := json.Marshal(taintedNodeObj)
+	if err != nil {
+		klog.Infof("Unable to marshal updated node %s object for %s taint: %v", node.hostName, action, err)
+		return err
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(nodeObjJson, taintedNodeObjJson, kapi.Node{})
+	if err != nil {
+		klog.Infof("Unable to patch the updated node %s object for %s taint: %v", node.hostName, action, err)
+		return err
+	}
+
+	if _, err = node.kClient.CoreV1().Nodes().Patch(context.TODO(), node.hostName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil {
+		klog.Infof("Unable to patch the updated node %s object for %s taint: %v", node.hostName, action, err)
+		return err
+	}
+
+	klog.Infof("Successful in %s network.openshift.io/network-unavailable taint on node %v", action, node.hostName)
+	return nil
+}
+
+func (node *OsdnNode) Start(stopCh <-chan struct{}) error {
 	klog.V(2).Infof("Starting openshift-sdn network plugin")
+
+	go func() {
+		<-stopCh
+		// Add the NoSchedule Taint on the node, before ovnkube pod gets deleted. Ignore errors.
+		if err := node.AddOrRemoveTaint(true, &corev1.Taint{Key: "network.openshift.io/network-unavailable", Value: "NoSchedule", Effect: "NoSchedule"}); err != nil {
+			klog.Infof("Unsuccessful in adding network.openshift.io/network-unavailable taint on node %v: %v", node.hostName, err)
+		}
+	}()
 
 	var err error
 	node.localSubnetCIDR, err = node.getLocalSubnet()
@@ -426,6 +487,11 @@ func (node *OsdnNode) Start() error {
 		metrics.GatherPeriodicMetrics()
 		node.oc.ovs.UpdateOVSMetrics()
 	}, time.Minute*2)
+
+	// Remove the NoSchedule Taint from the node, now that networking setup is done. Ignore errors.
+	if err := node.AddOrRemoveTaint(false, &corev1.Taint{Key: "network.openshift.io/network-unavailable", Value: "NoSchedule", Effect: "NoSchedule"}); err != nil {
+		klog.Infof("Unsuccessful in removing network.openshift.io/network-unavailable taint on node %v: %v", node.hostName, err)
+	}
 
 	return nil
 }

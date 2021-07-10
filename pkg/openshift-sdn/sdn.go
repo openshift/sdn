@@ -36,8 +36,8 @@ func (sdn *OpenShiftSDN) initSDN() error {
 }
 
 // runSDN starts the sdn node process. Returns.
-func (sdn *OpenShiftSDN) runSDN() error {
-	return sdn.OsdnNode.Start()
+func (sdn *OpenShiftSDN) runSDN(stopCh <-chan struct{}) error {
+	return sdn.OsdnNode.Start(stopCh)
 }
 
 func (sdn *OpenShiftSDN) writeConfigFile() error {
