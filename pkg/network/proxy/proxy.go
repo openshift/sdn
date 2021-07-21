@@ -7,18 +7,19 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	kubeproxy "k8s.io/kubernetes/pkg/proxy"
-	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 
 	networkv1 "github.com/openshift/api/network/v1"
 	networkclient "github.com/openshift/client-go/network/clientset/versioned"
@@ -27,22 +28,9 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
-// EndpointsConfigHandler is an abstract interface of objects which receive update notifications for the set of endpoints.
-type EndpointsConfigHandler interface {
-	// OnEndpointsUpdate gets called when endpoints configuration is changed for a given
-	// service on any of the configuration sources. An example is when a new
-	// service comes up, or when containers come up or down for an existing service.
-	OnEndpointsUpdate(endpoints []*corev1.Endpoints)
-}
-
 type firewallItem struct {
 	ruleType networkv1.EgressNetworkPolicyRuleType
 	net      *net.IPNet
-}
-
-type proxyFirewallItem struct {
-	namespaceFirewalls map[ktypes.UID][]firewallItem
-	activePolicy       *ktypes.UID
 }
 
 type proxyEndpoints struct {
@@ -50,16 +38,33 @@ type proxyEndpoints struct {
 	blocked   bool
 }
 
+type proxyEndpointSlice struct {
+	endpointslice *discoveryv1beta1.EndpointSlice
+	blocked       bool
+}
+
+type proxyNamespace struct {
+	global bool
+
+	firewalls    map[ktypes.UID][]firewallItem
+	activePolicy *ktypes.UID
+
+	blockableEndpoints      map[ktypes.UID]*proxyEndpoints
+	blockableEndpointSlices map[ktypes.UID]*proxyEndpointSlice
+}
+
 type OsdnProxy struct {
-	kubeproxyconfig.NoopEndpointSliceHandler
 	sync.Mutex
 
 	kClient          kubernetes.Interface
+	kubeInformers    informers.SharedInformerFactory
 	networkClient    networkclient.Interface
 	networkInformers networkinformers.SharedInformerFactory
 	networkInfo      *common.ParsedClusterNetwork
 	egressDNS        *common.EgressDNS
-	baseProxy        kubeproxy.Provider
+	minSyncPeriod    time.Duration
+
+	baseProxy HybridizableProxy
 
 	// waitChan will be closed when both services and endpoints have
 	// been synced in the proxy
@@ -67,32 +72,44 @@ type OsdnProxy struct {
 	servicesSynced  bool
 	endpointsSynced bool
 
-	firewall     map[string]*proxyFirewallItem
-	allEndpoints map[ktypes.UID]*proxyEndpoints
-
-	idLock sync.Mutex
-	ids    map[string]uint32
+	namespaces map[string]*proxyNamespace
 }
 
 // Called by higher layers to create the proxy plugin instance
-func New(networkClient networkclient.Interface, kClient kubernetes.Interface,
-	networkInformers networkinformers.SharedInformerFactory) (*OsdnProxy, error) {
+func New(kClient kubernetes.Interface,
+	kubeInformers informers.SharedInformerFactory,
+	networkClient networkclient.Interface,
+	networkInformers networkinformers.SharedInformerFactory,
+	minSyncPeriod time.Duration) (*OsdnProxy, error) {
+
 	egressDNS, err := common.NewEgressDNS(true, false)
 	if err != nil {
 		return nil, err
 	}
 	return &OsdnProxy{
 		kClient:          kClient,
+		kubeInformers:    kubeInformers,
 		networkClient:    networkClient,
 		networkInformers: networkInformers,
-		ids:              make(map[string]uint32),
+		minSyncPeriod:    minSyncPeriod,
 		egressDNS:        egressDNS,
-		firewall:         make(map[string]*proxyFirewallItem),
-		allEndpoints:     make(map[ktypes.UID]*proxyEndpoints),
+		namespaces:       make(map[string]*proxyNamespace),
 	}, nil
 }
 
-func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) error {
+func (proxy *OsdnProxy) SetBaseProxies(mainProxy, unidlingProxy HybridizableProxy) {
+	if unidlingProxy == nil {
+		proxy.baseProxy = mainProxy
+	} else {
+		proxy.baseProxy = NewHybridProxier(
+			mainProxy, unidlingProxy,
+			proxy.minSyncPeriod,
+			proxy.kubeInformers.Core().V1().Services().Lister(),
+		)
+	}
+}
+
+func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error
@@ -100,7 +117,6 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) 
 	if err != nil {
 		return fmt.Errorf("could not get network info: %s", err)
 	}
-	proxy.baseProxy = proxier
 	proxy.waitChan = waitChan
 
 	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
@@ -127,10 +143,26 @@ func (proxy *OsdnProxy) ReloadIPTables() error {
 	return nil
 }
 
-func (proxy *OsdnProxy) updateEgressNetworkPolicyLocked(policy networkv1.EgressNetworkPolicy) {
-	proxy.Lock()
-	defer proxy.Unlock()
-	proxy.updateEgressNetworkPolicy(policy)
+// Assumes lock is held
+func (proxy *OsdnProxy) getNamespace(name string) *proxyNamespace {
+	ns := proxy.namespaces[name]
+	if ns == nil {
+		ns = &proxyNamespace{
+			firewalls:               make(map[ktypes.UID][]firewallItem),
+			blockableEndpoints:      make(map[ktypes.UID]*proxyEndpoints),
+			blockableEndpointSlices: make(map[ktypes.UID]*proxyEndpointSlice),
+		}
+		proxy.namespaces[name] = ns
+	}
+	return ns
+}
+
+// Assumes lock is held
+func (proxy *OsdnProxy) maybeGarbageCollectNamespace(name string, ns *proxyNamespace) {
+	if ns.global == false && len(ns.firewalls) == 0 &&
+		len(ns.blockableEndpoints) == 0 && len(ns.blockableEndpointSlices) == 0 {
+		delete(proxy.namespaces, name)
+	}
 }
 
 func (proxy *OsdnProxy) watchEgressNetworkPolicies() {
@@ -157,7 +189,9 @@ func (proxy *OsdnProxy) handleDeleteEgressNetworkPolicy(obj interface{}) {
 	proxy.egressDNS.Delete(*policy)
 	policy.Spec.Egress = nil
 
-	proxy.updateEgressNetworkPolicyLocked(*policy)
+	proxy.Lock()
+	defer proxy.Unlock()
+	proxy.updateEgressNetworkPolicy(*policy)
 }
 
 func (proxy *OsdnProxy) watchNetNamespaces() {
@@ -169,35 +203,37 @@ func (proxy *OsdnProxy) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventT
 	netns := obj.(*networkv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
-	proxy.idLock.Lock()
-	defer proxy.idLock.Unlock()
-	proxy.ids[netns.Name] = netns.NetID
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(netns.Name)
+	ns.global = (netns.NetID == network.GlobalVNID)
 }
 
 func (proxy *OsdnProxy) handleDeleteNetNamespace(obj interface{}) {
 	netns := obj.(*networkv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", watch.Deleted, netns.Name)
 
-	proxy.idLock.Lock()
-	defer proxy.idLock.Unlock()
-	delete(proxy.ids, netns.Name)
-}
+	proxy.Lock()
+	defer proxy.Unlock()
 
-func (proxy *OsdnProxy) isNamespaceGlobal(ns string) bool {
-	proxy.idLock.Lock()
-	defer proxy.idLock.Unlock()
-
-	if proxy.ids[ns] == network.GlobalVNID {
-		return true
+	ns := proxy.namespaces[netns.Name]
+	if ns == nil {
+		return
 	}
-	return false
+
+	// The only part of netns we keep track of in ns is whether it is "global" or not.
+	// If the netns no longer exists, then it is not global.
+	ns.global = false
+	proxy.maybeGarbageCollectNamespace(netns.Name, ns)
 }
 
+// Assumes lock is held
 func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetworkPolicy) {
-	ns := policy.Namespace
-	if proxy.isNamespaceGlobal(ns) {
+	ns := proxy.getNamespace(policy.Namespace)
+	if ns.global {
 		// Firewall not allowed for global namespaces
-		utilruntime.HandleError(fmt.Errorf("EgressNetworkPolicy in global network namespace (%s) is not allowed (%s); ignoring firewall rules", ns, policy.Name))
+		utilruntime.HandleError(fmt.Errorf("EgressNetworkPolicy in global network namespace (%s) is not allowed (%s); ignoring firewall rules", policy.Namespace, policy.Name))
 		return
 	}
 
@@ -229,42 +265,30 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 
 	// Add/Update/Delete firewall rules for the namespace
 	if len(firewall) > 0 {
-		if _, ok := proxy.firewall[ns]; !ok {
-			item := &proxyFirewallItem{}
-			item.namespaceFirewalls = make(map[ktypes.UID][]firewallItem)
-			item.activePolicy = nil
-			proxy.firewall[ns] = item
-		}
-		proxy.firewall[ns].namespaceFirewalls[policy.UID] = firewall
-	} else if _, ok := proxy.firewall[ns]; ok {
-		delete(proxy.firewall[ns].namespaceFirewalls, policy.UID)
-		if len(proxy.firewall[ns].namespaceFirewalls) == 0 {
-			delete(proxy.firewall, ns)
-		}
+		ns.firewalls[policy.UID] = firewall
+	} else {
+		delete(ns.firewalls, policy.UID)
 	}
 
 	// Set active policy for the namespace
-	if ref, ok := proxy.firewall[ns]; ok {
-		if len(ref.namespaceFirewalls) == 1 {
-			for uid := range ref.namespaceFirewalls {
-				ref.activePolicy = &uid
-				klog.Infof("Applied firewall egress network policy: %q to namespace: %q", uid, ns)
-			}
-		} else {
-			ref.activePolicy = nil
+	if len(ns.firewalls) == 1 {
+		for uid := range ns.firewalls {
+			ns.activePolicy = &uid
+			klog.Infof("Applied firewall egress network policy: %q to namespace: %q", uid, policy.Namespace)
+		}
+	} else {
+		ns.activePolicy = nil
+
+		if len(ns.firewalls) > 1 {
 			// We only allow one policy per namespace otherwise it's hard to determine which policy to apply first
-			utilruntime.HandleError(fmt.Errorf("Found multiple egress policies, dropping all firewall rules for namespace: %q", ns))
+			utilruntime.HandleError(fmt.Errorf("Found multiple egress policies, dropping all firewall rules for namespace: %q", policy.Namespace))
 		}
 	}
 
-	// Update endpoints
-	for _, pep := range proxy.allEndpoints {
-		if pep.endpoints.Namespace != policy.Namespace {
-			continue
-		}
-
+	// Update endpoints and slices
+	for _, pep := range ns.blockableEndpoints {
 		wasBlocked := pep.blocked
-		pep.blocked = proxy.endpointsBlocked(pep.endpoints)
+		pep.blocked = proxy.endpointsBlocked(ns, pep.endpoints)
 		switch {
 		case wasBlocked && !pep.blocked:
 			proxy.baseProxy.OnEndpointsAdd(pep.endpoints)
@@ -272,40 +296,104 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetwork
 			proxy.baseProxy.OnEndpointsDelete(pep.endpoints)
 		}
 	}
-}
-
-func (proxy *OsdnProxy) firewallBlocksIP(namespace string, ip net.IP) bool {
-	if ref, ok := proxy.firewall[namespace]; ok {
-		if ref.activePolicy == nil {
-			// Block all connections if active policy is not set
-			return true
-		}
-
-		for _, item := range ref.namespaceFirewalls[*ref.activePolicy] {
-			if item.net.Contains(ip) {
-				return item.ruleType == networkv1.EgressNetworkPolicyRuleDeny
-			}
+	for _, pes := range ns.blockableEndpointSlices {
+		wasBlocked := pes.blocked
+		pes.blocked = proxy.endpointSliceBlocked(ns, pes.endpointslice)
+		switch {
+		case wasBlocked && !pes.blocked:
+			proxy.baseProxy.OnEndpointSliceAdd(pes.endpointslice)
+		case !wasBlocked && pes.blocked:
+			proxy.baseProxy.OnEndpointSliceDelete(pes.endpointslice)
 		}
 	}
-	return false
+
+	if len(ns.firewalls) == 0 {
+		proxy.maybeGarbageCollectNamespace(policy.Namespace, ns)
+	}
 }
 
-func (proxy *OsdnProxy) endpointsBlocked(ep *corev1.Endpoints) bool {
+// Returns true if ep contains at least one blockable (ie, non-local) endpoint.
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointsBlockable(ns *proxyNamespace, ep *corev1.Endpoints) bool {
 	for _, ss := range ep.Subsets {
 		for _, addr := range ss.Addresses {
-			IP := net.ParseIP(addr.IP)
-			if _, contains := common.ClusterNetworkListContains(proxy.networkInfo.ClusterNetworks, IP); !contains && !proxy.networkInfo.ServiceNetwork.Contains(IP) {
-				if proxy.firewallBlocksIP(ep.Namespace, IP) {
-					klog.Warningf("Service '%s' in namespace '%s' has an Endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
-					return true
-				}
+			ip := net.ParseIP(addr.IP)
+			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
+				return true
 			}
 		}
 	}
-
 	return false
 }
 
+// Returns true if slice contains at least one blockable (ie, non-local) endpoint
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointSliceBlockable(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+	for _, ep := range slice.Endpoints {
+		for _, addr := range ep.Addresses {
+			ip := net.ParseIP(addr)
+			if !proxy.networkInfo.PodNetworkContains(ip) && !proxy.networkInfo.ServiceNetworkContains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Assumes lock is held
+func (ns *proxyNamespace) firewallBlocks(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	for _, item := range ns.firewalls[*ns.activePolicy] {
+		if item.net.Contains(ip) {
+			return item.ruleType == networkv1.EgressNetworkPolicyRuleDeny
+		}
+	}
+	return false
+}
+
+// Returns true if ep contains at least one endpoint that is blocked by current firewall rules
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointsBlocked(ns *proxyNamespace, ep *corev1.Endpoints) bool {
+	if len(ns.firewalls) == 0 {
+		return false
+	} else if ns.activePolicy == nil {
+		// Block all connections if active policy is not set
+		return true
+	}
+
+	for _, ss := range ep.Subsets {
+		for _, addr := range ss.Addresses {
+			if ns.firewallBlocks(addr.IP) {
+				klog.Warningf("Endpoint '%s' in namespace '%s' has an endpoint pointing to firewalled destination (%s)", ep.Name, ep.Namespace, addr.IP)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Returns true if slice contains at least one endpoint that is blocked by current firewall rules
+// Assumes lock is held
+func (proxy *OsdnProxy) endpointSliceBlocked(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+	if len(ns.firewalls) == 0 {
+		return false
+	} else if ns.activePolicy == nil {
+		// Block all connections if active policy is not set
+		return true
+	}
+
+	for _, ep := range slice.Endpoints {
+		for _, addr := range ep.Addresses {
+			if ns.firewallBlocks(addr) {
+				klog.Warningf("EndpointSlice '%s' in namespace '%s' has an endpoint pointing to firewalled destination (%s)", slice.Name, slice.Namespace, addr)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Assumes lock is held
 func (proxy *OsdnProxy) checkInitialized() {
 	if proxy.servicesSynced && proxy.endpointsSynced && proxy.waitChan != nil {
 		klog.V(2).Info("openshift-sdn proxy services and endpoints initialized")
@@ -318,34 +406,53 @@ func (proxy *OsdnProxy) OnEndpointsAdd(ep *corev1.Endpoints) {
 	proxy.Lock()
 	defer proxy.Unlock()
 
-	pep := &proxyEndpoints{ep, proxy.endpointsBlocked(ep)}
-	proxy.allEndpoints[ep.UID] = pep
-	if !pep.blocked {
-		proxy.baseProxy.OnEndpointsAdd(ep)
+	ns := proxy.getNamespace(ep.Namespace)
+	if proxy.endpointsBlockable(ns, ep) {
+		pep := &proxyEndpoints{ep, proxy.endpointsBlocked(ns, ep)}
+		ns.blockableEndpoints[ep.UID] = pep
+		if pep.blocked {
+			return
+		}
 	}
+
+	proxy.baseProxy.OnEndpointsAdd(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 	proxy.Lock()
 	defer proxy.Unlock()
 
-	pep := proxy.allEndpoints[ep.UID]
+	ns := proxy.getNamespace(ep.Namespace)
+	isBlockable := proxy.endpointsBlockable(ns, ep)
+	isBlocked := isBlockable && proxy.endpointsBlocked(ns, ep)
+
+	pep := ns.blockableEndpoints[ep.UID]
 	if pep == nil {
-		klog.Warningf("Got OnEndpointsUpdate for unknown Endpoints %#v", ep)
-		pep = &proxyEndpoints{ep, true}
-		proxy.allEndpoints[ep.UID] = pep
+		if !isBlockable {
+			// Wasn't blockable before, still isn't
+			proxy.baseProxy.OnEndpointsUpdate(old, ep)
+			return
+		}
+		// Wasn't blockable before, but is now
+		pep = &proxyEndpoints{ep, false}
+		ns.blockableEndpoints[ep.UID] = pep
 	}
+
 	wasBlocked := pep.blocked
 	pep.endpoints = ep
-	pep.blocked = proxy.endpointsBlocked(ep)
+	pep.blocked = isBlocked
 
 	switch {
-	case wasBlocked && !pep.blocked:
+	case wasBlocked && !isBlocked:
 		proxy.baseProxy.OnEndpointsAdd(ep)
-	case !wasBlocked && !pep.blocked:
+	case !wasBlocked && !isBlocked:
 		proxy.baseProxy.OnEndpointsUpdate(old, ep)
-	case !wasBlocked && pep.blocked:
-		proxy.baseProxy.OnEndpointsDelete(ep)
+	case !wasBlocked && isBlocked:
+		proxy.baseProxy.OnEndpointsDelete(old)
+	}
+
+	if !isBlockable {
+		delete(ns.blockableEndpoints, ep.UID)
 	}
 }
 
@@ -353,19 +460,112 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 	proxy.Lock()
 	defer proxy.Unlock()
 
-	pep := proxy.allEndpoints[ep.UID]
-	if pep == nil {
-		klog.Warningf("Got OnEndpointsDelete for unknown Endpoints %#v", ep)
+	ns := proxy.getNamespace(ep.Namespace)
+	if ns == nil {
 		return
 	}
-	delete(proxy.allEndpoints, ep.UID)
-	if !pep.blocked {
-		proxy.baseProxy.OnEndpointsDelete(ep)
+	pep := ns.blockableEndpoints[ep.UID]
+	if pep != nil {
+		delete(ns.blockableEndpoints, ep.UID)
+		proxy.maybeGarbageCollectNamespace(ep.Namespace, ns)
+		if pep.blocked {
+			return
+		}
 	}
+
+	proxy.baseProxy.OnEndpointsDelete(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.baseProxy.OnEndpointsSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	proxy.endpointsSynced = true
+	proxy.checkInitialized()
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	if proxy.endpointSliceBlockable(ns, slice) {
+		pes := &proxyEndpointSlice{slice, proxy.endpointSliceBlocked(ns, slice)}
+		ns.blockableEndpointSlices[slice.UID] = pes
+		if pes.blocked {
+			return
+		}
+	}
+
+	proxy.baseProxy.OnEndpointSliceAdd(slice)
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	isBlockable := proxy.endpointSliceBlockable(ns, slice)
+	isBlocked := isBlockable && proxy.endpointSliceBlocked(ns, slice)
+
+	pes := ns.blockableEndpointSlices[slice.UID]
+	if pes == nil {
+		if !isBlockable {
+			// Wasn't blockable before, still isn't
+			proxy.baseProxy.OnEndpointSliceUpdate(old, slice)
+			return
+		}
+		// Wasn't blockable before, but is now
+		pes = &proxyEndpointSlice{slice, false}
+		ns.blockableEndpointSlices[slice.UID] = pes
+	}
+
+	wasBlocked := pes.blocked
+	pes.endpointslice = slice
+	pes.blocked = isBlocked
+
+	switch {
+	case wasBlocked && !isBlocked:
+		proxy.baseProxy.OnEndpointSliceAdd(slice)
+	case !wasBlocked && !isBlocked:
+		proxy.baseProxy.OnEndpointSliceUpdate(old, slice)
+	case !wasBlocked && isBlocked:
+		proxy.baseProxy.OnEndpointSliceDelete(old)
+	}
+
+	if !isBlockable {
+		delete(ns.blockableEndpointSlices, slice.UID)
+	}
+}
+
+func (proxy *OsdnProxy) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+	proxy.Lock()
+	defer proxy.Unlock()
+
+	ns := proxy.getNamespace(slice.Namespace)
+	if ns == nil {
+		return
+	}
+	pes := ns.blockableEndpointSlices[slice.UID]
+	if pes != nil {
+		delete(ns.blockableEndpointSlices, slice.UID)
+		proxy.maybeGarbageCollectNamespace(slice.Namespace, ns)
+		if pes.blocked {
+			return
+		}
+	}
+
+	proxy.baseProxy.OnEndpointSliceDelete(slice)
+}
+
+func (proxy *OsdnProxy) OnEndpointSlicesSynced() {
+	proxy.baseProxy.OnEndpointSlicesSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
 	proxy.endpointsSynced = true
 	proxy.checkInitialized()
 }
@@ -401,6 +601,10 @@ func (proxy *OsdnProxy) OnServiceDelete(service *corev1.Service) {
 
 func (proxy *OsdnProxy) OnServiceSynced() {
 	proxy.baseProxy.OnServiceSynced()
+
+	proxy.Lock()
+	defer proxy.Unlock()
+
 	proxy.servicesSynced = true
 	proxy.checkInitialized()
 }
@@ -442,7 +646,11 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 				}
 			}
 
-			proxy.updateEgressNetworkPolicyLocked(policy)
+			func() {
+				proxy.Lock()
+				defer proxy.Unlock()
+				proxy.updateEgressNetworkPolicy(policy)
+			}()
 		}
 	}
 }
