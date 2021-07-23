@@ -273,6 +273,28 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 		},
 	)
 
+	// Don't track vxlan traffic with conntrack, as it is not needed and decreases performance
+	chainArray = append(chainArray,
+		Chain{
+			table:    "raw",
+			name:     "OPENSHIFT-VXLAN-NOTRACK",
+			srcChain: "OUTPUT",
+			srcRule:  []string{"-m", "comment", "--comment", "disable conntrack for vxlan"},
+			rules: [][]string{
+				{"-p", "udp", "--dport", fmt.Sprintf("%d", n.vxlanPort), "-j", "NOTRACK"},
+			},
+		},
+		Chain{
+			table:    "raw",
+			name:     "OPENSHIFT-VXLAN-NOTRACK",
+			srcChain: "PREROUTING",
+			srcRule:  []string{"-m", "comment", "--comment", "disable conntrack for vxlan"},
+			rules: [][]string{
+				{"-p", "udp", "--dport", fmt.Sprintf("%d", n.vxlanPort), "-j", "NOTRACK"},
+			},
+		},
+	)
+
 	return chainArray
 }
 
