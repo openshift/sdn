@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -39,7 +39,7 @@ type proxyEndpoints struct {
 }
 
 type proxyEndpointSlice struct {
-	endpointslice *discoveryv1beta1.EndpointSlice
+	endpointslice *discoveryv1.EndpointSlice
 	blocked       bool
 }
 
@@ -328,7 +328,7 @@ func (proxy *OsdnProxy) endpointsBlockable(ns *proxyNamespace, ep *corev1.Endpoi
 
 // Returns true if slice contains at least one blockable (ie, non-local) endpoint
 // Assumes lock is held
-func (proxy *OsdnProxy) endpointSliceBlockable(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+func (proxy *OsdnProxy) endpointSliceBlockable(ns *proxyNamespace, slice *discoveryv1.EndpointSlice) bool {
 	for _, ep := range slice.Endpoints {
 		for _, addr := range ep.Addresses {
 			ip := net.ParseIP(addr)
@@ -374,7 +374,7 @@ func (proxy *OsdnProxy) endpointsBlocked(ns *proxyNamespace, ep *corev1.Endpoint
 
 // Returns true if slice contains at least one endpoint that is blocked by current firewall rules
 // Assumes lock is held
-func (proxy *OsdnProxy) endpointSliceBlocked(ns *proxyNamespace, slice *discoveryv1beta1.EndpointSlice) bool {
+func (proxy *OsdnProxy) endpointSliceBlocked(ns *proxyNamespace, slice *discoveryv1.EndpointSlice) bool {
 	if len(ns.firewalls) == 0 {
 		return false
 	} else if ns.activePolicy == nil {
@@ -486,7 +486,7 @@ func (proxy *OsdnProxy) OnEndpointsSynced() {
 	proxy.checkInitialized()
 }
 
-func (proxy *OsdnProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+func (proxy *OsdnProxy) OnEndpointSliceAdd(slice *discoveryv1.EndpointSlice) {
 	proxy.Lock()
 	defer proxy.Unlock()
 
@@ -502,7 +502,7 @@ func (proxy *OsdnProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice
 	proxy.baseProxy.OnEndpointSliceAdd(slice)
 }
 
-func (proxy *OsdnProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.EndpointSlice) {
+func (proxy *OsdnProxy) OnEndpointSliceUpdate(old, slice *discoveryv1.EndpointSlice) {
 	proxy.Lock()
 	defer proxy.Unlock()
 
@@ -540,7 +540,7 @@ func (proxy *OsdnProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.Endpo
 	}
 }
 
-func (proxy *OsdnProxy) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+func (proxy *OsdnProxy) OnEndpointSliceDelete(slice *discoveryv1.EndpointSlice) {
 	proxy.Lock()
 	defer proxy.Unlock()
 

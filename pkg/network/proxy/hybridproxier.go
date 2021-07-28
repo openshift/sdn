@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -311,17 +311,17 @@ func (p *HybridProxier) OnEndpointsSynced() {
 	klog.V(6).Infof("endpoints synced")
 }
 
-func endpointSliceServiceName(slice *discoveryv1beta1.EndpointSlice) string {
-	serviceName := slice.Labels[discoveryv1beta1.LabelServiceName]
+func endpointSliceServiceName(slice *discoveryv1.EndpointSlice) string {
+	serviceName := slice.Labels[discoveryv1.LabelServiceName]
 	if serviceName == "" {
 		klog.Warningf("EndpointSlice %s/%s has no %q label",
-			slice.Namespace, slice.Name, discoveryv1beta1.LabelServiceName)
+			slice.Namespace, slice.Name, discoveryv1.LabelServiceName)
 		return slice.Name
 	}
 	return serviceName
 }
 
-func sliceToEndpoints(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
+func sliceToEndpoints(slice *discoveryv1.EndpointSlice) *corev1.Endpoints {
 	if slice == nil {
 		return nil
 	}
@@ -370,7 +370,7 @@ func sliceToEndpoints(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
 	return endpoints
 }
 
-func endpointsIfEmptySlice(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
+func endpointsIfEmptySlice(slice *discoveryv1.EndpointSlice) *corev1.Endpoints {
 	for _, ep := range slice.Endpoints {
 		if len(ep.Addresses) > 0 {
 			return nil
@@ -379,7 +379,7 @@ func endpointsIfEmptySlice(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoi
 	return sliceToEndpoints(slice)
 }
 
-func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1.EndpointSlice) {
 	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
@@ -394,7 +394,7 @@ func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice
 	}
 }
 
-func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1beta1.EndpointSlice) {
+func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1.EndpointSlice) {
 	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
@@ -411,7 +411,7 @@ func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1beta1.
 	}
 }
 
-func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1.EndpointSlice) {
 	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)

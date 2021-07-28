@@ -10,7 +10,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -162,7 +162,7 @@ func (tp *testProxy) OnEndpointsSynced() {
 	}
 }
 
-func endpointSliceIPs(slice *discoveryv1beta1.EndpointSlice) string {
+func endpointSliceIPs(slice *discoveryv1.EndpointSlice) string {
 	if len(slice.Endpoints) == 0 || len(slice.Endpoints[0].Addresses) == 0 {
 		return "-"
 	}
@@ -178,7 +178,7 @@ func endpointSliceIPs(slice *discoveryv1beta1.EndpointSlice) string {
 	return ips
 }
 
-func (tp *testProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
+func (tp *testProxy) OnEndpointSliceAdd(slice *discoveryv1.EndpointSlice) {
 	if tp.endpointSlices == nil {
 		panic(fmt.Sprintf("%s proxy got unexpected EndpointSlice event", tp.name))
 	}
@@ -192,7 +192,7 @@ func (tp *testProxy) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
 	tp.events = append(tp.events, fmt.Sprintf("add endpointslice %s %s", name, endpointSliceIPs(slice)))
 }
 
-func (tp *testProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.EndpointSlice) {
+func (tp *testProxy) OnEndpointSliceUpdate(old, slice *discoveryv1.EndpointSlice) {
 	if tp.endpointSlices == nil {
 		panic(fmt.Sprintf("%s proxy got unexpected EndpointSlice event", tp.name))
 	}
@@ -205,7 +205,7 @@ func (tp *testProxy) OnEndpointSliceUpdate(old, slice *discoveryv1beta1.Endpoint
 	tp.events = append(tp.events, fmt.Sprintf("update endpointslice %s %s", name, endpointSliceIPs(slice)))
 }
 
-func (tp *testProxy) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
+func (tp *testProxy) OnEndpointSliceDelete(slice *discoveryv1.EndpointSlice) {
 	if tp.endpointSlices == nil {
 		panic(fmt.Sprintf("%s proxy got unexpected EndpointSlice event", tp.name))
 	}
@@ -257,7 +257,7 @@ func mustParseCIDR(cidr string) *net.IPNet {
 	return net
 }
 
-func makeEndpoints(namespace, name string, ips ...string) (*corev1.Endpoints, *discoveryv1beta1.EndpointSlice) {
+func makeEndpoints(namespace, name string, ips ...string) (*corev1.Endpoints, *discoveryv1.EndpointSlice) {
 	ep := &corev1.Endpoints{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   namespace,
@@ -280,16 +280,16 @@ func makeEndpoints(namespace, name string, ips ...string) (*corev1.Endpoints, *d
 		ep.Subsets[0].Addresses[i].IP = ip
 	}
 
-	slice := &discoveryv1beta1.EndpointSlice{
+	slice := &discoveryv1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name + "-slice1",
 			UID:       ktypes.UID(namespace + "/" + name),
 			Labels: map[string]string{
-				discoveryv1beta1.LabelServiceName: name,
+				discoveryv1.LabelServiceName: name,
 			},
 		},
-		Endpoints: []discoveryv1beta1.Endpoint{
+		Endpoints: []discoveryv1.Endpoint{
 			{
 				Addresses: ips,
 			},
@@ -382,12 +382,12 @@ func TestOsdnProxy(t *testing.T) {
 	proxy.OnEndpointSliceAdd(ep)
 	initialEvents.Insert("add endpointslice default/kubernetes-slice1 10.0.0.1 10.0.0.2 10.0.0.3")
 
-	eps := make(map[string]map[string]*discoveryv1beta1.EndpointSlice)
+	eps := make(map[string]map[string]*discoveryv1.EndpointSlice)
 	for _, ns := range namespaces {
 		if ns.Name == "default" {
 			continue
 		}
-		eps[ns.Name] = make(map[string]*discoveryv1beta1.EndpointSlice)
+		eps[ns.Name] = make(map[string]*discoveryv1.EndpointSlice)
 
 		_, ep := makeEndpoints(ns.Name, "local", "10.130.0.5", "10.131.2.5")
 		proxy.OnEndpointSliceAdd(ep)

@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"k8s.io/api/core/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
@@ -23,7 +22,7 @@ type NeedPodsSignaler interface {
 }
 
 type eventSignaler struct {
-	recorder record.EventRecorder
+	recorder events.EventRecorder
 }
 
 func (sig *eventSignaler) NeedPods(serviceName types.NamespacedName, port string) error {
@@ -36,14 +35,14 @@ func (sig *eventSignaler) NeedPods(serviceName types.NamespacedName, port string
 	}
 
 	// HACK: make the message different to prevent event aggregation
-	sig.recorder.Eventf(&serviceRef, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
+	sig.recorder.Eventf(&serviceRef, nil, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
 
 	return nil
 }
 
 // NewEventSignaler constructs a NeedPodsSignaler which signals by recording
 // an event for the service with the "NeedPods" reason.
-func NewEventSignaler(eventRecorder record.EventRecorder) NeedPodsSignaler {
+func NewEventSignaler(eventRecorder events.EventRecorder) NeedPodsSignaler {
 	return &eventSignaler{
 		recorder: eventRecorder,
 	}
@@ -52,7 +51,7 @@ func NewEventSignaler(eventRecorder record.EventRecorder) NeedPodsSignaler {
 // NewUnidlerProxier creates a new Proxier for the given LoadBalancer and address which fires off
 // unidling signals connections and traffic.  It is intended to be used as one half of a HybridProxier.
 func NewUnidlerProxier(loadBalancer userspace.LoadBalancer, listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, signaler NeedPodsSignaler) (*userspace.Proxier, error) {
-	newFunc := func(protocol corev1.Protocol, ip net.IP, port int) (userspace.ProxySocket, error) {
+	newFunc := func(protocol v1.Protocol, ip net.IP, port int) (userspace.ProxySocket, error) {
 		return newUnidlerSocket(protocol, ip, port, signaler)
 	}
 	return userspace.NewCustomProxier(loadBalancer, listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newFunc)
