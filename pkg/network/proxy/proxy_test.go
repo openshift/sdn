@@ -283,8 +283,11 @@ func makeEndpoints(namespace, name string, ips ...string) (*corev1.Endpoints, *d
 	slice := &discoveryv1beta1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      name,
+			Name:      name + "-slice1",
 			UID:       ktypes.UID(namespace + "/" + name),
+			Labels: map[string]string{
+				discoveryv1beta1.LabelServiceName: name,
+			},
 		},
 		Endpoints: []discoveryv1beta1.Endpoint{
 			{
@@ -377,7 +380,7 @@ func TestOsdnProxy(t *testing.T) {
 
 	_, ep := makeEndpoints("default", "kubernetes", "10.0.0.1", "10.0.0.2", "10.0.0.3")
 	proxy.OnEndpointSliceAdd(ep)
-	initialEvents.Insert("add endpointslice default/kubernetes 10.0.0.1 10.0.0.2 10.0.0.3")
+	initialEvents.Insert("add endpointslice default/kubernetes-slice1 10.0.0.1 10.0.0.2 10.0.0.3")
 
 	eps := make(map[string]map[string]*discoveryv1beta1.EndpointSlice)
 	for _, ns := range namespaces {
@@ -389,37 +392,37 @@ func TestOsdnProxy(t *testing.T) {
 		_, ep := makeEndpoints(ns.Name, "local", "10.130.0.5", "10.131.2.5")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["local"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/local 10.130.0.5 10.131.2.5")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/local-slice1 10.130.0.5 10.131.2.5")
 
 		_, ep = makeEndpoints(ns.Name, "extfar", "1.2.3.4")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["extfar"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/extfar 1.2.3.4")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/extfar-slice1 1.2.3.4")
 
 		_, ep = makeEndpoints(ns.Name, "extnear", "192.168.2.5")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["extnear"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/extnear 192.168.2.5")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/extnear-slice1 192.168.2.5")
 
 		_, ep = makeEndpoints(ns.Name, "extbad", "192.168.1.5")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["extbad"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/extbad 192.168.1.5")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/extbad-slice1 192.168.1.5")
 
 		_, ep = makeEndpoints(ns.Name, "extexcept", "192.168.1.1")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["extexcept"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/extexcept 192.168.1.1")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/extexcept-slice1 192.168.1.1")
 
 		_, ep = makeEndpoints(ns.Name, "extmixed", "10.130.0.5", "192.168.1.5")
 		proxy.OnEndpointSliceAdd(ep)
 		eps[ns.Name]["extmixed"] = ep
-		initialEvents.Insert("add endpointslice " + ns.Name + "/extmixed 10.130.0.5 192.168.1.5")
+		initialEvents.Insert("add endpointslice " + ns.Name + "/extmixed-slice1 10.130.0.5 192.168.1.5")
 	}
 	// fixup: we added a few endpoints that we don't actually expect
 	initialEvents.Delete(
-		"add endpointslice one/extbad 192.168.1.5",
-		"add endpointslice one/extmixed 10.130.0.5 192.168.1.5",
+		"add endpointslice one/extbad-slice1 192.168.1.5",
+		"add endpointslice one/extmixed-slice1 10.130.0.5 192.168.1.5",
 	)
 
 	// *****
@@ -460,10 +463,10 @@ func TestOsdnProxy(t *testing.T) {
 
 	// That should result in everything external except "extexcept" being blocked
 	err = tp.assertEvents("after adding EgressNetworkPolicy to namespace three",
-		"delete endpointslice three/extfar 1.2.3.4",
-		"delete endpointslice three/extnear 192.168.2.5",
-		"delete endpointslice three/extbad 192.168.1.5",
-		"delete endpointslice three/extmixed 10.130.0.5 192.168.1.5",
+		"delete endpointslice three/extfar-slice1 1.2.3.4",
+		"delete endpointslice three/extnear-slice1 192.168.2.5",
+		"delete endpointslice three/extbad-slice1 192.168.1.5",
+		"delete endpointslice three/extmixed-slice1 10.130.0.5 192.168.1.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -479,8 +482,8 @@ func TestOsdnProxy(t *testing.T) {
 	proxy.handleAddOrUpdateEgressNetworkPolicy(enp2a, nil, watch.Added)
 
 	err = tp.assertEvents("after copying first EgressNetworkPolicy to namespace two",
-		"delete endpointslice two/extbad 192.168.1.5",
-		"delete endpointslice two/extmixed 10.130.0.5 192.168.1.5",
+		"delete endpointslice two/extbad-slice1 192.168.1.5",
+		"delete endpointslice two/extmixed-slice1 10.130.0.5 192.168.1.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -494,9 +497,9 @@ func TestOsdnProxy(t *testing.T) {
 	proxy.handleAddOrUpdateEgressNetworkPolicy(enp2b, nil, watch.Added)
 
 	err = tp.assertEvents("after copying second EgressNetworkPolicy to namespace two",
-		"delete endpointslice two/extfar 1.2.3.4",
-		"delete endpointslice two/extnear 192.168.2.5",
-		"delete endpointslice two/extexcept 192.168.1.1",
+		"delete endpointslice two/extfar-slice1 1.2.3.4",
+		"delete endpointslice two/extnear-slice1 192.168.2.5",
+		"delete endpointslice two/extexcept-slice1 192.168.1.1",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -506,7 +509,7 @@ func TestOsdnProxy(t *testing.T) {
 	// (meaning "two" will allow the same things as "three")
 	proxy.handleDeleteEgressNetworkPolicy(enp2a)
 	err = tp.assertEvents("after deleting first EgressNetworkPolicy from namespace two",
-		"add endpointslice two/extexcept 192.168.1.1",
+		"add endpointslice two/extexcept-slice1 192.168.1.1",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -515,10 +518,10 @@ func TestOsdnProxy(t *testing.T) {
 	// Now delete the second ENP, which should unblock everything
 	proxy.handleDeleteEgressNetworkPolicy(enp2b)
 	err = tp.assertEvents("after deleting second EgressNetworkPolicy from namespace two",
-		"add endpointslice two/extfar 1.2.3.4",
-		"add endpointslice two/extnear 192.168.2.5",
-		"add endpointslice two/extbad 192.168.1.5",
-		"add endpointslice two/extmixed 10.130.0.5 192.168.1.5",
+		"add endpointslice two/extfar-slice1 1.2.3.4",
+		"add endpointslice two/extnear-slice1 192.168.2.5",
+		"add endpointslice two/extbad-slice1 192.168.1.5",
+		"add endpointslice two/extmixed-slice1 10.130.0.5 192.168.1.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -566,12 +569,12 @@ func TestOsdnProxy(t *testing.T) {
 	namespaces = namespaces[:4]
 
 	err = tp.assertEvents("after deleting namespace four",
-		"delete endpointslice four/local 10.130.0.5 10.131.2.5",
-		"delete endpointslice four/extfar 1.2.3.4",
-		"delete endpointslice four/extnear 192.168.2.5",
-		"delete endpointslice four/extbad 192.168.1.5",
-		"delete endpointslice four/extexcept 192.168.1.1",
-		"delete endpointslice four/extmixed 10.130.0.5 192.168.1.5",
+		"delete endpointslice four/local-slice1 10.130.0.5 10.131.2.5",
+		"delete endpointslice four/extfar-slice1 1.2.3.4",
+		"delete endpointslice four/extnear-slice1 192.168.2.5",
+		"delete endpointslice four/extbad-slice1 192.168.1.5",
+		"delete endpointslice four/extexcept-slice1 192.168.1.1",
+		"delete endpointslice four/extmixed-slice1 10.130.0.5 192.168.1.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -599,19 +602,19 @@ func TestOsdnProxy(t *testing.T) {
 
 	err = tp.assertEvents("after modifying endpoints",
 		// In namespace one, this blocks extnear and unblocks extbad
-		"update endpointslice one/local 10.130.0.5 10.131.1.5",
-		"delete endpointslice one/extnear 192.168.2.5",
-		"add endpointslice one/extbad 192.168.3.5",
+		"update endpointslice one/local-slice1 10.130.0.5 10.131.1.5",
+		"delete endpointslice one/extnear-slice1 192.168.2.5",
+		"add endpointslice one/extbad-slice1 192.168.3.5",
 
 		// In namespace two, there is no effect on blocking; we just observe the
 		// updated endpoints
-		"update endpointslice two/local 10.130.0.5 10.131.1.5",
-		"update endpointslice two/extnear 192.168.2.5 192.168.1.4",
-		"update endpointslice two/extbad 192.168.3.5",
+		"update endpointslice two/local-slice1 10.130.0.5 10.131.1.5",
+		"update endpointslice two/extnear-slice1 192.168.2.5 192.168.1.4",
+		"update endpointslice two/extbad-slice1 192.168.3.5",
 
 		// In namespace three, extnear and extbad were blocked before and are
 		// still blocked, so we don't see any updates to them.
-		"update endpointslice three/local 10.130.0.5 10.131.1.5",
+		"update endpointslice three/local-slice1 10.130.0.5 10.131.1.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -626,8 +629,8 @@ func TestOsdnProxy(t *testing.T) {
 
 	// Now namespace three will see the extbad, with the updated IP from above
 	err = tp.assertEvents("after modifying EgressNetworkPolicy",
-		"add endpointslice three/extfar 1.2.3.4",
-		"add endpointslice three/extbad 192.168.3.5",
+		"add endpointslice three/extfar-slice1 1.2.3.4",
+		"add endpointslice three/extbad-slice1 192.168.3.5",
 	)
 	if err != nil {
 		t.Fatalf("%v", err)

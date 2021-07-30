@@ -311,6 +311,16 @@ func (p *HybridProxier) OnEndpointsSynced() {
 	klog.V(6).Infof("endpoints synced")
 }
 
+func endpointSliceServiceName(slice *discoveryv1beta1.EndpointSlice) string {
+	serviceName := slice.Labels[discoveryv1beta1.LabelServiceName]
+	if serviceName == "" {
+		klog.Warningf("EndpointSlice %s/%s has no %q label",
+			slice.Namespace, slice.Name, discoveryv1beta1.LabelServiceName)
+		return slice.Name
+	}
+	return serviceName
+}
+
 func sliceToEndpoints(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
 	if slice == nil {
 		return nil
@@ -329,6 +339,7 @@ func sliceToEndpoints(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoints {
 			},
 		},
 	}
+	endpoints.Name = endpointSliceServiceName(slice)
 	for _, ep := range slice.Endpoints {
 		addr := corev1.EndpointAddress{
 			NodeName:  ep.NodeName,
@@ -369,7 +380,7 @@ func endpointsIfEmptySlice(slice *discoveryv1beta1.EndpointSlice) *corev1.Endpoi
 }
 
 func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice) {
-	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
@@ -384,7 +395,7 @@ func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1beta1.EndpointSlice
 }
 
 func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1beta1.EndpointSlice) {
-	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
@@ -401,7 +412,7 @@ func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1beta1.
 }
 
 func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSlice) {
-	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: slice.Name}
+	svcName := types.NamespacedName{Namespace: slice.Namespace, Name: endpointSliceServiceName(slice)}
 	hsvc := p.getService(svcName)
 	defer p.releaseService(svcName)
 
@@ -418,7 +429,7 @@ func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1beta1.EndpointSl
 
 func (p *HybridProxier) OnEndpointSlicesSynced() {
 	klog.V(6).Infof("hybrid proxy: endpointslices synced")
-	p.unidlingProxy.OnEndpointSlicesSynced()
+	p.unidlingProxy.OnEndpointsSynced()
 	p.mainProxy.OnEndpointSlicesSynced()
 }
 
