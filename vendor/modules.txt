@@ -40,8 +40,6 @@ github.com/PuerkitoBio/urlesc
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.1+incompatible
 github.com/blang/semver
-# github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2 => github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2
-github.com/certifi/gocertifi
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/containerd/cgroups v0.0.0-20200531161412-0dbf7f05ba59
@@ -87,8 +85,6 @@ github.com/evanphx/json-patch
 github.com/exponent-io/jsonpath
 # github.com/fsnotify/fsnotify v1.4.9 => github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
-# github.com/getsentry/raven-go v0.0.0-20190513200303-c977f96e1095
-github.com/getsentry/raven-go
 # github.com/go-errors/errors v1.0.1
 github.com/go-errors/errors
 # github.com/go-logr/logr v0.4.0
@@ -200,11 +196,11 @@ github.com/opencontainers/runc/libcontainer/configs
 github.com/opencontainers/runc/libcontainer/utils
 # github.com/opencontainers/runtime-spec v1.0.3-0.20200929063507-e6143ca7d51d => github.com/opencontainers/runtime-spec v1.0.2-0.20190911013453-52e2591aa9f7
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/openshift/api v0.0.0-20200424083944-0422dc17083e
+# github.com/openshift/api v0.0.0-20210726144523-6fcabc0010ca
 github.com/openshift/api/config/v1
 github.com/openshift/api/network/v1
 github.com/openshift/api/unidling/v1alpha1
-# github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc
+# github.com/openshift/build-machinery-go v0.0.0-20210712174854-1bb7fd1518d3
 github.com/openshift/build-machinery-go
 github.com/openshift/build-machinery-go/make
 github.com/openshift/build-machinery-go/make/lib
@@ -213,7 +209,7 @@ github.com/openshift/build-machinery-go/make/targets/golang
 github.com/openshift/build-machinery-go/make/targets/openshift
 github.com/openshift/build-machinery-go/make/targets/openshift/operator
 github.com/openshift/build-machinery-go/scripts
-# github.com/openshift/client-go v0.0.0-20200422192633-6f6c07fc2a70
+# github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142
 github.com/openshift/client-go/network/clientset/versioned
 github.com/openshift/client-go/network/clientset/versioned/scheme
 github.com/openshift/client-go/network/clientset/versioned/typed/network/v1
@@ -222,7 +218,7 @@ github.com/openshift/client-go/network/informers/externalversions/internalinterf
 github.com/openshift/client-go/network/informers/externalversions/network
 github.com/openshift/client-go/network/informers/externalversions/network/v1
 github.com/openshift/client-go/network/listers/network/v1
-# github.com/openshift/library-go v0.0.0-20200424095618-2aeb4725dadf
+# github.com/openshift/library-go v0.0.0-20210729061737-1f51a749a2f3
 github.com/openshift/library-go/pkg/config/leaderelection
 github.com/openshift/library-go/pkg/network/networkapihelpers
 github.com/openshift/library-go/pkg/network/networkutils
@@ -973,8 +969,6 @@ k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 # k8s.io/cri-api v1.21.1 => github.com/openshift/kubernetes/staging/src/k8s.io/cri-api v0.0.0-20210618154254-43b818f2e5a3
 k8s.io/cri-api/pkg/apis
 k8s.io/cri-api/pkg/apis/runtime/v1alpha2
-# k8s.io/klog v1.0.0
-k8s.io/klog
 # k8s.io/klog/v2 v2.8.0
 k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
