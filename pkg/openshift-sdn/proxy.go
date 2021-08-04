@@ -17,8 +17,7 @@ import (
 	"k8s.io/apiserver/pkg/server/routes"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/scheme"
-	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
@@ -84,9 +83,10 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
 
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: sdn.informers.KubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
+	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: sdn.informers.KubeClient.EventsV1()})
+	stopCh := make(chan struct{})
+	eventBroadcaster.StartRecordingToSink(stopCh)
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, "kube-proxy")
 
 	execer := utilexec.New()
 	iptInterface := utiliptables.New(execer, protocol)
@@ -211,7 +211,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 
 	if usingEndpointSlices {
 		endpointSliceConfig := pconfig.NewEndpointSliceConfig(
-			sdn.informers.KubeInformers.Discovery().V1beta1().EndpointSlices(),
+			sdn.informers.KubeInformers.Discovery().V1().EndpointSlices(),
 			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
 		)
 		endpointSliceConfig.RegisterEventHandler(sdn.OsdnProxy)
