@@ -3,6 +3,7 @@ package openshift_sdn
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -173,6 +174,8 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 	if err := sdn.writeConfigFile(); err != nil {
 		klog.Fatal(err)
 	}
+	go verifyConfigs()
+
 	klog.V(2).Infof("openshift-sdn network plugin ready")
 
 	go sdn.ipt.Monitor(iptables.Chain("OPENSHIFT-SDN-CANARY"),
@@ -253,4 +256,33 @@ func watchForChanges(configPath string, stopCh chan struct{}) error {
 		}
 	}()
 	return nil
+}
+
+// run as a goroutine that verifies the existance of /etc/cni/net.d/80-openshift-network.conf
+// and /host/opt/cni/bin/openshift-sdn
+func verifyConfigs() {
+	for {
+		// verify /etc/cni/net.d/80-openshift-network.conf
+		if _, err := os.Stat(openshiftCNIFile); os.IsNotExist(err) {
+			klog.Infof("config file %s has been deleted, rewriting", openshiftCNIFile)
+			ioutil.WriteFile(openshiftCNIFile, []byte(openshiftCNIConfig), 0644)
+		}
+		// verify /host/opt/cni/bin/openshift-sdn
+		if _, err := os.Stat("/host/opt/cni/bin/openshift-sdn"); os.IsNotExist(err) {
+			klog.Infof("openshift-sdn binary deleted on host, replacing deleted binary")
+			input, err := ioutil.ReadFile("/host/opt/cni/bin/openshift-sdn")
+			if err != nil {
+				klog.Errorf("unable to read openshift-sdn binary (%+v)", err)
+				continue
+			}
+			err = ioutil.WriteFile("/host/opt/cni/bin/openshift-sdn", input, 0775)
+			if err != nil {
+				klog.Errorf("unable to write openshift-sdn binary to host (%+v)", err)
+				continue
+			}
+		}
+		// wakeup to check for these files every 10s
+		time.Sleep(10 * time.Second)
+	}
+
 }

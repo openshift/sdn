@@ -12,6 +12,13 @@ import (
 )
 
 const openshiftCNIFile string = "/etc/cni/net.d/80-openshift-network.conf"
+const openshiftCNIConfig string = `
+{
+  "cniVersion": "0.3.1",
+  "name": "openshift-sdn",
+  "type": "openshift-sdn"
+}
+`
 
 // initSDN sets up the sdn process.
 func (sdn *OpenShiftSDN) initSDN() error {
@@ -46,11 +53,5 @@ func (sdn *OpenShiftSDN) writeConfigFile() error {
 
 	// Write our CNI config file out to disk to signal to kubelet that
 	// our network plugin is ready
-	return ioutil.WriteFile(openshiftCNIFile, []byte(`
-{
-  "cniVersion": "0.3.1",
-  "name": "openshift-sdn",
-  "type": "openshift-sdn"
-}
-`), 0644)
+	return ioutil.WriteFile(openshiftCNIFile, []byte(openshiftCNIConfig), 0644)
 }
