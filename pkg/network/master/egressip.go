@@ -16,8 +16,8 @@ import (
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/util/retry"
 
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
@@ -25,8 +25,8 @@ type egressIPManager struct {
 	sync.Mutex
 
 	tracker            *common.EgressIPTracker
-	networkClient      networkclient.Interface
-	hostSubnetInformer networkinformers.HostSubnetInformer
+	osdnClient         osdnclient.Interface
+	hostSubnetInformer osdninformers.HostSubnetInformer
 	nodeInformer       kcoreinformers.NodeInformer
 
 	updatePending bool
@@ -49,8 +49,8 @@ func newEgressIPManager() *egressIPManager {
 	return eim
 }
 
-func (eim *egressIPManager) Start(networkClient networkclient.Interface, hostSubnetInformer networkinformers.HostSubnetInformer, netNamespaceInformer networkinformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
-	eim.networkClient = networkClient
+func (eim *egressIPManager) Start(osdnClient osdnclient.Interface, hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
+	eim.osdnClient = osdnClient
 	eim.hostSubnetInformer = hostSubnetInformer
 	eim.nodeInformer = nodeInformer
 	eim.tracker.Start(hostSubnetInformer, netNamespaceInformer)
@@ -112,7 +112,7 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 			newIPs := sets.NewString(egressIPs...)
 			if !oldIPs.Equal(newIPs) {
 				hs.EgressIPs = common.StringsToHSEgressIPs(egressIPs)
-				_, err = eim.networkClient.NetworkV1().HostSubnets().Update(context.TODO(), hs, metav1.UpdateOptions{})
+				_, err = eim.osdnClient.NetworkV1().HostSubnets().Update(context.TODO(), hs, metav1.UpdateOptions{})
 			}
 			return err
 		})

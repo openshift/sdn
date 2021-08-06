@@ -5,7 +5,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/openshift/library-go/pkg/network/networkapihelpers"
+	osdnapihelpers "github.com/openshift/library-go/pkg/network/networkapihelpers"
 	"github.com/openshift/sdn/pkg/network"
 )
 
@@ -35,27 +35,27 @@ func TestMasterVNIDMap(t *testing.T) {
 	checkCurrentVNIDs(t, vmap, 4, 3)
 
 	// update vnids
-	_, err = vmap.updateNetID("alpha", networkapihelpers.JoinPodNetwork, "bravo")
+	_, err = vmap.updateNetID("alpha", osdnapihelpers.JoinPodNetwork, "bravo")
 	checkNoErr(t, err)
-	_, err = vmap.updateNetID("alpha", networkapihelpers.JoinPodNetwork, "bogus")
+	_, err = vmap.updateNetID("alpha", osdnapihelpers.JoinPodNetwork, "bogus")
 	checkErr(t, err)
-	_, err = vmap.updateNetID("bogus", networkapihelpers.JoinPodNetwork, "alpha")
+	_, err = vmap.updateNetID("bogus", osdnapihelpers.JoinPodNetwork, "alpha")
 	checkErr(t, err)
 	checkCurrentVNIDs(t, vmap, 4, 2)
 
-	_, err = vmap.updateNetID("alpha", networkapihelpers.GlobalPodNetwork, "")
+	_, err = vmap.updateNetID("alpha", osdnapihelpers.GlobalPodNetwork, "")
 	checkNoErr(t, err)
-	_, err = vmap.updateNetID("charlie", networkapihelpers.GlobalPodNetwork, "")
+	_, err = vmap.updateNetID("charlie", osdnapihelpers.GlobalPodNetwork, "")
 	checkNoErr(t, err)
-	_, err = vmap.updateNetID("bogus", networkapihelpers.GlobalPodNetwork, "")
+	_, err = vmap.updateNetID("bogus", osdnapihelpers.GlobalPodNetwork, "")
 	checkErr(t, err)
 	checkCurrentVNIDs(t, vmap, 4, 1)
 
-	_, err = vmap.updateNetID("alpha", networkapihelpers.IsolatePodNetwork, "")
+	_, err = vmap.updateNetID("alpha", osdnapihelpers.IsolatePodNetwork, "")
 	checkNoErr(t, err)
-	_, err = vmap.updateNetID("bravo", networkapihelpers.IsolatePodNetwork, "")
+	_, err = vmap.updateNetID("bravo", osdnapihelpers.IsolatePodNetwork, "")
 	checkNoErr(t, err)
-	_, err = vmap.updateNetID("bogus", networkapihelpers.IsolatePodNetwork, "")
+	_, err = vmap.updateNetID("bogus", osdnapihelpers.IsolatePodNetwork, "")
 	checkErr(t, err)
 	checkCurrentVNIDs(t, vmap, 4, 2)
 

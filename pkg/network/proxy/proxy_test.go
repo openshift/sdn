@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/util/async"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
@@ -330,9 +330,9 @@ func TestOsdnProxy(t *testing.T) {
 	}
 
 	// Create NetNamespaces
-	namespaces := make([]*networkv1.NetNamespace, 5)
+	namespaces := make([]*osdnv1.NetNamespace, 5)
 	for i, name := range []string{"default", "one", "two", "three", "four"} {
-		namespaces[i] = &networkv1.NetNamespace{
+		namespaces[i] = &osdnv1.NetNamespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
@@ -342,29 +342,29 @@ func TestOsdnProxy(t *testing.T) {
 	}
 
 	// Create EgressNetworkPolicy rules in "one"
-	enp1 := &networkv1.EgressNetworkPolicy{
+	enp1 := &osdnv1.EgressNetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespaces[1].Name,
 			Name:      "enp1",
 			UID:       ktypes.UID("enp1"),
 		},
-		Spec: networkv1.EgressNetworkPolicySpec{
-			Egress: []networkv1.EgressNetworkPolicyRule{
+		Spec: osdnv1.EgressNetworkPolicySpec{
+			Egress: []osdnv1.EgressNetworkPolicyRule{
 				{
-					Type: networkv1.EgressNetworkPolicyRuleAllow,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleAllow,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "192.168.1.1/32",
 					},
 				},
 				{
-					Type: networkv1.EgressNetworkPolicyRuleDeny,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleDeny,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "192.168.1.0/24",
 					},
 				},
 				{
-					Type: networkv1.EgressNetworkPolicyRuleAllow,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleAllow,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "192.168.0.0/16",
 					},
 				},
@@ -434,23 +434,23 @@ func TestOsdnProxy(t *testing.T) {
 	// *****
 
 	// Add a new EgressNetworkPolicy to an existing namespace
-	enp3 := &networkv1.EgressNetworkPolicy{
+	enp3 := &osdnv1.EgressNetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespaces[3].Name,
 			Name:      "enp3",
 			UID:       ktypes.UID("enp3"),
 		},
-		Spec: networkv1.EgressNetworkPolicySpec{
-			Egress: []networkv1.EgressNetworkPolicyRule{
+		Spec: osdnv1.EgressNetworkPolicySpec{
+			Egress: []osdnv1.EgressNetworkPolicyRule{
 				{
-					Type: networkv1.EgressNetworkPolicyRuleAllow,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleAllow,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "192.168.1.1/32",
 					},
 				},
 				{
-					Type: networkv1.EgressNetworkPolicyRuleDeny,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleDeny,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "0.0.0.0/0",
 					},
 				},
@@ -528,17 +528,17 @@ func TestOsdnProxy(t *testing.T) {
 	// *****
 
 	// An ENP in "default" should just be ignored
-	enpDefault := &networkv1.EgressNetworkPolicy{
+	enpDefault := &osdnv1.EgressNetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespaces[0].Name,
 			Name:      "enpDefault",
 			UID:       ktypes.UID("enpDefault"),
 		},
-		Spec: networkv1.EgressNetworkPolicySpec{
-			Egress: []networkv1.EgressNetworkPolicyRule{
+		Spec: osdnv1.EgressNetworkPolicySpec{
+			Egress: []osdnv1.EgressNetworkPolicyRule{
 				{
-					Type: networkv1.EgressNetworkPolicyRuleDeny,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleDeny,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						CIDRSelector: "0.0.0.0/0",
 					},
 				},

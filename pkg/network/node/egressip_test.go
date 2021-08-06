@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/ovs"
 )
@@ -183,7 +183,7 @@ func setupEgressIPWatcher(t *testing.T) (*egressIPWatcher, []string) {
 
 func updateNodeEgress(eip *egressIPWatcher, nodeIP string, egressIPs []string) {
 	name := "node-" + nodeIP[strings.LastIndex(nodeIP, ".")+1:]
-	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
+	eip.tracker.UpdateHostSubnetEgress(&osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			UID:  ktypes.UID(name),
@@ -196,11 +196,11 @@ func updateNodeEgress(eip *egressIPWatcher, nodeIP string, egressIPs []string) {
 
 func updateNamespaceEgress(eip *egressIPWatcher, vnid uint32, egressIPs []string) {
 	name := fmt.Sprintf("ns-%d", vnid)
-	eips := []networkapi.NetNamespaceEgressIP{}
+	eips := []osdnv1.NetNamespaceEgressIP{}
 	for _, eip := range egressIPs {
-		eips = append(eips, networkapi.NetNamespaceEgressIP(eip))
+		eips = append(eips, osdnv1.NetNamespaceEgressIP(eip))
 	}
-	eip.tracker.UpdateNetNamespaceEgress(&networkapi.NetNamespace{
+	eip.tracker.UpdateNetNamespaceEgress(&osdnv1.NetNamespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			UID:  ktypes.UID(name),
@@ -1001,32 +1001,32 @@ func TestMarkForVNID(t *testing.T) {
 func TestEgressNodeRenumbering(t *testing.T) {
 	eip, flows := setupEgressIPWatcher(t)
 
-	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
+	eip.tracker.UpdateHostSubnetEgress(&osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "alpha",
 			UID:  ktypes.UID("alpha"),
 		},
 		Host:      "alpha",
 		HostIP:    "172.17.0.3",
-		EgressIPs: []networkapi.HostSubnetEgressIP{"172.17.0.100"},
+		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
-	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
+	eip.tracker.UpdateHostSubnetEgress(&osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "beta",
 			UID:  ktypes.UID("beta"),
 		},
 		Host:      "beta",
 		HostIP:    "172.17.0.4",
-		EgressIPs: []networkapi.HostSubnetEgressIP{"172.17.0.101"},
+		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
-	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
+	eip.tracker.UpdateHostSubnetEgress(&osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gamma",
 			UID:  ktypes.UID("gamma"),
 		},
 		Host:      "gamma",
 		HostIP:    "172.17.0.5",
-		EgressIPs: []networkapi.HostSubnetEgressIP{"172.17.0.102"},
+		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.102"},
 	})
 	updateNamespaceEgress(eip, 42, []string{"172.17.0.100"})
 	updateNamespaceEgress(eip, 43, []string{"172.17.0.101"})
@@ -1050,14 +1050,14 @@ func TestEgressNodeRenumbering(t *testing.T) {
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	// Renumber one of the hosts
-	eip.tracker.UpdateHostSubnetEgress(&networkapi.HostSubnet{
+	eip.tracker.UpdateHostSubnetEgress(&osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "beta",
 			UID:  ktypes.UID("beta"),
 		},
 		Host:      "beta",
 		HostIP:    "172.17.0.6",
-		EgressIPs: []networkapi.HostSubnetEgressIP{"172.17.0.101"},
+		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	err = assertNoOVSChanges(eip, &flows)
 	groups, _ = eip.oc.ovs.DumpGroups()

@@ -11,7 +11,7 @@ import (
 
 	"github.com/containernetworking/cni/pkg/types/current"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/cniserver"
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
@@ -308,7 +308,7 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 
 // Adds a macvlan interface to a container, if requested, for use with the egress router feature
 func maybeAddMacvlan(pod *corev1.Pod, netns string) error {
-	annotation, ok := pod.Annotations[networkv1.AssignMacvlanAnnotation]
+	annotation, ok := pod.Annotations[osdnv1.AssignMacvlanAnnotation]
 	if !ok || annotation == "false" {
 		return nil
 	}
@@ -321,7 +321,7 @@ func maybeAddMacvlan(pod *corev1.Pod, netns string) error {
 		}
 	}
 	if !privileged {
-		return fmt.Errorf("pod has %q annotation but is not privileged", networkv1.AssignMacvlanAnnotation)
+		return fmt.Errorf("pod has %q annotation but is not privileged", osdnv1.AssignMacvlanAnnotation)
 	}
 
 	var iface netlink.Link
@@ -347,7 +347,7 @@ func maybeAddMacvlan(pod *corev1.Pod, netns string) error {
 	} else {
 		iface, err = netlink.LinkByName(annotation)
 		if err != nil {
-			return fmt.Errorf("pod annotation %q is neither 'true' nor the name of a local network interface", networkv1.AssignMacvlanAnnotation)
+			return fmt.Errorf("pod annotation %q is neither 'true' nor the name of a local network interface", osdnv1.AssignMacvlanAnnotation)
 		}
 	}
 

@@ -14,16 +14,16 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 
-	networkapi "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
 type nodeVNIDMap struct {
-	policy           osdnPolicy
-	networkClient    networkclient.Interface
-	networkInformers networkinformers.SharedInformerFactory
+	policy        osdnPolicy
+	osdnClient    osdnclient.Interface
+	osdnInformers osdninformers.SharedInformerFactory
 
 	// Synchronizes add or remove ids/namespaces
 	lock       sync.Mutex
@@ -32,13 +32,13 @@ type nodeVNIDMap struct {
 	namespaces map[uint32]sets.String
 }
 
-func newNodeVNIDMap(policy osdnPolicy, networkClient networkclient.Interface) *nodeVNIDMap {
+func newNodeVNIDMap(policy osdnPolicy, osdnClient osdnclient.Interface) *nodeVNIDMap {
 	return &nodeVNIDMap{
-		policy:        policy,
-		networkClient: networkClient,
-		ids:           make(map[string]uint32),
-		mcEnabled:     make(map[string]bool),
-		namespaces:    make(map[uint32]sets.String),
+		policy:     policy,
+		osdnClient: osdnClient,
+		ids:        make(map[string]uint32),
+		mcEnabled:  make(map[string]bool),
+		namespaces: make(map[uint32]sets.String),
 	}
 }
 
@@ -114,7 +114,7 @@ func (vmap *nodeVNIDMap) WaitAndGetVNID(name string) (uint32, error) {
 		// So that we can imply insufficient timeout if we see many VnidNotFoundErrors.
 		metrics.VnidNotFoundErrors.Inc()
 
-		netns, err := vmap.networkClient.NetworkV1().NetNamespaces().Get(context.TODO(), name, metav1.GetOptions{})
+		netns, err := vmap.osdnClient.NetworkV1().NetNamespaces().Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return 0, fmt.Errorf("failed to find netid for namespace: %s, %v", name, err)
 		}
@@ -178,13 +178,13 @@ func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
 	return id, nil
 }
 
-func netnsIsMulticastEnabled(netns *networkapi.NetNamespace) bool {
-	enabled, ok := netns.Annotations[networkapi.MulticastEnabledAnnotation]
+func netnsIsMulticastEnabled(netns *osdnv1.NetNamespace) bool {
+	enabled, ok := netns.Annotations[osdnv1.MulticastEnabledAnnotation]
 	return enabled == "true" && ok
 }
 
 func (vmap *nodeVNIDMap) populateVNIDs() error {
-	nets, err := vmap.networkClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
+	nets, err := vmap.osdnClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -195,8 +195,8 @@ func (vmap *nodeVNIDMap) populateVNIDs() error {
 	return nil
 }
 
-func (vmap *nodeVNIDMap) Start(networkInformers networkinformers.SharedInformerFactory) error {
-	vmap.networkInformers = networkInformers
+func (vmap *nodeVNIDMap) Start(osdnInformers osdninformers.SharedInformerFactory) error {
+	vmap.osdnInformers = osdnInformers
 
 	// Populate vnid map synchronously so that existing services can fetch vnid
 	err := vmap.populateVNIDs()
@@ -209,12 +209,12 @@ func (vmap *nodeVNIDMap) Start(networkInformers networkinformers.SharedInformerF
 }
 
 func (vmap *nodeVNIDMap) watchNetNamespaces() {
-	funcs := common.InformerFuncs(&networkapi.NetNamespace{}, vmap.handleAddOrUpdateNetNamespace, vmap.handleDeleteNetNamespace)
-	vmap.networkInformers.Network().V1().NetNamespaces().Informer().AddEventHandler(funcs)
+	funcs := common.InformerFuncs(&osdnv1.NetNamespace{}, vmap.handleAddOrUpdateNetNamespace, vmap.handleDeleteNetNamespace)
+	vmap.osdnInformers.Network().V1().NetNamespaces().Informer().AddEventHandler(funcs)
 }
 
 func (vmap *nodeVNIDMap) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventType watch.EventType) {
-	netns := obj.(*networkapi.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
 	// Skip this event if NetID already exists under different netns name
@@ -241,7 +241,7 @@ func (vmap *nodeVNIDMap) handleAddOrUpdateNetNamespace(obj, _ interface{}, event
 }
 
 func (vmap *nodeVNIDMap) handleDeleteNetNamespace(obj interface{}) {
-	netns := obj.(*networkapi.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", watch.Deleted, netns.Name)
 
 	// Unset VNID first so further operations don't see the deleted VNID

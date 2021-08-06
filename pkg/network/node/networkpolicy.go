@@ -22,7 +22,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/util/async"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/ovs"
@@ -108,8 +108,8 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 	defer np.lock.Unlock()
 
 	np.node = node
-	np.vnids = newNodeVNIDMap(np, node.networkClient)
-	if err := np.vnids.Start(node.networkInformers); err != nil {
+	np.vnids = newNodeVNIDMap(np, node.osdnClient)
+	if err := np.vnids.Start(node.osdnInformers); err != nil {
 		return err
 	}
 
@@ -187,7 +187,7 @@ func newNPNamespace(name string) *npNamespace {
 	}
 }
 
-func (np *networkPolicyPlugin) AddNetNamespace(netns *networkv1.NetNamespace) {
+func (np *networkPolicyPlugin) AddNetNamespace(netns *osdnv1.NetNamespace) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
@@ -208,7 +208,7 @@ func (np *networkPolicyPlugin) AddNetNamespace(netns *networkv1.NetNamespace) {
 	}
 }
 
-func (np *networkPolicyPlugin) UpdateNetNamespace(netns *networkv1.NetNamespace, oldNetID uint32) {
+func (np *networkPolicyPlugin) UpdateNetNamespace(netns *osdnv1.NetNamespace, oldNetID uint32) {
 	if netns.NetID != oldNetID {
 		klog.Warningf("Got VNID change for namespace %s while using %s plugin", netns.NetName, networkutils.NetworkPolicyPluginName)
 	}
@@ -216,7 +216,7 @@ func (np *networkPolicyPlugin) UpdateNetNamespace(netns *networkv1.NetNamespace,
 	np.node.podManager.UpdateLocalMulticastRules(netns.NetID)
 }
 
-func (np *networkPolicyPlugin) DeleteNetNamespace(netns *networkv1.NetNamespace) {
+func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 

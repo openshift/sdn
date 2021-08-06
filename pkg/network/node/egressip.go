@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/vishvananda/netlink"
 )
@@ -71,9 +71,9 @@ func newEgressIPWatcher(oc *ovsController, localIP string, masqueradeBit *int32)
 	return eip
 }
 
-func (eip *egressIPWatcher) Start(networkInformers networkinformers.SharedInformerFactory, iptables *NodeIPTables) error {
+func (eip *egressIPWatcher) Start(osdnInformers osdninformers.SharedInformerFactory, iptables *NodeIPTables) error {
 	eip.iptables = iptables
-	eip.tracker.Start(networkInformers.Network().V1().HostSubnets(), networkInformers.Network().V1().NetNamespaces())
+	eip.tracker.Start(osdnInformers.Network().V1().HostSubnets(), osdnInformers.Network().V1().NetNamespaces())
 	return nil
 }
 

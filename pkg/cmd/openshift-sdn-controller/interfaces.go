@@ -7,8 +7,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformer "github.com/openshift/client-go/network/informers/externalversions"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformer "github.com/openshift/client-go/network/informers/externalversions"
 )
 
 const defaultInformerResyncPeriod = 10 * time.Minute
@@ -16,8 +16,8 @@ const defaultInformerResyncPeriod = 10 * time.Minute
 type controllerContext struct {
 	kubernetesClient    kubernetes.Interface
 	kubernetesInformers informers.SharedInformerFactory
-	networkClient       networkclient.Interface
-	networkInformers    networkinformer.SharedInformerFactory
+	osdnClient          osdnclient.Interface
+	osdnInformers       osdninformer.SharedInformerFactory
 }
 
 func newControllerContext(clientConfig *rest.Config) (*controllerContext, error) {
@@ -25,7 +25,7 @@ func newControllerContext(clientConfig *rest.Config) (*controllerContext, error)
 	if err != nil {
 		return nil, err
 	}
-	networkClient, err := networkclient.NewForConfig(clientConfig)
+	osdnClient, err := osdnclient.NewForConfig(clientConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +33,8 @@ func newControllerContext(clientConfig *rest.Config) (*controllerContext, error)
 	networkControllerContext := &controllerContext{
 		kubernetesClient:    kubeClient,
 		kubernetesInformers: informers.NewSharedInformerFactory(kubeClient, defaultInformerResyncPeriod),
-		networkClient:       networkClient,
-		networkInformers:    networkinformer.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod),
+		osdnClient:          osdnClient,
+		osdnInformers:       osdninformer.NewSharedInformerFactory(osdnClient, defaultInformerResyncPeriod),
 	}
 
 	return networkControllerContext, nil
@@ -42,5 +42,5 @@ func newControllerContext(clientConfig *rest.Config) (*controllerContext, error)
 
 func (c *controllerContext) StartInformers() {
 	c.kubernetesInformers.Start(nil)
-	c.networkInformers.Start(nil)
+	c.osdnInformers.Start(nil)
 }

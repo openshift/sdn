@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/util/retry"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
 	masterutil "github.com/openshift/sdn/pkg/network/master/util"
@@ -30,7 +30,7 @@ func (master *OsdnMaster) startSubnetMaster() error {
 	}
 
 	// Populate subnet allocator
-	subnets, err := master.networkClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{})
+	subnets, err := master.osdnClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -102,18 +102,18 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 	}
 
 	// Check if subnet needs to be created or updated
-	sub, err := master.networkClient.NetworkV1().HostSubnets().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	sub, err := master.osdnClient.NetworkV1().HostSubnets().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	if err == nil {
 		if err = common.ValidateHostSubnet(sub); err != nil {
 			utilruntime.HandleError(fmt.Errorf("Deleting invalid HostSubnet %q: %v", nodeName, err))
-			_ = master.networkClient.NetworkV1().HostSubnets().Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
+			_ = master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
 			// fall through to create new subnet below
 		} else if sub.HostIP == nodeIP {
 			return nodeIP, nil
 		} else {
 			// Node IP changed, update old subnet
 			sub.HostIP = nodeIP
-			sub, err = master.networkClient.NetworkV1().HostSubnets().Update(context.TODO(), sub, metav1.UpdateOptions{})
+			sub, err = master.osdnClient.NetworkV1().HostSubnets().Update(context.TODO(), sub, metav1.UpdateOptions{})
 			if err != nil {
 				return "", fmt.Errorf("error updating subnet %s for node %s: %v", sub.Subnet, nodeName, err)
 			}
@@ -127,20 +127,20 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 		if hsAnnotations == nil {
 			hsAnnotations = make(map[string]string)
 		}
-		hsAnnotations[networkapi.NodeUIDAnnotation] = nodeUID
+		hsAnnotations[osdnv1.NodeUIDAnnotation] = nodeUID
 	}
 	network, err := master.subnetAllocator.AllocateNetwork()
 	if err != nil {
 		return "", fmt.Errorf("error allocating network for node %s: %v", nodeName, err)
 	}
-	sub = &networkapi.HostSubnet{
+	sub = &osdnv1.HostSubnet{
 		TypeMeta:   metav1.TypeMeta{Kind: "HostSubnet"},
 		ObjectMeta: metav1.ObjectMeta{Name: nodeName, Annotations: hsAnnotations},
 		Host:       nodeName,
 		HostIP:     nodeIP,
 		Subnet:     network,
 	}
-	sub, err = master.networkClient.NetworkV1().HostSubnets().Create(context.TODO(), sub, metav1.CreateOptions{})
+	sub, err = master.osdnClient.NetworkV1().HostSubnets().Create(context.TODO(), sub, metav1.CreateOptions{})
 	if err != nil {
 		if er := master.subnetAllocator.ReleaseNetwork(network); er != nil {
 			utilruntime.HandleError(er)
@@ -159,7 +159,7 @@ func (master *OsdnMaster) deleteNode(nodeName string) error {
 	if sub, err := master.hostSubnetInformer.Lister().Get(nodeName); err == nil {
 		subInfo = common.HostSubnetToString(sub)
 	}
-	if err := master.networkClient.NetworkV1().HostSubnets().Delete(context.TODO(), nodeName, metav1.DeleteOptions{}); err != nil {
+	if err := master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), nodeName, metav1.DeleteOptions{}); err != nil {
 		return fmt.Errorf("error deleting subnet for node %q: %v", nodeName, err)
 	}
 
@@ -225,12 +225,12 @@ func getNodeInternalIP(node *corev1.Node) string {
 }
 
 func (master *OsdnMaster) watchSubnets() {
-	funcs := common.InformerFuncs(&networkapi.HostSubnet{}, master.handleAddOrUpdateSubnet, master.handleDeleteSubnet)
+	funcs := common.InformerFuncs(&osdnv1.HostSubnet{}, master.handleAddOrUpdateSubnet, master.handleDeleteSubnet)
 	master.hostSubnetInformer.Informer().AddEventHandler(funcs)
 }
 
 func (master *OsdnMaster) handleAddOrUpdateSubnet(obj, _ interface{}, eventType watch.EventType) {
-	hs := obj.(*networkapi.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
 	if err := common.ValidateHostSubnet(hs); err != nil {
@@ -246,7 +246,7 @@ func (master *OsdnMaster) handleAddOrUpdateSubnet(obj, _ interface{}, eventType 
 		utilruntime.HandleError(fmt.Errorf("Failed to validate HostSubnet %s: %v", common.HostSubnetToString(hs), err))
 	}
 
-	if _, ok := hs.Annotations[networkapi.AssignHostSubnetAnnotation]; ok {
+	if _, ok := hs.Annotations[osdnv1.AssignHostSubnetAnnotation]; ok {
 		if err := master.handleAssignHostSubnetAnnotation(hs); err != nil {
 			utilruntime.HandleError(err)
 			return
@@ -255,10 +255,10 @@ func (master *OsdnMaster) handleAddOrUpdateSubnet(obj, _ interface{}, eventType 
 }
 
 func (master *OsdnMaster) handleDeleteSubnet(obj interface{}) {
-	hs := obj.(*networkapi.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", watch.Deleted, hs.Name)
 
-	if _, ok := hs.Annotations[networkapi.AssignHostSubnetAnnotation]; ok {
+	if _, ok := hs.Annotations[osdnv1.AssignHostSubnetAnnotation]; ok {
 		return
 	}
 
@@ -270,7 +270,7 @@ func (master *OsdnMaster) handleDeleteSubnet(obj interface{}) {
 // reconcileHostSubnet verifies and corrects the state of the hostsubnet.
 // Because openshift watches on events to keep hostsubnets and nodes in the correct state, missing an event
 // can cause orphaned or unusable hostsubnets to stick around.
-func (master *OsdnMaster) reconcileHostSubnet(subnet *networkapi.HostSubnet) error {
+func (master *OsdnMaster) reconcileHostSubnet(subnet *osdnv1.HostSubnet) error {
 	var node *corev1.Node
 	var err error
 	node, err = master.nodeInformer.Lister().Get(subnet.Name)
@@ -285,29 +285,29 @@ func (master *OsdnMaster) reconcileHostSubnet(subnet *networkapi.HostSubnet) err
 		}
 	}
 
-	if node == nil && len(subnet.Annotations[networkapi.NodeUIDAnnotation]) == 0 {
+	if node == nil && len(subnet.Annotations[osdnv1.NodeUIDAnnotation]) == 0 {
 		// Subnet belongs to F5, Ignore.
 		return nil
-	} else if node != nil && len(subnet.Annotations[networkapi.NodeUIDAnnotation]) == 0 {
+	} else if node != nil && len(subnet.Annotations[osdnv1.NodeUIDAnnotation]) == 0 {
 		// Update path, stamp UID annotation on subnet.
 		sn := subnet.DeepCopy()
 		if sn.Annotations == nil {
 			sn.Annotations = make(map[string]string)
 		}
-		sn.Annotations[networkapi.NodeUIDAnnotation] = string(node.UID)
-		if _, err = master.networkClient.NetworkV1().HostSubnets().Update(context.TODO(), sn, metav1.UpdateOptions{}); err != nil {
+		sn.Annotations[osdnv1.NodeUIDAnnotation] = string(node.UID)
+		if _, err = master.osdnClient.NetworkV1().HostSubnets().Update(context.TODO(), sn, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("error updating subnet %v for node %s: %v", sn, sn.Name, err)
 		}
-	} else if node == nil && len(subnet.Annotations[networkapi.NodeUIDAnnotation]) > 0 {
+	} else if node == nil && len(subnet.Annotations[osdnv1.NodeUIDAnnotation]) > 0 {
 		// Missed Node event, delete stale subnet.
 		klog.Infof("Setup found no node associated with hostsubnet %s, deleting the hostsubnet", subnet.Name)
-		if err = master.networkClient.NetworkV1().HostSubnets().Delete(context.TODO(), subnet.Name, metav1.DeleteOptions{}); err != nil {
+		if err = master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), subnet.Name, metav1.DeleteOptions{}); err != nil {
 			return fmt.Errorf("error deleting subnet %v: %v", subnet, err)
 		}
-	} else if string(node.UID) != subnet.Annotations[networkapi.NodeUIDAnnotation] {
+	} else if string(node.UID) != subnet.Annotations[osdnv1.NodeUIDAnnotation] {
 		// Missed Node event, node with the same name exists delete stale subnet.
 		klog.Infof("Missed node event, hostsubnet %s has the UID of an incorrect object, deleting the hostsubnet", subnet.Name)
-		if err = master.networkClient.NetworkV1().HostSubnets().Delete(context.TODO(), subnet.Name, metav1.DeleteOptions{}); err != nil {
+		if err = master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), subnet.Name, metav1.DeleteOptions{}); err != nil {
 			return fmt.Errorf("error deleting subnet %v: %v", subnet, err)
 		}
 	}
@@ -316,25 +316,25 @@ func (master *OsdnMaster) reconcileHostSubnet(subnet *networkapi.HostSubnet) err
 
 // Handle F5 use case: Admin manually creates HostSubnet with 'AssignHostSubnetAnnotation'
 // to allocate a subnet with no real node in the cluster.
-func (master *OsdnMaster) handleAssignHostSubnetAnnotation(hs *networkapi.HostSubnet) error {
+func (master *OsdnMaster) handleAssignHostSubnetAnnotation(hs *osdnv1.HostSubnet) error {
 	// Delete the annotated hostsubnet and create a new one with an assigned subnet
 	// We do not update (instead of delete+create) because the watchSubnets on the nodes
 	// will skip the event if it finds that the hostsubnet has the same host
 	// And we cannot fix the watchSubnets code for node because it will break migration if
 	// nodes are upgraded after the master
-	if err := master.networkClient.NetworkV1().HostSubnets().Delete(context.TODO(), hs.Name, metav1.DeleteOptions{}); err != nil {
+	if err := master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), hs.Name, metav1.DeleteOptions{}); err != nil {
 		return fmt.Errorf("error in deleting annotated subnet: %s, %v", hs.Name, err)
 	}
 	klog.Infof("Deleted HostSubnet not backed by node: %s", common.HostSubnetToString(hs))
 
 	var hsAnnotations map[string]string
-	if vnid, ok := hs.Annotations[networkapi.FixedVNIDHostAnnotation]; ok {
+	if vnid, ok := hs.Annotations[osdnv1.FixedVNIDHostAnnotation]; ok {
 		vnidInt, err := strconv.Atoi(vnid)
 		if err == nil && vnidInt >= 0 && uint32(vnidInt) <= network.MaxVNID {
 			hsAnnotations = make(map[string]string)
-			hsAnnotations[networkapi.FixedVNIDHostAnnotation] = strconv.Itoa(vnidInt)
+			hsAnnotations[osdnv1.FixedVNIDHostAnnotation] = strconv.Itoa(vnidInt)
 		} else {
-			utilruntime.HandleError(fmt.Errorf("VNID %s is an invalid value for annotation %s. Annotation will be ignored.", vnid, networkapi.FixedVNIDHostAnnotation))
+			utilruntime.HandleError(fmt.Errorf("VNID %s is an invalid value for annotation %s. Annotation will be ignored.", vnid, osdnv1.FixedVNIDHostAnnotation))
 		}
 	}
 

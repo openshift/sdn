@@ -15,10 +15,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	networkapi "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinternalinformers "github.com/openshift/client-go/network/informers/externalversions"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdninformersv1 "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
 	masterutil "github.com/openshift/sdn/pkg/network/master/util"
@@ -29,15 +29,15 @@ const (
 )
 
 type OsdnMaster struct {
-	kClient       kclientset.Interface
-	networkClient networkclient.Interface
-	networkInfo   *common.ParsedClusterNetwork
-	vnids         *masterVNIDMap
+	kClient     kclientset.Interface
+	osdnClient  osdnclient.Interface
+	networkInfo *common.ParsedClusterNetwork
+	vnids       *masterVNIDMap
 
 	nodeInformer         kcoreinformers.NodeInformer
 	namespaceInformer    kcoreinformers.NamespaceInformer
-	hostSubnetInformer   networkinformers.HostSubnetInformer
-	netNamespaceInformer networkinformers.NetNamespaceInformer
+	hostSubnetInformer   osdninformersv1.HostSubnetInformer
+	netNamespaceInformer osdninformersv1.NetNamespaceInformer
 
 	// Used for allocating subnets in order
 	subnetAllocator *masterutil.SubnetAllocator
@@ -46,25 +46,26 @@ type OsdnMaster struct {
 	hostSubnetNodeIPs map[ktypes.UID]string
 }
 
-func Start(networkClient networkclient.Interface, kClient kclientset.Interface,
+func Start(kClient kclientset.Interface,
 	kubeInformers informers.SharedInformerFactory,
-	networkInformers networkinternalinformers.SharedInformerFactory) error {
+	osdnClient osdnclient.Interface,
+	osdnInformers osdninformers.SharedInformerFactory) error {
 	klog.Infof("Initializing SDN master")
 
-	networkInfo, err := common.GetParsedClusterNetwork(networkClient)
+	networkInfo, err := common.GetParsedClusterNetwork(osdnClient)
 	if err != nil {
 		return err
 	}
 
 	master := &OsdnMaster{
-		kClient:       kClient,
-		networkClient: networkClient,
-		networkInfo:   networkInfo,
+		kClient:     kClient,
+		osdnClient:  osdnClient,
+		networkInfo: networkInfo,
 
 		nodeInformer:         kubeInformers.Core().V1().Nodes(),
 		namespaceInformer:    kubeInformers.Core().V1().Namespaces(),
-		hostSubnetInformer:   networkInformers.Network().V1().HostSubnets(),
-		netNamespaceInformer: networkInformers.Network().V1().NetNamespaces(),
+		hostSubnetInformer:   osdnInformers.Network().V1().HostSubnets(),
+		netNamespaceInformer: osdnInformers.Network().V1().NetNamespaces(),
 
 		hostSubnetNodeIPs: map[ktypes.UID]string{},
 	}
@@ -115,7 +116,7 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 	}
 
 	eim := newEgressIPManager()
-	eim.Start(master.networkClient, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
+	eim.Start(master.osdnClient, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
@@ -127,10 +128,10 @@ func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
-	var subnets []networkapi.HostSubnet
+	var subnets []osdnv1.HostSubnet
 	var pods []corev1.Pod
 	var services []corev1.Service
-	if subnetList, err := master.networkClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{}); err == nil {
+	if subnetList, err := master.osdnClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{}); err == nil {
 		subnets = subnetList.Items
 	}
 	if podList, err := master.kClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{}); err == nil {

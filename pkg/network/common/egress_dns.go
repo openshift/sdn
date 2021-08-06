@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -62,7 +62,7 @@ func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
 	}, nil
 }
 
-func (e *EgressDNS) Add(policy networkv1.EgressNetworkPolicy) {
+func (e *EgressDNS) Add(policy osdnv1.EgressNetworkPolicy) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -83,7 +83,7 @@ func (e *EgressDNS) Add(policy networkv1.EgressNetworkPolicy) {
 	e.namespaces[policy.UID] = policy.Namespace
 }
 
-func (e *EgressDNS) Delete(policy networkv1.EgressNetworkPolicy) {
+func (e *EgressDNS) Delete(policy osdnv1.EgressNetworkPolicy) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	//delete the entry from the dnsNames to UIDs map for each rule in the policy

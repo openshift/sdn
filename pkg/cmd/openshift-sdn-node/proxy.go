@@ -50,8 +50,8 @@ func (sdn *openShiftSDN) initProxy() error {
 	sdn.osdnProxy, err = sdnproxy.New(
 		sdn.informers.kubeClient,
 		sdn.informers.kubeInformers,
-		sdn.informers.networkClient,
-		sdn.informers.networkInformers,
+		sdn.informers.osdnClient,
+		sdn.informers.osdnInformers,
 		sdn.proxyConfig.IPTables.MinSyncPeriod.Duration)
 	return err
 }

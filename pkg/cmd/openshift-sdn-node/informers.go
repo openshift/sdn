@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -21,13 +21,11 @@ var defaultInformerResyncPeriod = 30 * time.Minute
 
 // informers is a small bag of data that holds our informers
 type informers struct {
-	kubeClient    kubernetes.Interface
-	networkClient networkclient.Interface
+	kubeClient kubernetes.Interface
+	osdnClient osdnclient.Interface
 
-	// External kubernetes shared informer factory.
 	kubeInformers kinformers.SharedInformerFactory
-	// Network shared informer factory.
-	networkInformers networkinformers.SharedInformerFactory
+	osdnInformers osdninformers.SharedInformerFactory
 }
 
 // buildInformers creates all the informer factories.
@@ -45,7 +43,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	networkClient, err := networkclient.NewForConfig(kubeConfig)
+	osdnClient, err := osdnclient.NewForConfig(kubeConfig)
 	if err != nil {
 		return err
 	}
@@ -65,14 +63,14 @@ func (sdn *openShiftSDN) buildInformers() error {
 			options.LabelSelector = labelSelector.String()
 		}))
 
-	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
+	osdnInformers := osdninformers.NewSharedInformerFactory(osdnClient, defaultInformerResyncPeriod)
 
 	sdn.informers = &informers{
-		kubeClient:    kubeClient,
-		networkClient: networkClient,
+		kubeClient: kubeClient,
+		osdnClient: osdnClient,
 
-		kubeInformers:    kubeInformers,
-		networkInformers: networkInformers,
+		kubeInformers: kubeInformers,
+		osdnInformers: osdnInformers,
 	}
 	return nil
 }
@@ -80,7 +78,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 // start starts the informers.
 func (i *informers) start(stopCh <-chan struct{}) {
 	i.kubeInformers.Start(stopCh)
-	i.networkInformers.Start(stopCh)
+	i.osdnInformers.Start(stopCh)
 }
 
 // getInClusterConfig loads in-cluster config, then applies default overrides.

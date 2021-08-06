@@ -17,8 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 
-	networkv1 "github.com/openshift/api/network/v1"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 )
 
 type nodeEgress struct {
@@ -100,7 +100,7 @@ func NewEgressIPTracker(watcher EgressIPWatcher) *EgressIPTracker {
 	}
 }
 
-func (eit *EgressIPTracker) Start(hostSubnetInformer networkinformers.HostSubnetInformer, netNamespaceInformer networkinformers.NetNamespaceInformer) {
+func (eit *EgressIPTracker) Start(hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer) {
 	eit.watchHostSubnets(hostSubnetInformer)
 	eit.watchNetNamespaces(netNamespaceInformer)
 
@@ -176,13 +176,13 @@ func (eit *EgressIPTracker) deleteNamespaceEgressIP(ns *namespaceEgress, egressI
 	}
 }
 
-func (eit *EgressIPTracker) watchHostSubnets(hostSubnetInformer networkinformers.HostSubnetInformer) {
-	funcs := InformerFuncs(&networkv1.HostSubnet{}, eit.handleAddOrUpdateHostSubnet, eit.handleDeleteHostSubnet)
+func (eit *EgressIPTracker) watchHostSubnets(hostSubnetInformer osdninformers.HostSubnetInformer) {
+	funcs := InformerFuncs(&osdnv1.HostSubnet{}, eit.handleAddOrUpdateHostSubnet, eit.handleDeleteHostSubnet)
 	hostSubnetInformer.Informer().AddEventHandler(funcs)
 }
 
 func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, eventType watch.EventType) {
-	hs := obj.(*networkv1.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
 	if err := ValidateHostSubnetEgress(hs); err != nil {
@@ -194,7 +194,7 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 }
 
 func (eit *EgressIPTracker) handleDeleteHostSubnet(obj interface{}) {
-	hs := obj.(*networkv1.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", watch.Deleted, hs.Name)
 
 	hs = hs.DeepCopy()
@@ -203,7 +203,7 @@ func (eit *EgressIPTracker) handleDeleteHostSubnet(obj interface{}) {
 	eit.UpdateHostSubnetEgress(hs)
 }
 
-func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
+func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	eit.Lock()
 	defer eit.Unlock()
 
@@ -290,26 +290,26 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *networkv1.HostSubnet) {
 	eit.syncEgressIPs()
 }
 
-func (eit *EgressIPTracker) watchNetNamespaces(netNamespaceInformer networkinformers.NetNamespaceInformer) {
-	funcs := InformerFuncs(&networkv1.NetNamespace{}, eit.handleAddOrUpdateNetNamespace, eit.handleDeleteNetNamespace)
+func (eit *EgressIPTracker) watchNetNamespaces(netNamespaceInformer osdninformers.NetNamespaceInformer) {
+	funcs := InformerFuncs(&osdnv1.NetNamespace{}, eit.handleAddOrUpdateNetNamespace, eit.handleDeleteNetNamespace)
 	netNamespaceInformer.Informer().AddEventHandler(funcs)
 }
 
 func (eit *EgressIPTracker) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventType watch.EventType) {
-	netns := obj.(*networkv1.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
 	eit.UpdateNetNamespaceEgress(netns)
 }
 
 func (eit *EgressIPTracker) handleDeleteNetNamespace(obj interface{}) {
-	netns := obj.(*networkv1.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", watch.Deleted, netns.Name)
 
 	eit.DeleteNetNamespaceEgress(netns.NetID)
 }
 
-func (eit *EgressIPTracker) UpdateNetNamespaceEgress(netns *networkv1.NetNamespace) {
+func (eit *EgressIPTracker) UpdateNetNamespaceEgress(netns *osdnv1.NetNamespace) {
 	eit.Lock()
 	defer eit.Unlock()
 
@@ -351,7 +351,7 @@ func (eit *EgressIPTracker) UpdateNetNamespaceEgress(netns *networkv1.NetNamespa
 }
 
 func (eit *EgressIPTracker) DeleteNetNamespaceEgress(vnid uint32) {
-	eit.UpdateNetNamespaceEgress(&networkv1.NetNamespace{
+	eit.UpdateNetNamespaceEgress(&osdnv1.NetNamespace{
 		NetID: vnid,
 	})
 }
