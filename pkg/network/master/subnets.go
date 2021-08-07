@@ -15,7 +15,6 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	osdnv1 "github.com/openshift/api/network/v1"
-	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
 	masterutil "github.com/openshift/sdn/pkg/network/master/util"
 )
@@ -330,7 +329,7 @@ func (master *OsdnMaster) handleAssignHostSubnetAnnotation(hs *osdnv1.HostSubnet
 	var hsAnnotations map[string]string
 	if vnid, ok := hs.Annotations[osdnv1.FixedVNIDHostAnnotation]; ok {
 		vnidInt, err := strconv.Atoi(vnid)
-		if err == nil && vnidInt >= 0 && uint32(vnidInt) <= network.MaxVNID {
+		if err == nil && vnidInt >= 0 && uint32(vnidInt) <= common.MaxVNID {
 			hsAnnotations = make(map[string]string)
 			hsAnnotations[osdnv1.FixedVNIDHostAnnotation] = strconv.Itoa(vnidInt)
 		} else {

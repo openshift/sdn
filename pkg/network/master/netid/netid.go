@@ -3,7 +3,7 @@ package netid
 import (
 	"fmt"
 
-	"github.com/openshift/sdn/pkg/network"
+	"github.com/openshift/sdn/pkg/network/common"
 )
 
 type NetIDRange struct {
@@ -28,14 +28,14 @@ func (r *NetIDRange) String() string {
 }
 
 func (r *NetIDRange) Set(base, size uint32) error {
-	if base < network.MinVNID {
-		return fmt.Errorf("invalid netid base, must be greater than %d", network.MinVNID)
+	if base < common.MinVNID {
+		return fmt.Errorf("invalid netid base, must be greater than %d", common.MinVNID)
 	}
 	if size == 0 {
 		return fmt.Errorf("invalid netid size, must be greater than zero")
 	}
-	if (base + size - 1) > network.MaxVNID {
-		return fmt.Errorf("netid range exceeded max value %d", network.MaxVNID)
+	if (base + size - 1) > common.MaxVNID {
+		return fmt.Errorf("netid range exceeded max value %d", common.MaxVNID)
 	}
 
 	r.Base = base

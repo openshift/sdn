@@ -17,7 +17,6 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	osdnapihelpers "github.com/openshift/library-go/pkg/network/networkapihelpers"
-	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
 	pnetid "github.com/openshift/sdn/pkg/network/master/netid"
 )
@@ -33,7 +32,7 @@ type masterVNIDMap struct {
 }
 
 func newMasterVNIDMap(allowRenumbering bool) *masterVNIDMap {
-	netIDRange, err := pnetid.NewNetIDRange(network.MinVNID, network.MaxVNID)
+	netIDRange, err := pnetid.NewNetIDRange(common.MinVNID, common.MaxVNID)
 	if err != nil {
 		panic(err)
 	}
@@ -80,7 +79,7 @@ func (vmap *masterVNIDMap) isAdminNamespace(nsName string) bool {
 
 func (vmap *masterVNIDMap) markAllocatedNetID(netid uint32) error {
 	// Skip GlobalVNID, not part of netID allocation range
-	if netid < network.MinVNID {
+	if netid < common.MinVNID {
 		return nil
 	}
 
@@ -104,7 +103,7 @@ func (vmap *masterVNIDMap) allocateNetID(nsName string) (uint32, bool, error) {
 	// NetNamespace not found, so allocate new NetID
 	var netid uint32
 	if vmap.isAdminNamespace(nsName) {
-		netid = network.GlobalVNID
+		netid = common.GlobalVNID
 	} else {
 		var err error
 		netid, err = vmap.netIDManager.AllocateNext()
@@ -125,8 +124,8 @@ func (vmap *masterVNIDMap) releaseNetID(nsName string) error {
 		return fmt.Errorf("netid not found for namespace %q", nsName)
 	}
 
-	// Skip network.GlobalVNID as it is not part of NetID allocation
-	if netid == network.GlobalVNID {
+	// Skip common.GlobalVNID as it is not part of NetID allocation
+	if netid == common.GlobalVNID {
 		return nil
 	}
 
@@ -156,7 +155,7 @@ func (vmap *masterVNIDMap) updateNetID(nsName string, action osdnapihelpers.PodN
 	// Determine new network ID
 	switch action {
 	case osdnapihelpers.GlobalPodNetwork:
-		netid = network.GlobalVNID
+		netid = common.GlobalVNID
 	case osdnapihelpers.JoinPodNetwork:
 		joinNsName := args
 		var found bool

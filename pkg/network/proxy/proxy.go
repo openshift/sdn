@@ -22,7 +22,6 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
-	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
@@ -205,7 +204,7 @@ func (proxy *OsdnProxy) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventT
 	defer proxy.Unlock()
 
 	ns := proxy.getNamespace(netns.Name)
-	ns.global = (netns.NetID == network.GlobalVNID)
+	ns.global = (netns.NetID == common.GlobalVNID)
 }
 
 func (proxy *OsdnProxy) handleDeleteNetNamespace(obj interface{}) {

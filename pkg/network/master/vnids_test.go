@@ -6,7 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	osdnapihelpers "github.com/openshift/library-go/pkg/network/networkapihelpers"
-	"github.com/openshift/sdn/pkg/network"
+	"github.com/openshift/sdn/pkg/network/common"
 )
 
 func TestMasterVNIDMap(t *testing.T) {
@@ -86,12 +86,12 @@ func checkCurrentVNIDs(t *testing.T, vmap *masterVNIDMap, expectedMapCount, expe
 	}
 
 	// Check bitmap allocator
-	expected_free := int(network.MaxVNID-network.MinVNID) + 1 - expectedAllocatorCount
+	expected_free := int(common.MaxVNID-common.MinVNID) + 1 - expectedAllocatorCount
 	if vmap.netIDManager.Free() != expected_free {
 		t.Fatalf("Allocator mismatch: %d vs %d", vmap.netIDManager.Free(), expected_free)
 	}
 	for _, id := range vmap.ids {
-		if id == network.GlobalVNID {
+		if id == common.GlobalVNID {
 			continue
 		}
 		if !vmap.netIDManager.Has(id) {
