@@ -1,6 +1,6 @@
-/openshift-sdn
-/sdn-cni-plugin
-/network-controller
-/kube-proxy
 /host-local
+/kube-proxy
+/openshift-sdn-cni
+/openshift-sdn-controller
+/openshift-sdn-node
 .vscode

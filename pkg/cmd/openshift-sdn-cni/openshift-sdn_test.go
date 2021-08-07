@@ -1,4 +1,4 @@
-package main
+package openshift_sdn_cni
 
 import (
 	"encoding/json"

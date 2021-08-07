@@ -11,7 +11,7 @@ import (
 	utilflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 
-	"github.com/openshift/sdn/pkg/openshift-sdn"
+	"github.com/openshift/sdn/pkg/cmd/openshift-sdn-node"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 	pflag.CommandLine.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 
-	cmd := openshift_sdn.NewOpenShiftSDNCommand("openshift-sdn", os.Stderr)
+	cmd := openshift_sdn_node.NewOpenShiftSDNCommand("openshift-sdn-node", os.Stderr)
 
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)

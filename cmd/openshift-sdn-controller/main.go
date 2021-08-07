@@ -12,7 +12,7 @@ import (
 	utilflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 
-	"github.com/openshift/sdn/pkg/openshift-network-controller"
+	"github.com/openshift/sdn/pkg/cmd/openshift-sdn-controller"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 	pflag.CommandLine.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 
-	cmd := openshift_network_controller.NewOpenShiftNetworkControllerCommand(openshift_network_controller.RecommendedStartNetworkControllerName, "network-controller", os.Stdout, os.Stderr)
+	cmd := openshift_sdn_controller.NewOpenShiftNetworkControllerCommand("openshift-sdn-controller", os.Stdout, os.Stderr)
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Println("Error:", err)

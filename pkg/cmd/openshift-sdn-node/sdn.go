@@ -1,4 +1,4 @@
-package openshift_sdn
+package openshift_sdn_node
 
 import (
 	"io/ioutil"

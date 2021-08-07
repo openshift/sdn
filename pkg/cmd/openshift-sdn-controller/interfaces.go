@@ -1,4 +1,4 @@
-package openshift_network_controller
+package openshift_sdn_controller
 
 import (
 	"time"
