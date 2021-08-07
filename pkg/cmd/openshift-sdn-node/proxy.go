@@ -7,7 +7,7 @@ import (
 	"time"
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
-	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
+	"github.com/openshift/sdn/pkg/network/proxy/unidler"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
