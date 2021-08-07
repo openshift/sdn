@@ -179,6 +179,7 @@ github.com/munnerz/goautoneg
 # github.com/opencontainers/go-digest v1.0.0 => github.com/opencontainers/go-digest v1.0.0
 github.com/opencontainers/go-digest
 # github.com/opencontainers/runc v1.0.0-rc95 => github.com/opencontainers/runc v1.0.0-rc95
+## explicit
 github.com/opencontainers/runc/libcontainer/apparmor
 github.com/opencontainers/runc/libcontainer/cgroups
 github.com/opencontainers/runc/libcontainer/cgroups/fscommon
@@ -383,6 +384,7 @@ golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/singleflight
 # golang.org/x/sys v0.0.0-20210616094352-59db8d763f22
+## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
@@ -986,6 +988,7 @@ k8s.io/client-go/util/retry
 k8s.io/client-go/util/testing
 k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.0.0 => github.com/openshift/kubernetes/staging/src/k8s.io/cloud-provider v0.0.0-20210907143412-ff80f21e802b
+## explicit
 k8s.io/cloud-provider
 k8s.io/cloud-provider/service/helpers
 # k8s.io/component-base v1.22.0-rc.0 => github.com/openshift/kubernetes/staging/src/k8s.io/component-base v0.0.0-20210907143412-ff80f21e802b

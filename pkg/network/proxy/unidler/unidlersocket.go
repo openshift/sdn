@@ -11,7 +11,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/proxy"
-	"k8s.io/kubernetes/pkg/proxy/userspace"
 )
 
 const (
@@ -115,7 +114,7 @@ var (
 	needPodsTickLen     = 5 * time.Second
 )
 
-func newUnidlerSocket(protocol corev1.Protocol, ip net.IP, port int, signaler NeedPodsSignaler) (userspace.ProxySocket, error) {
+func newUnidlerSocket(protocol corev1.Protocol, ip net.IP, port int, signaler NeedPodsSignaler) (ProxySocket, error) {
 	host := ""
 	if ip != nil {
 		host = ip.String()
@@ -154,7 +153,7 @@ func (tcp *tcpUnidlerSocket) ListenPort() int {
 	return tcp.port
 }
 
-func (tcp *tcpUnidlerSocket) waitForEndpoints(ch chan<- interface{}, service proxy.ServicePortName, loadBalancer userspace.LoadBalancer) {
+func (tcp *tcpUnidlerSocket) waitForEndpoints(ch chan<- interface{}, service proxy.ServicePortName, loadBalancer LoadBalancer) {
 	defer close(ch)
 	for {
 		if loadBalancer.ServiceHasEndpoints(service) {
@@ -167,7 +166,7 @@ func (tcp *tcpUnidlerSocket) waitForEndpoints(ch chan<- interface{}, service pro
 	}
 }
 
-func (tcp *tcpUnidlerSocket) acceptConns(ch chan<- net.Conn, svcInfo *userspace.ServiceInfo) {
+func (tcp *tcpUnidlerSocket) acceptConns(ch chan<- net.Conn, svcInfo *ServiceInfo) {
 	defer close(ch)
 
 	// Block until a connection is made.
@@ -199,7 +198,7 @@ func (tcp *tcpUnidlerSocket) acceptConns(ch chan<- net.Conn, svcInfo *userspace.
 // (and thus the hybrid proxy has switched this service over to using the normal proxy).  Connections will
 // be gradually timed out and dropped off the list of connections on a per-connection basis.  The list of current
 // connections is returned, in addition to whether or not we should retry this method.
-func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadBalancer userspace.LoadBalancer, inConns <-chan net.Conn, endpointsAvail chan<- interface{}) (*connectionList, bool) {
+func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadBalancer LoadBalancer, inConns <-chan net.Conn, endpointsAvail chan<- interface{}) (*connectionList, bool) {
 	// collect connections and wait for endpoints to be available
 	sent_need_pods := false
 	timeout_started := false
@@ -245,7 +244,7 @@ func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadB
 	}
 }
 
-func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *userspace.ServiceInfo, loadBalancer userspace.LoadBalancer) {
+func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer LoadBalancer) {
 	if !svcInfo.IsAlive() {
 		// The service port was closed or replaced.
 		return
@@ -286,14 +285,14 @@ func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *u
 
 	for _, inConn := range allConns.GetConns() {
 		klog.V(3).Infof("Accepted TCP connection from %v to %v", inConn.RemoteAddr(), inConn.LocalAddr())
-		outConn, err := userspace.TryConnectEndpoints(service, inConn.(*net.TCPConn).RemoteAddr(), "tcp", loadBalancer)
+		outConn, err := TryConnectEndpoints(service, inConn.(*net.TCPConn).RemoteAddr(), "tcp", loadBalancer)
 		if err != nil {
 			klog.Errorf("Failed to connect to balancer: %v", err)
 			inConn.Close()
 			continue
 		}
 		// Spin up an async copy loop.
-		go userspace.ProxyTCP(inConn.(*net.TCPConn), outConn.(*net.TCPConn))
+		go ProxyTCP(inConn.(*net.TCPConn), outConn.(*net.TCPConn))
 	}
 }
 
@@ -316,7 +315,7 @@ func (udp *udpUnidlerSocket) Addr() net.Addr {
 
 // readFromSock tries to read from a socket, returning true if we should continue trying
 // to read again, or false if no further reads should be made.
-func (udp *udpUnidlerSocket) readFromSock(buffer []byte, svcInfo *userspace.ServiceInfo) bool {
+func (udp *udpUnidlerSocket) readFromSock(buffer []byte, svcInfo *ServiceInfo) bool {
 	if !svcInfo.IsAlive() {
 		// The service port was closed or replaced.
 		return false
@@ -339,7 +338,7 @@ func (udp *udpUnidlerSocket) readFromSock(buffer []byte, svcInfo *userspace.Serv
 	return true
 }
 
-func (udp *udpUnidlerSocket) sendWakeup(svcPortName proxy.ServicePortName, svcInfo *userspace.ServiceInfo) *time.Timer {
+func (udp *udpUnidlerSocket) sendWakeup(svcPortName proxy.ServicePortName, svcInfo *ServiceInfo) *time.Timer {
 	timeoutTimer := time.NewTimer(needPodsWaitTimeout)
 	klog.V(4).Infof("unidling proxy sent unidle event to wake up service %s/%s:%s", svcPortName.Namespace, svcPortName.Name, svcPortName.Port)
 	udp.signaler.NeedPods(svcPortName.NamespacedName, svcPortName.Port)
@@ -347,7 +346,7 @@ func (udp *udpUnidlerSocket) sendWakeup(svcPortName proxy.ServicePortName, svcIn
 	return timeoutTimer
 }
 
-func (udp *udpUnidlerSocket) ProxyLoop(svcPortName proxy.ServicePortName, svcInfo *userspace.ServiceInfo, loadBalancer userspace.LoadBalancer) {
+func (udp *udpUnidlerSocket) ProxyLoop(svcPortName proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer LoadBalancer) {
 	// just drop the packets on the floor until we have endpoints
 	var buffer [UDPBufferSize]byte
 
@@ -371,15 +370,4 @@ func (udp *udpUnidlerSocket) ProxyLoop(svcPortName proxy.ServicePortName, svcInf
 			wakeupTimeoutTimer = udp.sendWakeup(svcPortName, svcInfo)
 		}
 	}
-}
-
-func isTooManyFDsError(err error) bool {
-	return strings.Contains(err.Error(), "too many open files")
-}
-
-func isClosedError(err error) bool {
-	// A brief discussion about handling closed error here:
-	// https://code.google.com/p/go/issues/detail?id=4373#c14
-	// TODO: maybe create a stoppable TCP listener that returns a StoppedError
-	return strings.HasSuffix(err.Error(), "use of closed network connection")
 }
