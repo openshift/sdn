@@ -16,12 +16,12 @@ import (
 
 // NewUnidlerProxier creates a new Proxier for the given LoadBalancer and address which fires off
 // unidling signals connections and traffic.  It is intended to be used as one half of a HybridProxier.
-func NewUnidlerProxier(loadBalancer LoadBalancer, listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, eventRecorder record.EventRecorder) (*Proxier, error) {
+func NewUnidlerProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, eventRecorder record.EventRecorder) (*Proxier, error) {
 	signaler := &NeedPodsSignaler{eventRecorder}
 	newFunc := func(protocol v1.Protocol, ip net.IP, port int) (ProxySocket, error) {
 		return newUnidlerSocket(protocol, ip, port, signaler)
 	}
-	return NewCustomProxier(loadBalancer, listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newFunc)
+	return NewCustomProxier(listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newFunc)
 }
 
 type NeedPodsSignaler struct {

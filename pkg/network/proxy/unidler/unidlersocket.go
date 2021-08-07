@@ -153,7 +153,7 @@ func (tcp *tcpUnidlerSocket) ListenPort() int {
 	return tcp.port
 }
 
-func (tcp *tcpUnidlerSocket) waitForEndpoints(ch chan<- interface{}, service proxy.ServicePortName, loadBalancer LoadBalancer) {
+func (tcp *tcpUnidlerSocket) waitForEndpoints(ch chan<- interface{}, service proxy.ServicePortName, loadBalancer *LoadBalancerRR) {
 	defer close(ch)
 	for {
 		if loadBalancer.ServiceHasEndpoints(service) {
@@ -198,7 +198,7 @@ func (tcp *tcpUnidlerSocket) acceptConns(ch chan<- net.Conn, svcInfo *ServiceInf
 // (and thus the hybrid proxy has switched this service over to using the normal proxy).  Connections will
 // be gradually timed out and dropped off the list of connections on a per-connection basis.  The list of current
 // connections is returned, in addition to whether or not we should retry this method.
-func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadBalancer LoadBalancer, inConns <-chan net.Conn, endpointsAvail chan<- interface{}) (*connectionList, bool) {
+func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadBalancer *LoadBalancerRR, inConns <-chan net.Conn, endpointsAvail chan<- interface{}) (*connectionList, bool) {
 	// collect connections and wait for endpoints to be available
 	sent_need_pods := false
 	timeout_started := false
@@ -244,7 +244,7 @@ func (tcp *tcpUnidlerSocket) awaitAwakening(service proxy.ServicePortName, loadB
 	}
 }
 
-func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer LoadBalancer) {
+func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer *LoadBalancerRR) {
 	if !svcInfo.IsAlive() {
 		// The service port was closed or replaced.
 		return
@@ -346,7 +346,7 @@ func (udp *udpUnidlerSocket) sendWakeup(svcPortName proxy.ServicePortName, svcIn
 	return timeoutTimer
 }
 
-func (udp *udpUnidlerSocket) ProxyLoop(svcPortName proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer LoadBalancer) {
+func (udp *udpUnidlerSocket) ProxyLoop(svcPortName proxy.ServicePortName, svcInfo *ServiceInfo, loadBalancer *LoadBalancerRR) {
 	// just drop the packets on the floor until we have endpoints
 	var buffer [UDPBufferSize]byte
 

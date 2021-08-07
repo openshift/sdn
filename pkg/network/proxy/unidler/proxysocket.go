@@ -40,7 +40,7 @@ type ProxySocket interface {
 	// while sessions are active.
 	Close() error
 	// ProxyLoop proxies incoming connections for the specified service to the service endpoints.
-	ProxyLoop(service proxy.ServicePortName, info *ServiceInfo, loadBalancer LoadBalancer)
+	ProxyLoop(service proxy.ServicePortName, info *ServiceInfo, loadBalancer *LoadBalancerRR)
 	// ListenPort returns the host port that the ProxySocket is listening on
 	ListenPort() int
 }
@@ -90,7 +90,7 @@ func (tcp *tcpProxySocket) ListenPort() int {
 
 // TryConnectEndpoints attempts to connect to the next available endpoint for the given service, cycling
 // through until it is able to successfully connect, or it has tried with all timeouts in EndpointDialTimeouts.
-func TryConnectEndpoints(service proxy.ServicePortName, srcAddr net.Addr, protocol string, loadBalancer LoadBalancer) (out net.Conn, err error) {
+func TryConnectEndpoints(service proxy.ServicePortName, srcAddr net.Addr, protocol string, loadBalancer *LoadBalancerRR) (out net.Conn, err error) {
 	sessionAffinityReset := false
 	for _, dialTimeout := range EndpointDialTimeouts {
 		endpoint, err := loadBalancer.NextEndpoint(service, srcAddr, sessionAffinityReset)
@@ -115,7 +115,7 @@ func TryConnectEndpoints(service proxy.ServicePortName, srcAddr net.Addr, protoc
 	return nil, fmt.Errorf("failed to connect to an endpoint.")
 }
 
-func (tcp *tcpProxySocket) ProxyLoop(service proxy.ServicePortName, myInfo *ServiceInfo, loadBalancer LoadBalancer) {
+func (tcp *tcpProxySocket) ProxyLoop(service proxy.ServicePortName, myInfo *ServiceInfo, loadBalancer *LoadBalancerRR) {
 	for {
 		if !myInfo.IsAlive() {
 			// The service port was closed or replaced.
@@ -201,7 +201,7 @@ func newClientCache() *ClientCache {
 	return &ClientCache{Clients: map[string]net.Conn{}}
 }
 
-func (udp *udpProxySocket) ProxyLoop(service proxy.ServicePortName, myInfo *ServiceInfo, loadBalancer LoadBalancer) {
+func (udp *udpProxySocket) ProxyLoop(service proxy.ServicePortName, myInfo *ServiceInfo, loadBalancer *LoadBalancerRR) {
 	var buffer [4096]byte // 4KiB should be enough for most whole-packets
 	for {
 		if !myInfo.IsAlive() {
@@ -245,7 +245,7 @@ func (udp *udpProxySocket) ProxyLoop(service proxy.ServicePortName, myInfo *Serv
 	}
 }
 
-func (udp *udpProxySocket) getBackendConn(activeClients *ClientCache, cliAddr net.Addr, loadBalancer LoadBalancer, service proxy.ServicePortName, timeout time.Duration) (net.Conn, error) {
+func (udp *udpProxySocket) getBackendConn(activeClients *ClientCache, cliAddr net.Addr, loadBalancer *LoadBalancerRR, service proxy.ServicePortName, timeout time.Duration) (net.Conn, error) {
 	activeClients.Mu.Lock()
 	defer activeClients.Mu.Unlock()
 

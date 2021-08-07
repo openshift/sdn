@@ -83,7 +83,6 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
 
 		unidlingProxy, err = unidler.NewUnidlerProxier(
-			unidler.NewLoadBalancerRR(),
 			net.ParseIP(sdn.proxyConfig.BindAddress),
 			s.IptInterface,
 			s.execer,
