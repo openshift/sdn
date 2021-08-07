@@ -41,7 +41,7 @@ import (
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
 	"github.com/openshift/sdn/pkg/util/ovs"
 )
 

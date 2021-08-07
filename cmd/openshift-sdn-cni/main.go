@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/openshift/sdn/pkg/cmd/openshift-sdn-cni"
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/version"
