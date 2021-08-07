@@ -21,7 +21,7 @@ func NewUnidlerProxier(listenIP net.IP, iptables iptables.Interface, exec utilex
 	newFunc := func(protocol v1.Protocol, ip net.IP, port int) (ProxySocket, error) {
 		return newUnidlerSocket(protocol, ip, port, signaler)
 	}
-	return NewCustomProxier(listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newFunc)
+	return NewProxier(listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newFunc)
 }
 
 type NeedPodsSignaler struct {

@@ -59,8 +59,6 @@ type portal struct {
 type ServiceInfo struct {
 	// Timeout is the read/write timeout (used for UDP connections)
 	Timeout time.Duration
-	// ActiveClients is the cache of active UDP clients being proxied by this proxy for this service
-	ActiveClients *ClientCache
 
 	isAliveAtomic       int32 // Only access this with atomic ops
 	portal              portal
@@ -204,22 +202,8 @@ var (
 	ErrProxyOnLocalhost = fmt.Errorf("cannot proxy on localhost")
 )
 
-// NewProxier returns a new Proxier given a LoadBalancer and an address on
-// which to listen.  Because of the iptables logic, It is assumed that there
-// is only a single Proxier active on a machine. An error will be returned if
-// the proxier cannot be started due to an invalid ListenIP (loopback) or
-// if iptables fails to update or acquire the initial lock. Once a proxier is
-// created, it will keep iptables up to date in the background and will not
-// terminate if a particular iptables call fails.
-func NewProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string) (*Proxier, error) {
-	return NewCustomProxier(listenIP, iptables, exec, pr, syncPeriod, minSyncPeriod, udpIdleTimeout, nodePortAddresses, newProxySocket)
-}
-
-// NewCustomProxier functions similarly to NewProxier, returning a new Proxier
-// for the given LoadBalancer and address.  The new proxier is constructed using
-// the ProxySocket constructor provided, however, instead of constructing the
-// default ProxySockets.
-func NewCustomProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, makeProxySocket ProxySocketFunc) (*Proxier, error) {
+// NewProxier returns a new Proxier for the given address.
+func NewProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, makeProxySocket ProxySocketFunc) (*Proxier, error) {
 	if listenIP.Equal(localhostIPv4) || listenIP.Equal(localhostIPv6) {
 		return nil, ErrProxyOnLocalhost
 	}
@@ -396,7 +380,6 @@ func (proxier *Proxier) addServiceOnPortInternal(service proxy.ServicePortName, 
 	}
 	si := &ServiceInfo{
 		Timeout:             timeout,
-		ActiveClients:       newClientCache(),
 		isAliveAtomic:       1,
 		proxyPort:           portNum,
 		protocol:            protocol,
