@@ -42,7 +42,7 @@ import (
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/network/node/cniserver"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
 type osdnPolicy interface {

@@ -12,7 +12,7 @@ import (
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
 // Checks the "testModeChan" of eip and ensures that the expected netlink event(s)

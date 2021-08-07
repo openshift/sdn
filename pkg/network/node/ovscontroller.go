@@ -12,7 +12,7 @@ import (
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/util/ovs"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"

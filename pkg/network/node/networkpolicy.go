@@ -25,7 +25,7 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
 const HostNetworkNamespace = "openshift-host-network"
