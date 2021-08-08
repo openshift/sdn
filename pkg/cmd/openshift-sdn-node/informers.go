@@ -7,8 +7,8 @@ import (
 
 	networkclient "github.com/openshift/client-go/network/clientset/versioned"
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
-	v1 "k8s.io/api/core/v1"
-	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	kinformers "k8s.io/client-go/informers"
@@ -53,7 +53,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	noHeadlessEndpoints, err := labels.NewRequirement(v1.IsHeadlessService, selection.DoesNotExist, nil)
+	noHeadlessEndpoints, err := labels.NewRequirement(corev1.IsHeadlessService, selection.DoesNotExist, nil)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 	labelSelector = labelSelector.Add(*noProxyName, *noHeadlessEndpoints)
 
 	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-		kinformers.WithTweakListOptions(func(options *v1meta.ListOptions) {
+		kinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labelSelector.String()
 		}))
 

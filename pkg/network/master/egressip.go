@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -164,11 +164,11 @@ func (eim *egressIPManager) poll(stop chan struct{}) {
 	}
 }
 
-func nodeIsReady(node *v1.Node) bool {
+func nodeIsReady(node *corev1.Node) bool {
 	nodeReady := true
 	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady {
-			if cond.Status == v1.ConditionFalse || cond.Status == v1.ConditionUnknown {
+		if cond.Type == corev1.NodeReady {
+			if cond.Status == corev1.ConditionFalse || cond.Status == corev1.ConditionUnknown {
 				nodeReady = false
 			}
 		}

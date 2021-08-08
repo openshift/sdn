@@ -8,7 +8,7 @@ import (
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/network/proxyimpl/unidler"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -93,7 +93,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 
 	var healthzServer healthcheck.ProxierHealthUpdater
 	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
-		nodeRef := &v1.ObjectReference{
+		nodeRef := &corev1.ObjectReference{
 			Kind:      "Node",
 			Name:      sdn.nodeName,
 			UID:       types.UID(sdn.nodeName),

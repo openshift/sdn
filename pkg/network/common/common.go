@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 
-	kapi "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
@@ -145,7 +145,7 @@ func (pcn *ParsedClusterNetwork) CheckHostNetworks(hostIPNets []*net.IPNet) erro
 	return kerrors.NewAggregate(errList)
 }
 
-func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSubnet, pods []kapi.Pod, services []kapi.Service) error {
+func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSubnet, pods []corev1.Pod, services []corev1.Service) error {
 	var errList []error
 
 	for _, subnet := range subnets {
@@ -194,7 +194,7 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 }
 
 func GetParsedClusterNetwork(networkClient networkclient.Interface) (*ParsedClusterNetwork, error) {
-	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(context.TODO(), networkv1.ClusterNetworkDefault, v1.GetOptions{})
+	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(context.TODO(), networkv1.ClusterNetworkDefault, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

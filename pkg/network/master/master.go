@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	kapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -128,8 +128,8 @@ func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
 
 func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
 	var subnets []networkapi.HostSubnet
-	var pods []kapi.Pod
-	var services []kapi.Service
+	var pods []corev1.Pod
+	var services []corev1.Service
 	if subnetList, err := master.networkClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{}); err == nil {
 		subnets = subnetList.Items
 	}

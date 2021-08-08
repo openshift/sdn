@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	networkapi "github.com/openshift/api/network/v1"
-	kapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 )
@@ -122,12 +122,12 @@ func dummySubnet(hostip string, subnet string) networkapi.HostSubnet {
 	return networkapi.HostSubnet{HostIP: hostip, Subnet: subnet}
 }
 
-func dummyService(ip string) kapi.Service {
-	return kapi.Service{Spec: kapi.ServiceSpec{ClusterIP: ip}}
+func dummyService(ip string) corev1.Service {
+	return corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: ip}}
 }
 
-func dummyPod(ip string) kapi.Pod {
-	return kapi.Pod{Status: kapi.PodStatus{PodIP: ip}}
+func dummyPod(ip string) corev1.Pod {
+	return corev1.Pod{Status: corev1.PodStatus{PodIP: ip}}
 }
 
 func Test_checkClusterObjects(t *testing.T) {
@@ -136,7 +136,7 @@ func Test_checkClusterObjects(t *testing.T) {
 		dummySubnet("192.168.1.3", "10.129.0.0/23"),
 		dummySubnet("192.168.1.4", "10.130.0.0/23"),
 	}
-	pods := []kapi.Pod{
+	pods := []corev1.Pod{
 		dummyPod("10.128.0.2"),
 		dummyPod("10.128.0.4"),
 		dummyPod("10.128.0.6"),
@@ -147,7 +147,7 @@ func Test_checkClusterObjects(t *testing.T) {
 		dummyPod("10.129.0.9"),
 		dummyPod("10.130.0.10"),
 	}
-	services := []kapi.Service{
+	services := []corev1.Service{
 		dummyService("172.30.0.1"),
 		dummyService("172.30.0.128"),
 		dummyService("172.30.99.99"),

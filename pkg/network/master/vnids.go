@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	kapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -164,7 +164,7 @@ func (vmap *masterVNIDMap) updateNetID(nsName string, action networkapihelpers.P
 			return 0, fmt.Errorf("netid not found for namespace %q", joinNsName)
 		}
 	case networkapihelpers.IsolatePodNetwork:
-		if nsName == kapi.NamespaceDefault {
+		if nsName == corev1.NamespaceDefault {
 			return 0, fmt.Errorf("network isolation for namespace %q is not allowed", nsName)
 		}
 		// Check if the given namespace is already isolated
@@ -304,12 +304,12 @@ func (master *OsdnMaster) initNetIDAllocator() error {
 }
 
 func (master *OsdnMaster) watchNamespaces() {
-	funcs := common.InformerFuncs(&kapi.Namespace{}, master.handleAddOrUpdateNamespace, master.handleDeleteNamespace)
+	funcs := common.InformerFuncs(&corev1.Namespace{}, master.handleAddOrUpdateNamespace, master.handleDeleteNamespace)
 	master.namespaceInformer.Informer().AddEventHandler(funcs)
 }
 
 func (master *OsdnMaster) handleAddOrUpdateNamespace(obj, _ interface{}, eventType watch.EventType) {
-	ns := obj.(*kapi.Namespace)
+	ns := obj.(*corev1.Namespace)
 	klog.V(5).Infof("Watch %s event for Namespace %q", eventType, ns.Name)
 
 	if err := master.vnids.assignVNID(master.networkClient, ns.Name); err != nil {
@@ -318,7 +318,7 @@ func (master *OsdnMaster) handleAddOrUpdateNamespace(obj, _ interface{}, eventTy
 }
 
 func (master *OsdnMaster) handleDeleteNamespace(obj interface{}) {
-	ns := obj.(*kapi.Namespace)
+	ns := obj.(*corev1.Namespace)
 	klog.V(5).Infof("Watch %s event for Namespace %q", watch.Deleted, ns.Name)
 	if err := master.vnids.revokeVNID(master.networkClient, ns.Name); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error revoking netid: %v", err))

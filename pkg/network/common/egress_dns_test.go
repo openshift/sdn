@@ -7,7 +7,7 @@ import (
 
 	networkv1 "github.com/openshift/api/network/v1"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -20,7 +20,7 @@ type delayedDNSTest struct {
 
 func newEgressNetworkPolicy(dnsName string, namespace string) networkv1.EgressNetworkPolicy {
 	return networkv1.EgressNetworkPolicy{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "enp",
 			Namespace: namespace,
 			UID:       ktypes.UID(namespace + "-enp"),

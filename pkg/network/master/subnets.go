@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	kapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	kerrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -47,12 +47,12 @@ func (master *OsdnMaster) startSubnetMaster() error {
 }
 
 func (master *OsdnMaster) watchNodes() {
-	funcs := common.InformerFuncs(&kapi.Node{}, master.handleAddOrUpdateNode, master.handleDeleteNode)
+	funcs := common.InformerFuncs(&corev1.Node{}, master.handleAddOrUpdateNode, master.handleDeleteNode)
 	master.nodeInformer.Informer().AddEventHandler(funcs)
 }
 
 func (master *OsdnMaster) handleAddOrUpdateNode(obj, _ interface{}, eventType watch.EventType) {
-	node := obj.(*kapi.Node)
+	node := obj.(*corev1.Node)
 
 	nodeIP := getNodeInternalIP(node)
 	if len(nodeIP) == 0 {
@@ -77,7 +77,7 @@ func (master *OsdnMaster) handleAddOrUpdateNode(obj, _ interface{}, eventType wa
 }
 
 func (master *OsdnMaster) handleDeleteNode(obj interface{}) {
-	node := obj.(*kapi.Node)
+	node := obj.(*corev1.Node)
 	klog.V(5).Infof("Watch %s event for Node %q", watch.Deleted, node.Name)
 
 	if _, exists := master.hostSubnetNodeIPs[node.UID]; !exists {
@@ -173,7 +173,7 @@ func (master *OsdnMaster) deleteNode(nodeName string) error {
 // TODO: make upstream kubelet more flexible with overlays and GCE so this
 // condition doesn't get added for network plugins that don't want it, and then
 // we can remove this function.
-func (master *OsdnMaster) clearInitialNodeNetworkUnavailableCondition(origNode *kapi.Node) {
+func (master *OsdnMaster) clearInitialNodeNetworkUnavailableCondition(origNode *corev1.Node) {
 	// Informer cache should not be mutated, so get a copy of the object
 	node := origNode.DeepCopy()
 	knode := node
@@ -189,10 +189,10 @@ func (master *OsdnMaster) clearInitialNodeNetworkUnavailableCondition(origNode *
 		}
 
 		for i := range knode.Status.Conditions {
-			if knode.Status.Conditions[i].Type == kapi.NodeNetworkUnavailable {
+			if knode.Status.Conditions[i].Type == corev1.NodeNetworkUnavailable {
 				condition := &knode.Status.Conditions[i]
-				if condition.Status != kapi.ConditionFalse && condition.Reason == "NoRouteCreated" {
-					condition.Status = kapi.ConditionFalse
+				if condition.Status != corev1.ConditionFalse && condition.Reason == "NoRouteCreated" {
+					condition.Status = corev1.ConditionFalse
 					condition.Reason = "RouteCreated"
 					condition.Message = "openshift-sdn cleared kubelet-set NoRouteCreated"
 					condition.LastTransitionTime = metav1.Now()
@@ -213,10 +213,10 @@ func (master *OsdnMaster) clearInitialNodeNetworkUnavailableCondition(origNode *
 	}
 }
 
-func getNodeInternalIP(node *kapi.Node) string {
+func getNodeInternalIP(node *corev1.Node) string {
 	var nodeIP string
 	for _, addr := range node.Status.Addresses {
-		if addr.Type == kapi.NodeInternalIP {
+		if addr.Type == corev1.NodeInternalIP {
 			nodeIP = addr.Address
 			break
 		}
@@ -271,7 +271,7 @@ func (master *OsdnMaster) handleDeleteSubnet(obj interface{}) {
 // Because openshift watches on events to keep hostsubnets and nodes in the correct state, missing an event
 // can cause orphaned or unusable hostsubnets to stick around.
 func (master *OsdnMaster) reconcileHostSubnet(subnet *networkapi.HostSubnet) error {
-	var node *kapi.Node
+	var node *corev1.Node
 	var err error
 	node, err = master.nodeInformer.Lister().Get(subnet.Name)
 	if err != nil {
