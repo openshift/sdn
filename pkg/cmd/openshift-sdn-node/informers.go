@@ -21,17 +21,17 @@ var defaultInformerResyncPeriod = 30 * time.Minute
 
 // informers is a small bag of data that holds our informers
 type informers struct {
-	KubeClient    kubernetes.Interface
-	NetworkClient networkclient.Interface
+	kubeClient    kubernetes.Interface
+	networkClient networkclient.Interface
 
 	// External kubernetes shared informer factory.
-	KubeInformers kinformers.SharedInformerFactory
+	kubeInformers kinformers.SharedInformerFactory
 	// Network shared informer factory.
-	NetworkInformers networkinformers.SharedInformerFactory
+	networkInformers networkinformers.SharedInformerFactory
 }
 
 // buildInformers creates all the informer factories.
-func (sdn *OpenShiftSDN) buildInformers() error {
+func (sdn *openShiftSDN) buildInformers() error {
 	kubeConfig, err := getInClusterConfig()
 	if err != nil {
 		return err
@@ -60,7 +60,7 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 	labelSelector := labels.NewSelector()
 	labelSelector = labelSelector.Add(*noProxyName, *noHeadlessEndpoints)
 
-	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 		kinformers.WithTweakListOptions(func(options *v1meta.ListOptions) {
 			options.LabelSelector = labelSelector.String()
 		}))
@@ -68,19 +68,19 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
 
 	sdn.informers = &informers{
-		KubeClient:    kubeClient,
-		NetworkClient: networkClient,
+		kubeClient:    kubeClient,
+		networkClient: networkClient,
 
-		KubeInformers:    kubeInformers,
-		NetworkInformers: networkInformers,
+		kubeInformers:    kubeInformers,
+		networkInformers: networkInformers,
 	}
 	return nil
 }
 
 // start starts the informers.
 func (i *informers) start(stopCh <-chan struct{}) {
-	i.KubeInformers.Start(stopCh)
-	i.NetworkInformers.Start(stopCh)
+	i.kubeInformers.Start(stopCh)
+	i.networkInformers.Start(stopCh)
 }
 
 // getInClusterConfig loads in-cluster config, then applies default overrides.

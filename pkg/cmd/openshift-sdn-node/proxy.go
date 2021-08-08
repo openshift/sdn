@@ -45,28 +45,28 @@ func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, 
 }
 
 // initProxy sets up the proxy process.
-func (sdn *OpenShiftSDN) initProxy() error {
+func (sdn *openShiftSDN) initProxy() error {
 	var err error
-	sdn.OsdnProxy, err = sdnproxy.New(
-		sdn.informers.KubeClient,
-		sdn.informers.KubeInformers,
-		sdn.informers.NetworkClient,
-		sdn.informers.NetworkInformers,
-		sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration)
+	sdn.osdnProxy, err = sdnproxy.New(
+		sdn.informers.kubeClient,
+		sdn.informers.kubeInformers,
+		sdn.informers.networkClient,
+		sdn.informers.networkInformers,
+		sdn.proxyConfig.IPTables.MinSyncPeriod.Duration)
 	return err
 }
 
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
-func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
-	if string(sdn.ProxyConfig.Mode) == "disabled" {
+func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
+	if string(sdn.proxyConfig.Mode) == "disabled" {
 		klog.Warningf("Built-in kube-proxy is disabled")
 		sdn.startMetricsServer()
 		close(waitChan)
 		return
 	}
 
-	bindAddr := net.ParseIP(sdn.ProxyConfig.BindAddress)
+	bindAddr := net.ParseIP(sdn.proxyConfig.BindAddress)
 	nodeAddr := bindAddr
 
 	if nodeAddr.IsUnspecified() {
@@ -81,9 +81,9 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		protocol = utiliptables.ProtocolIPv6
 	}
 
-	portRange := utilnet.ParsePortRangeOrDie(sdn.ProxyConfig.PortRange)
+	portRange := utilnet.ParsePortRangeOrDie(sdn.proxyConfig.PortRange)
 
-	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: sdn.informers.KubeClient.EventsV1()})
+	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: sdn.informers.kubeClient.EventsV1()})
 	stopCh := make(chan struct{})
 	eventBroadcaster.StartRecordingToSink(stopCh)
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, "kube-proxy")
@@ -92,14 +92,14 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	iptInterface := utiliptables.New(execer, protocol)
 
 	var healthzServer healthcheck.ProxierHealthUpdater
-	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
+	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
 		nodeRef := &v1.ObjectReference{
 			Kind:      "Node",
 			Name:      sdn.nodeName,
 			UID:       types.UID(sdn.nodeName),
 			Namespace: "",
 		}
-		healthzServer = healthcheck.NewProxierHealthServer(sdn.ProxyConfig.HealthzBindAddress, 2*sdn.ProxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+		healthzServer = healthcheck.NewProxierHealthServer(sdn.proxyConfig.HealthzBindAddress, 2*sdn.proxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
 	}
 
 	enableUnidling := false
@@ -107,25 +107,25 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	var err error
 
 	var proxier, unidlingProxy sdnproxy.HybridizableProxy
-	switch string(sdn.ProxyConfig.Mode) {
+	switch string(sdn.proxyConfig.Mode) {
 	case "unidling+iptables":
 		enableUnidling = true
 		fallthrough
 	case "iptables":
-		klog.V(0).Infof("Using %s Proxier.", sdn.ProxyConfig.Mode)
+		klog.V(0).Infof("Using %s Proxier.", sdn.proxyConfig.Mode)
 		usingEndpointSlices = utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying)
 
-		if sdn.ProxyConfig.IPTables.MasqueradeBit == nil {
+		if sdn.proxyConfig.IPTables.MasqueradeBit == nil {
 			// IPTablesMasqueradeBit must be specified or defaulted.
 			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
 		}
 
 		var localDetector proxyutiliptables.LocalTrafficDetector
-		if sdn.ProxyConfig.ClusterCIDR == "" {
+		if sdn.proxyConfig.ClusterCIDR == "" {
 			klog.Warningf("Kubeproxy does not support multiple cluster CIDRs, configuring no-op local traffic detector")
 			localDetector = proxyutiliptables.NewNoOpLocalDetector()
 		} else {
-			localDetector, err = proxyutiliptables.NewDetectLocalByCIDR(sdn.ProxyConfig.ClusterCIDR, iptInterface)
+			localDetector, err = proxyutiliptables.NewDetectLocalByCIDR(sdn.proxyConfig.ClusterCIDR, iptInterface)
 			if err != nil {
 				klog.Fatalf("Unable to configure local traffic detector: %v", err)
 			}
@@ -135,16 +135,16 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			iptInterface,
 			utilsysctl.New(),
 			execer,
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.ProxyConfig.IPTables.MasqueradeAll,
-			int(*sdn.ProxyConfig.IPTables.MasqueradeBit),
+			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
+			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
+			sdn.proxyConfig.IPTables.MasqueradeAll,
+			int(*sdn.proxyConfig.IPTables.MasqueradeBit),
 			localDetector,
 			sdn.nodeName,
 			nodeAddr,
 			recorder,
 			healthzServer,
-			sdn.ProxyConfig.NodePortAddresses,
+			sdn.proxyConfig.NodePortAddresses,
 		)
 		metrics.RegisterMetrics()
 
@@ -164,10 +164,10 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			iptInterface,
 			execer,
 			*portRange,
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.ProxyConfig.UDPIdleTimeout.Duration,
-			sdn.ProxyConfig.NodePortAddresses,
+			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
+			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
+			sdn.proxyConfig.UDPIdleTimeout.Duration,
+			sdn.proxyConfig.NodePortAddresses,
 		)
 		if err != nil {
 			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
@@ -176,7 +176,7 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 		klog.V(0).Info("Tearing down pure-iptables proxy rules.")
 		iptables.CleanupLeftovers(iptInterface)
 	default:
-		klog.Fatalf("Unknown proxy mode %q", sdn.ProxyConfig.Mode)
+		klog.Fatalf("Unknown proxy mode %q", sdn.proxyConfig.Mode)
 	}
 
 	if enableUnidling {
@@ -187,46 +187,46 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 			iptInterface,
 			execer,
 			*portRange,
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-			sdn.ProxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.ProxyConfig.UDPIdleTimeout.Duration,
-			sdn.ProxyConfig.NodePortAddresses,
+			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
+			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
+			sdn.proxyConfig.UDPIdleTimeout.Duration,
+			sdn.proxyConfig.NodePortAddresses,
 			signaler)
 		if err != nil {
 			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
 		}
 	}
 
-	sdn.OsdnProxy.SetBaseProxies(proxier, unidlingProxy)
-	if err := sdn.OsdnProxy.Start(waitChan); err != nil {
+	sdn.osdnProxy.SetBaseProxies(proxier, unidlingProxy)
+	if err := sdn.osdnProxy.Start(waitChan); err != nil {
 		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
 	}
 
 	serviceConfig := pconfig.NewServiceConfig(
-		sdn.informers.KubeInformers.Core().V1().Services(),
-		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		sdn.informers.kubeInformers.Core().V1().Services(),
+		sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 	)
-	serviceConfig.RegisterEventHandler(sdn.OsdnProxy)
+	serviceConfig.RegisterEventHandler(sdn.osdnProxy)
 	go serviceConfig.Run(utilwait.NeverStop)
 
 	if usingEndpointSlices {
 		endpointSliceConfig := pconfig.NewEndpointSliceConfig(
-			sdn.informers.KubeInformers.Discovery().V1().EndpointSlices(),
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+			sdn.informers.kubeInformers.Discovery().V1().EndpointSlices(),
+			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 		)
-		endpointSliceConfig.RegisterEventHandler(sdn.OsdnProxy)
+		endpointSliceConfig.RegisterEventHandler(sdn.osdnProxy)
 		go endpointSliceConfig.Run(utilwait.NeverStop)
 	} else {
 		endpointsConfig := pconfig.NewEndpointsConfig(
-			sdn.informers.KubeInformers.Core().V1().Endpoints(),
-			sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+			sdn.informers.kubeInformers.Core().V1().Endpoints(),
+			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 		)
-		endpointsConfig.RegisterEventHandler(sdn.OsdnProxy)
+		endpointsConfig.RegisterEventHandler(sdn.osdnProxy)
 		go endpointsConfig.Run(utilwait.NeverStop)
 	}
 
 	// Start up healthz server
-	if len(sdn.ProxyConfig.HealthzBindAddress) > 0 {
+	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
 		serveHealthz(healthzServer)
 	}
 
@@ -234,25 +234,25 @@ func (sdn *OpenShiftSDN) runProxy(waitChan chan<- bool) {
 	sdn.startMetricsServer()
 
 	// periodically sync k8s iptables rules
-	go utilwait.Forever(sdn.OsdnProxy.SyncLoop, 0)
-	klog.Infof("Started Kubernetes Proxy on %s", sdn.ProxyConfig.BindAddress)
+	go utilwait.Forever(sdn.osdnProxy.SyncLoop, 0)
+	klog.Infof("Started Kubernetes Proxy on %s", sdn.proxyConfig.BindAddress)
 }
 
-func (sdn *OpenShiftSDN) startMetricsServer() {
-	if sdn.ProxyConfig.MetricsBindAddress == "" {
+func (sdn *openShiftSDN) startMetricsServer() {
+	if sdn.proxyConfig.MetricsBindAddress == "" {
 		return
 	}
 
 	mux := mux.NewPathRecorderMux("kube-proxy")
 	mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s", sdn.ProxyConfig.Mode)
+		fmt.Fprintf(w, "%s", sdn.proxyConfig.Mode)
 	})
 	mux.Handle("/metrics", legacyregistry.Handler())
-	if sdn.ProxyConfig.EnableProfiling {
+	if sdn.proxyConfig.EnableProfiling {
 		routes.Profiling{}.Install(mux)
 	}
 	go utilwait.Until(func() {
-		err := http.ListenAndServe(sdn.ProxyConfig.MetricsBindAddress, mux)
+		err := http.ListenAndServe(sdn.proxyConfig.MetricsBindAddress, mux)
 		if err != nil {
 			utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
 		}

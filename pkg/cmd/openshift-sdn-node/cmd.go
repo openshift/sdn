@@ -26,19 +26,19 @@ import (
 	"github.com/openshift/sdn/pkg/version"
 )
 
-// OpenShiftSDN stores the variables needed to initialize the real networking
+// openShiftSDN stores the variables needed to initialize the real networking
 // processess from the command line.
-type OpenShiftSDN struct {
+type openShiftSDN struct {
 	nodeName string
 	nodeIP   string
 
-	ProxyConfigFilePath string
-	ProxyConfig         *kubeproxyconfig.KubeProxyConfiguration
+	proxyConfigFilePath string
+	proxyConfig         *kubeproxyconfig.KubeProxyConfiguration
 
 	informers   *informers
-	OsdnNode    *sdnnode.OsdnNode
+	osdnNode    *sdnnode.OsdnNode
 	sdnRecorder record.EventRecorder
-	OsdnProxy   *sdnproxy.OsdnProxy
+	osdnProxy   *sdnproxy.OsdnProxy
 
 	ipt iptables.Interface
 }
@@ -48,7 +48,7 @@ Start OpenShift SDN node components. This includes the service proxy.
 `
 
 func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
-	sdn := &OpenShiftSDN{}
+	sdn := &openShiftSDN{}
 
 	cmd := &cobra.Command{
 		Use:   basename,
@@ -60,7 +60,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 				fmt.Fprintf(errout, "interrupt: Signal %s received. Gracefully shutting down ...\n", s.String())
 				close(ch)
 			}).Run(func() error {
-				sdn.Run(c, errout, ch)
+				sdn.run(c, errout, ch)
 				return nil
 			})
 		},
@@ -71,16 +71,16 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 	cmd.MarkFlagRequired("node-name")
 	flags.StringVar(&sdn.nodeIP, "node-ip", "", "Kubernetes node IP")
 	cmd.MarkFlagRequired("node-ip")
-	flags.StringVar(&sdn.ProxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
+	flags.StringVar(&sdn.proxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
 	cmd.MarkFlagRequired("proxy-config")
 
 	return cmd
 }
 
-// Run starts the network process. Does not return.
-func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan struct{}) {
+// run starts the network process. Does not return.
+func (sdn *openShiftSDN) run(c *cobra.Command, errout io.Writer, stopCh chan struct{}) {
 	// Parse config file, build config objects
-	err := sdn.ValidateAndParse()
+	err := sdn.validateAndParse()
 	if err != nil {
 		if kerrors.IsInvalid(err) {
 			if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
@@ -96,17 +96,17 @@ func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan str
 
 	// Set up a watch on our config file; if it changes, we should exit -
 	// (we don't have the ability to dynamically reload config changes).
-	if err := watchForChanges(sdn.ProxyConfigFilePath, stopCh); err != nil {
+	if err := watchForChanges(sdn.proxyConfigFilePath, stopCh); err != nil {
 		klog.Fatalf("unable to setup configuration watch: %v", err)
 	}
 
 	// Build underlying network objects
-	err = sdn.Init()
+	err = sdn.init()
 	if err != nil {
 		klog.Fatalf("Failed to initialize sdn: %v", err)
 	}
 
-	err = sdn.Start(stopCh)
+	err = sdn.start(stopCh)
 	if err != nil {
 		klog.Fatalf("Failed to start sdn: %v", err)
 	}
@@ -115,12 +115,12 @@ func (sdn *OpenShiftSDN) Run(c *cobra.Command, errout io.Writer, stopCh chan str
 	time.Sleep(500 * time.Millisecond) // gracefully shut down
 }
 
-// ValidateAndParse validates the command line options, parses the node
+// validateAndParse validates the command line options, parses the node
 // configuration, and builds the upstream proxy configuration.
-func (sdn *OpenShiftSDN) ValidateAndParse() error {
-	klog.V(2).Infof("Reading proxy configuration from %s", sdn.ProxyConfigFilePath)
+func (sdn *openShiftSDN) validateAndParse() error {
+	klog.V(2).Infof("Reading proxy configuration from %s", sdn.proxyConfigFilePath)
 	var err error
-	sdn.ProxyConfig, err = readProxyConfig(sdn.ProxyConfigFilePath)
+	sdn.proxyConfig, err = readProxyConfig(sdn.proxyConfigFilePath)
 	if err != nil {
 		return err
 	}
@@ -128,8 +128,8 @@ func (sdn *OpenShiftSDN) ValidateAndParse() error {
 	return nil
 }
 
-// Init builds the underlying structs for the network processes.
-func (sdn *OpenShiftSDN) Init() error {
+// init builds the underlying structs for the network processes.
+func (sdn *openShiftSDN) init() error {
 	// Build the informers
 	var err error
 	err = sdn.buildInformers()
@@ -155,7 +155,7 @@ func (sdn *OpenShiftSDN) Init() error {
 }
 
 // Start starts the network, proxy, and informers, then returns.
-func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
+func (sdn *openShiftSDN) start(stopCh <-chan struct{}) error {
 	klog.Infof("Starting node networking (%s)", version.Get().String())
 
 	serviceability.StartProfiler()
@@ -178,19 +178,19 @@ func (sdn *OpenShiftSDN) Start(stopCh <-chan struct{}) error {
 	go sdn.ipt.Monitor(iptables.Chain("OPENSHIFT-SDN-CANARY"),
 		[]iptables.Table{iptables.TableMangle, iptables.TableNAT, iptables.TableFilter},
 		sdn.reloadIPTables,
-		sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
+		sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 		utilwait.NeverStop)
 
 	return nil
 }
 
 // reloadIPTables reloads node and proxy iptables rules after a flush
-func (sdn *OpenShiftSDN) reloadIPTables() {
-	if err := sdn.OsdnNode.ReloadIPTables(); err != nil {
+func (sdn *openShiftSDN) reloadIPTables() {
+	if err := sdn.osdnNode.ReloadIPTables(); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Reloading openshift node iptables rules failed: %v", err))
 	}
-	if sdn.OsdnProxy != nil {
-		if err := sdn.OsdnProxy.ReloadIPTables(); err != nil {
+	if sdn.osdnProxy != nil {
+		if err := sdn.osdnProxy.ReloadIPTables(); err != nil {
 			utilruntime.HandleError(fmt.Errorf("Reloading openshift proxy iptables rules failed: %v", err))
 		}
 	}

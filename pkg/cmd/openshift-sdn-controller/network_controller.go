@@ -51,10 +51,10 @@ func RunOpenShiftNetworkController() error {
 			klog.Fatal(err)
 		}
 		if err := sdnmaster.Start(
-			controllerContext.NetworkClient,
-			controllerContext.KubernetesClient,
-			controllerContext.KubernetesInformers,
-			controllerContext.NetworkInformers,
+			controllerContext.networkClient,
+			controllerContext.kubernetesClient,
+			controllerContext.kubernetesInformers,
+			controllerContext.networkInformers,
 		); err != nil {
 			klog.Fatalf("Error starting OpenShift Network Controller: %v", err)
 		}

@@ -14,33 +14,33 @@ import (
 const openshiftCNIFile string = "/etc/cni/net.d/80-openshift-network.conf"
 
 // initSDN sets up the sdn process.
-func (sdn *OpenShiftSDN) initSDN() error {
+func (sdn *openShiftSDN) initSDN() error {
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: sdn.informers.KubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: sdn.informers.kubeClient.CoreV1().Events("")})
 	sdn.sdnRecorder = eventBroadcaster.NewRecorder(scheme.Scheme, kclientv1.EventSource{Component: "openshift-sdn", Host: sdn.nodeName})
 
 	var err error
-	sdn.OsdnNode, err = sdnnode.New(&sdnnode.OsdnNodeConfig{
+	sdn.osdnNode, err = sdnnode.New(&sdnnode.OsdnNodeConfig{
 		NodeName:         sdn.nodeName,
 		NodeIP:           sdn.nodeIP,
-		NetworkClient:    sdn.informers.NetworkClient,
-		KClient:          sdn.informers.KubeClient,
-		KubeInformers:    sdn.informers.KubeInformers,
-		NetworkInformers: sdn.informers.NetworkInformers,
+		NetworkClient:    sdn.informers.networkClient,
+		KClient:          sdn.informers.kubeClient,
+		KubeInformers:    sdn.informers.kubeInformers,
+		NetworkInformers: sdn.informers.networkInformers,
 		IPTables:         sdn.ipt,
-		MasqueradeBit:    sdn.ProxyConfig.IPTables.MasqueradeBit,
-		ProxyMode:        sdn.ProxyConfig.Mode,
+		MasqueradeBit:    sdn.proxyConfig.IPTables.MasqueradeBit,
+		ProxyMode:        sdn.proxyConfig.Mode,
 		Recorder:         sdn.sdnRecorder,
 	})
 	return err
 }
 
 // runSDN starts the sdn node process. Returns.
-func (sdn *OpenShiftSDN) runSDN() error {
-	return sdn.OsdnNode.Start()
+func (sdn *openShiftSDN) runSDN() error {
+	return sdn.osdnNode.Start()
 }
 
-func (sdn *OpenShiftSDN) writeConfigFile() error {
+func (sdn *openShiftSDN) writeConfigFile() error {
 	// Make an event that openshift-sdn started
 	sdn.sdnRecorder.Eventf(&kclientv1.ObjectReference{Kind: "Node", Name: sdn.nodeName}, kclientv1.EventTypeNormal, "Starting", "openshift-sdn done initializing node networking.")
 
