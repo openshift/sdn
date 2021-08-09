@@ -35,7 +35,7 @@ func (sig *eventSignaler) NeedPods(serviceName types.NamespacedName, port string
 	}
 
 	// HACK: make the message different to prevent event aggregation
-	sig.recorder.Eventf(&serviceRef, nil, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
+	sig.recorder.Eventf(&serviceRef, nil, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "Unidling", "The service-port %s:%s needs pods.", serviceRef.Name, port)
 
 	return nil
 }

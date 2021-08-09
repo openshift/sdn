@@ -473,7 +473,7 @@ func (node *OsdnNode) killFailedPods(failed map[string]*kruntimeapi.PodSandbox) 
 	// we'll be able to set them up correctly
 	for _, sandbox := range failed {
 		podRef := &corev1.ObjectReference{Kind: "Pod", Name: sandbox.Metadata.Name, Namespace: sandbox.Metadata.Namespace, UID: types.UID(sandbox.Metadata.Uid)}
-		node.recorder.Eventf(podRef, corev1.EventTypeWarning, "NetworkFailed", "The pod's network interface has been lost and the pod will be stopped.")
+		node.recorder.Eventf(podRef, corev1.EventTypeWarning, "NetworkFailed", "SDNRestart", "The pod's network interface has been lost and the pod will be stopped.")
 
 		klog.V(5).Infof("Killing pod '%s/%s' sandbox", podRef.Namespace, podRef.Name)
 		if err := node.runtimeService.StopPodSandbox(sandbox.Id); err != nil {
