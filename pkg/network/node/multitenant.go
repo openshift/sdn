@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -18,7 +16,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 )
 
 type multiTenantPlugin struct {
@@ -49,8 +47,8 @@ func (mp *multiTenantPlugin) Start(node *OsdnNode) error {
 	mp.node = node
 	mp.vnidInUse = node.oc.FindPolicyVNIDs()
 
-	mp.vnids = newNodeVNIDMap(mp, node.networkClient)
-	if err := mp.vnids.Start(node.networkInformers); err != nil {
+	mp.vnids = newNodeVNIDMap(mp, node.osdnClient)
+	if err := mp.vnids.Start(node.osdnInformers); err != nil {
 		return err
 	}
 
@@ -109,15 +107,15 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 	mp.node.podManager.UpdateLocalMulticastRules(netID)
 }
 
-func (mp *multiTenantPlugin) AddNetNamespace(netns *networkv1.NetNamespace) {
+func (mp *multiTenantPlugin) AddNetNamespace(netns *osdnv1.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, 0, netns.NetID)
 }
 
-func (mp *multiTenantPlugin) UpdateNetNamespace(netns *networkv1.NetNamespace, oldNetID uint32) {
+func (mp *multiTenantPlugin) UpdateNetNamespace(netns *osdnv1.NetNamespace, oldNetID uint32) {
 	mp.updatePodNetwork(netns.Name, oldNetID, netns.NetID)
 }
 
-func (mp *multiTenantPlugin) DeleteNetNamespace(netns *networkv1.NetNamespace) {
+func (mp *multiTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, netns.NetID, 0)
 }
 

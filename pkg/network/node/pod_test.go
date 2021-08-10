@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -13,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
 	utiltesting "k8s.io/client-go/util/testing"
 

@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -12,9 +10,9 @@ import (
 
 	"k8s.io/klog/v2"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/util/ovs"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -487,7 +485,7 @@ func (oc *ovsController) TearDownPod(sandboxID string) error {
 	return nil
 }
 
-func policyNames(policies []networkapi.EgressNetworkPolicy) string {
+func policyNames(policies []osdnv1.EgressNetworkPolicy) string {
 	names := make([]string, len(policies))
 	for i, policy := range policies {
 		names[i] = policy.Namespace + ":" + policy.Name
@@ -495,7 +493,7 @@ func policyNames(policies []networkapi.EgressNetworkPolicy) string {
 	return strings.Join(names, ", ")
 }
 
-func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.EgressNetworkPolicy, vnid uint32, namespaces []string, egressDNS *common.EgressDNS) error {
+func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []osdnv1.EgressNetworkPolicy, vnid uint32, namespaces []string, egressDNS *common.EgressDNS) error {
 	otx := oc.ovs.NewTransaction()
 	errs := []error{}
 
@@ -523,7 +521,7 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.Eg
 			priority := len(policies[0].Spec.Egress) - i
 
 			var action string
-			if rule.Type == networkapi.EgressNetworkPolicyRuleAllow {
+			if rule.Type == osdnv1.EgressNetworkPolicyRuleAllow {
 				action = "goto_table:101"
 			} else {
 				action = "drop"
@@ -562,17 +560,17 @@ func (oc *ovsController) UpdateEgressNetworkPolicyRules(policies []networkapi.Eg
 	return kerrors.NewAggregate(errs)
 }
 
-func hostSubnetCookie(subnet *networkapi.HostSubnet) uint32 {
+func hostSubnetCookie(subnet *osdnv1.HostSubnet) uint32 {
 	hash := sha256.Sum256([]byte(subnet.UID))
 	return (uint32(hash[0]) << 24) | (uint32(hash[1]) << 16) | (uint32(hash[2]) << 8) | uint32(hash[3])
 }
 
-func (oc *ovsController) AddHostSubnetRules(subnet *networkapi.HostSubnet) error {
+func (oc *ovsController) AddHostSubnetRules(subnet *osdnv1.HostSubnet) error {
 	cookie := hostSubnetCookie(subnet)
 	otx := oc.ovs.NewTransaction()
 
 	otx.AddFlow("table=10, priority=100, cookie=0x%08x, tun_src=%s, actions=goto_table:30", cookie, subnet.HostIP)
-	if vnid, ok := subnet.Annotations[networkapi.FixedVNIDHostAnnotation]; ok {
+	if vnid, ok := subnet.Annotations[osdnv1.FixedVNIDHostAnnotation]; ok {
 		otx.AddFlow("table=50, priority=100, cookie=0x%08x, arp, nw_dst=%s, actions=load:%s->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", cookie, subnet.Subnet, vnid, subnet.HostIP)
 		otx.AddFlow("table=90, priority=100, cookie=0x%08x, ip, nw_dst=%s, actions=load:%s->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", cookie, subnet.Subnet, vnid, subnet.HostIP)
 	} else {
@@ -583,7 +581,7 @@ func (oc *ovsController) AddHostSubnetRules(subnet *networkapi.HostSubnet) error
 	return otx.Commit()
 }
 
-func (oc *ovsController) DeleteHostSubnetRules(subnet *networkapi.HostSubnet) error {
+func (oc *ovsController) DeleteHostSubnetRules(subnet *osdnv1.HostSubnet) error {
 	cookie := hostSubnetCookie(subnet)
 
 	otx := oc.ovs.NewTransaction()

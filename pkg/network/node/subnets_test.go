@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -10,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
@@ -35,8 +33,8 @@ func setupHostSubnetWatcher(t *testing.T) (*hostSubnetWatcher, []string) {
 	_, oc, _ := setupOVSController(t)
 
 	networkInfo, err := common.ParseClusterNetwork(
-		&networkapi.ClusterNetwork{
-			ClusterNetworks: []networkapi.ClusterNetworkEntry{
+		&osdnv1.ClusterNetwork{
+			ClusterNetworks: []osdnv1.ClusterNetworkEntry{
 				{
 					CIDR:             "10.128.0.0/14",
 					HostSubnetLength: 9,
@@ -59,8 +57,8 @@ func setupHostSubnetWatcher(t *testing.T) (*hostSubnetWatcher, []string) {
 	return hsw, flows
 }
 
-func makeHostSubnet(name, hostIP, subnet string) *networkapi.HostSubnet {
-	return &networkapi.HostSubnet{
+func makeHostSubnet(name, hostIP, subnet string) *osdnv1.HostSubnet {
+	return &osdnv1.HostSubnet{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "HostSubnet",
 		},

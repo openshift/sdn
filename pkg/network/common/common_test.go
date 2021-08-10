@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	networkapi "github.com/openshift/api/network/v1"
-	kapi "k8s.io/api/core/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 )
@@ -118,25 +118,25 @@ func TestCheckHostNetworks(t *testing.T) {
 	}
 }
 
-func dummySubnet(hostip string, subnet string) networkapi.HostSubnet {
-	return networkapi.HostSubnet{HostIP: hostip, Subnet: subnet}
+func dummySubnet(hostip string, subnet string) osdnv1.HostSubnet {
+	return osdnv1.HostSubnet{HostIP: hostip, Subnet: subnet}
 }
 
-func dummyService(ip string) kapi.Service {
-	return kapi.Service{Spec: kapi.ServiceSpec{ClusterIP: ip}}
+func dummyService(ip string) corev1.Service {
+	return corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: ip}}
 }
 
-func dummyPod(ip string) kapi.Pod {
-	return kapi.Pod{Status: kapi.PodStatus{PodIP: ip}}
+func dummyPod(ip string) corev1.Pod {
+	return corev1.Pod{Status: corev1.PodStatus{PodIP: ip}}
 }
 
 func Test_checkClusterObjects(t *testing.T) {
-	subnets := []networkapi.HostSubnet{
+	subnets := []osdnv1.HostSubnet{
 		dummySubnet("192.168.1.2", "10.128.0.0/23"),
 		dummySubnet("192.168.1.3", "10.129.0.0/23"),
 		dummySubnet("192.168.1.4", "10.130.0.0/23"),
 	}
-	pods := []kapi.Pod{
+	pods := []corev1.Pod{
 		dummyPod("10.128.0.2"),
 		dummyPod("10.128.0.4"),
 		dummyPod("10.128.0.6"),
@@ -147,7 +147,7 @@ func Test_checkClusterObjects(t *testing.T) {
 		dummyPod("10.129.0.9"),
 		dummyPod("10.130.0.10"),
 	}
-	services := []kapi.Service{
+	services := []corev1.Service{
 		dummyService("172.30.0.1"),
 		dummyService("172.30.0.128"),
 		dummyService("172.30.99.99"),
@@ -224,37 +224,37 @@ func Test_checkClusterObjects(t *testing.T) {
 func TestParseClusterNetwork(t *testing.T) {
 	tests := []struct {
 		name string
-		cn   networkapi.ClusterNetwork
+		cn   osdnv1.ClusterNetwork
 		err  string
 	}{
 		{
 			name: "valid single cidr",
-			cn: networkapi.ClusterNetwork{
-				ClusterNetworks: []networkapi.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}},
+			cn: osdnv1.ClusterNetwork{
+				ClusterNetworks: []osdnv1.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}},
 				ServiceNetwork:  "172.30.0.0/16",
 			},
 			err: "",
 		},
 		{
 			name: "valid multiple cidr",
-			cn: networkapi.ClusterNetwork{
-				ClusterNetworks: []networkapi.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}, {CIDR: "10.4.0.0/16"}},
+			cn: osdnv1.ClusterNetwork{
+				ClusterNetworks: []osdnv1.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}, {CIDR: "10.4.0.0/16"}},
 				ServiceNetwork:  "172.30.0.0/16",
 			},
 			err: "",
 		},
 		{
 			name: "invalid CIDR address",
-			cn: networkapi.ClusterNetwork{
-				ClusterNetworks: []networkapi.ClusterNetworkEntry{{CIDR: "Invalid"}},
+			cn: osdnv1.ClusterNetwork{
+				ClusterNetworks: []osdnv1.ClusterNetworkEntry{{CIDR: "Invalid"}},
 				ServiceNetwork:  "172.30.0.0/16",
 			},
 			err: "Invalid",
 		},
 		{
 			name: "invalid serviceNetwork",
-			cn: networkapi.ClusterNetwork{
-				ClusterNetworks: []networkapi.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}},
+			cn: osdnv1.ClusterNetwork{
+				ClusterNetworks: []osdnv1.ClusterNetworkEntry{{CIDR: "10.0.0.0/16"}},
 				ServiceNetwork:  "172.30.0.0i/16",
 			},
 			err: "172.30.0.0i/16",
@@ -277,41 +277,41 @@ func TestParseClusterNetwork(t *testing.T) {
 func TestValidateHostSubnetEgress(t *testing.T) {
 	tests := []struct {
 		name string
-		hs   networkapi.HostSubnet
+		hs   osdnv1.HostSubnet
 		err  string
 	}{
 		{
 			name: "valid egress ip",
-			hs: networkapi.HostSubnet{
-				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
-				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
+			hs: osdnv1.HostSubnet{
+				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
 			},
 			err: "",
 		},
 		{
 			name: "valid egress cidr",
-			hs: networkapi.HostSubnet{
-				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
-				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
+			hs: osdnv1.HostSubnet{
+				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
 			},
 			err: "",
 		},
 		{
 			name: "invalid CIDR address",
-			hs: networkapi.HostSubnet{
-				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
-				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.80/27"},
+			hs: osdnv1.HostSubnet{
+				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.139.125.80/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
 			},
 			err: "Invalid",
 		},
 		{
 			name: "invalid egress ip",
-			hs: networkapi.HostSubnet{
-				EgressIPs:   []networkapi.HostSubnetEgressIP{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
-				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.64/27"},
+			hs: osdnv1.HostSubnet{
+				EgressIPs:   []osdnv1.HostSubnetEgressIP{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
+				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.139.125.64/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
 			},
 			err: "Invalid",

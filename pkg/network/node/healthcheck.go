@@ -9,7 +9,7 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/sdn/pkg/network/node/ovs/ovsclient"
+	"github.com/openshift/sdn/pkg/util/ovsclient"
 )
 
 const (

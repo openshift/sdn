@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"net"
 
-	kapi "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
-	networkv1 "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 )
 
-func HostSubnetToString(subnet *networkv1.HostSubnet) string {
+func HostSubnetToString(subnet *osdnv1.HostSubnet) string {
 	return fmt.Sprintf("%s (host: %q, ip: %q, subnet: %q)", subnet.Name, subnet.Host, subnet.HostIP, subnet.Subnet)
 }
 
-func ClusterNetworkToString(n *networkv1.ClusterNetwork) string {
+func ClusterNetworkToString(n *osdnv1.ClusterNetwork) string {
 	return fmt.Sprintf("%s (network: %q, hostSubnetBits: %d, serviceNetwork: %q, pluginName: %q)", n.Name, n.Network, n.HostSubnetLength, n.ServiceNetwork, n.PluginName)
 }
 
@@ -45,7 +45,7 @@ type ParsedClusterNetworkEntry struct {
 	HostSubnetLength uint32
 }
 
-func ParseClusterNetwork(cn *networkv1.ClusterNetwork) (*ParsedClusterNetwork, error) {
+func ParseClusterNetwork(cn *osdnv1.ClusterNetwork) (*ParsedClusterNetwork, error) {
 	pcn := &ParsedClusterNetwork{
 		PluginName:      cn.PluginName,
 		ClusterNetworks: make([]ParsedClusterNetworkEntry, 0, len(cn.ClusterNetworks)),
@@ -145,7 +145,7 @@ func (pcn *ParsedClusterNetwork) CheckHostNetworks(hostIPNets []*net.IPNet) erro
 	return kerrors.NewAggregate(errList)
 }
 
-func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSubnet, pods []kapi.Pod, services []kapi.Service) error {
+func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []osdnv1.HostSubnet, pods []corev1.Pod, services []corev1.Service) error {
 	var errList []error
 
 	for _, subnet := range subnets {
@@ -193,8 +193,8 @@ func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []networkv1.HostSub
 	return kerrors.NewAggregate(errList)
 }
 
-func GetParsedClusterNetwork(networkClient networkclient.Interface) (*ParsedClusterNetwork, error) {
-	cn, err := networkClient.NetworkV1().ClusterNetworks().Get(context.TODO(), networkv1.ClusterNetworkDefault, v1.GetOptions{})
+func GetParsedClusterNetwork(osdnClient osdnclient.Interface) (*ParsedClusterNetwork, error) {
+	cn, err := osdnClient.NetworkV1().ClusterNetworks().Get(context.TODO(), osdnv1.ClusterNetworkDefault, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func GetHostIPNetworks(skipInterfaces []string) ([]*net.IPNet, []net.IP, error) 
 	return hostIPNets, hostIPs, kerrors.NewAggregate(errList)
 }
 
-func HSEgressIPsToStrings(ips []networkv1.HostSubnetEgressIP) []string {
+func HSEgressIPsToStrings(ips []osdnv1.HostSubnetEgressIP) []string {
 	out := make([]string, 0, len(ips))
 	for _, ip := range ips {
 		out = append(out, string(ip))
@@ -261,10 +261,10 @@ func HSEgressIPsToStrings(ips []networkv1.HostSubnetEgressIP) []string {
 	return out
 }
 
-func StringsToHSEgressIPs(ips []string) []networkv1.HostSubnetEgressIP {
-	out := make([]networkv1.HostSubnetEgressIP, 0, len(ips))
+func StringsToHSEgressIPs(ips []string) []osdnv1.HostSubnetEgressIP {
+	out := make([]osdnv1.HostSubnetEgressIP, 0, len(ips))
 	for _, ip := range ips {
-		out = append(out, networkv1.HostSubnetEgressIP(ip))
+		out = append(out, osdnv1.HostSubnetEgressIP(ip))
 	}
 	return out
 }

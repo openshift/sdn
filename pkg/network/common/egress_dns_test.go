@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -18,18 +18,18 @@ type delayedDNSTest struct {
 	delay time.Duration
 }
 
-func newEgressNetworkPolicy(dnsName string, namespace string) networkv1.EgressNetworkPolicy {
-	return networkv1.EgressNetworkPolicy{
-		ObjectMeta: v1.ObjectMeta{
+func newEgressNetworkPolicy(dnsName string, namespace string) osdnv1.EgressNetworkPolicy {
+	return osdnv1.EgressNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "enp",
 			Namespace: namespace,
 			UID:       ktypes.UID(namespace + "-enp"),
 		},
-		Spec: networkv1.EgressNetworkPolicySpec{
-			Egress: []networkv1.EgressNetworkPolicyRule{
+		Spec: osdnv1.EgressNetworkPolicySpec{
+			Egress: []osdnv1.EgressNetworkPolicyRule{
 				{
-					Type: networkv1.EgressNetworkPolicyRuleAllow,
-					To: networkv1.EgressNetworkPolicyPeer{
+					Type: osdnv1.EgressNetworkPolicyRuleAllow,
+					To: osdnv1.EgressNetworkPolicyPeer{
 						DNSName: dnsName,
 					},
 				},

@@ -1,6 +1,4 @@
-// +build linux
-
-package main
+package openshift_sdn_cni
 
 import (
 	"encoding/json"
@@ -18,7 +16,7 @@ import (
 	cni030 "github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/plugins/pkg/ns"
 
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
 	utiltesting "k8s.io/client-go/util/testing"
 )
 

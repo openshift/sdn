@@ -1,4 +1,4 @@
-package openshift_network_controller
+package openshift_sdn_controller
 
 import (
 	"fmt"
@@ -16,8 +16,6 @@ import (
 	"github.com/openshift/library-go/pkg/serviceability"
 )
 
-const RecommendedStartNetworkControllerName = "openshift-network-controller"
-
 type OpenShiftNetworkController struct {
 	ConfigFilePath string
 	Output         io.Writer
@@ -26,7 +24,7 @@ type OpenShiftNetworkController struct {
 var longDescription = templates.LongDesc(`
 	Start the OpenShift SDN controller`)
 
-func NewOpenShiftNetworkControllerCommand(name, basename string, out, errout io.Writer) *cobra.Command {
+func NewOpenShiftNetworkControllerCommand(name string, out, errout io.Writer) *cobra.Command {
 	options := &OpenShiftNetworkController{Output: out}
 
 	cmd := &cobra.Command{

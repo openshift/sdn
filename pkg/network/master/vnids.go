@@ -7,17 +7,16 @@ import (
 
 	"k8s.io/klog/v2"
 
-	kapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 
-	networkv1 "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	"github.com/openshift/library-go/pkg/network/networkapihelpers"
-	"github.com/openshift/sdn/pkg/network"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdnapihelpers "github.com/openshift/library-go/pkg/network/networkapihelpers"
 	"github.com/openshift/sdn/pkg/network/common"
 	pnetid "github.com/openshift/sdn/pkg/network/master/netid"
 )
@@ -33,7 +32,7 @@ type masterVNIDMap struct {
 }
 
 func newMasterVNIDMap(allowRenumbering bool) *masterVNIDMap {
-	netIDRange, err := pnetid.NewNetIDRange(network.MinVNID, network.MaxVNID)
+	netIDRange, err := pnetid.NewNetIDRange(common.MinVNID, common.MaxVNID)
 	if err != nil {
 		panic(err)
 	}
@@ -80,7 +79,7 @@ func (vmap *masterVNIDMap) isAdminNamespace(nsName string) bool {
 
 func (vmap *masterVNIDMap) markAllocatedNetID(netid uint32) error {
 	// Skip GlobalVNID, not part of netID allocation range
-	if netid < network.MinVNID {
+	if netid < common.MinVNID {
 		return nil
 	}
 
@@ -104,7 +103,7 @@ func (vmap *masterVNIDMap) allocateNetID(nsName string) (uint32, bool, error) {
 	// NetNamespace not found, so allocate new NetID
 	var netid uint32
 	if vmap.isAdminNamespace(nsName) {
-		netid = network.GlobalVNID
+		netid = common.GlobalVNID
 	} else {
 		var err error
 		netid, err = vmap.netIDManager.AllocateNext()
@@ -125,8 +124,8 @@ func (vmap *masterVNIDMap) releaseNetID(nsName string) error {
 		return fmt.Errorf("netid not found for namespace %q", nsName)
 	}
 
-	// Skip network.GlobalVNID as it is not part of NetID allocation
-	if netid == network.GlobalVNID {
+	// Skip common.GlobalVNID as it is not part of NetID allocation
+	if netid == common.GlobalVNID {
 		return nil
 	}
 
@@ -143,7 +142,7 @@ func (vmap *masterVNIDMap) releaseNetID(nsName string) error {
 	return nil
 }
 
-func (vmap *masterVNIDMap) updateNetID(nsName string, action networkapihelpers.PodNetworkAction, args string) (uint32, error) {
+func (vmap *masterVNIDMap) updateNetID(nsName string, action osdnapihelpers.PodNetworkAction, args string) (uint32, error) {
 	var netid uint32
 	allocated := false
 
@@ -155,16 +154,16 @@ func (vmap *masterVNIDMap) updateNetID(nsName string, action networkapihelpers.P
 
 	// Determine new network ID
 	switch action {
-	case networkapihelpers.GlobalPodNetwork:
-		netid = network.GlobalVNID
-	case networkapihelpers.JoinPodNetwork:
+	case osdnapihelpers.GlobalPodNetwork:
+		netid = common.GlobalVNID
+	case osdnapihelpers.JoinPodNetwork:
 		joinNsName := args
 		var found bool
 		if netid, found = vmap.getVNID(joinNsName); !found {
 			return 0, fmt.Errorf("netid not found for namespace %q", joinNsName)
 		}
-	case networkapihelpers.IsolatePodNetwork:
-		if nsName == kapi.NamespaceDefault {
+	case osdnapihelpers.IsolatePodNetwork:
+		if nsName == corev1.NamespaceDefault {
 			return 0, fmt.Errorf("network isolation for namespace %q is not allowed", nsName)
 		}
 		// Check if the given namespace is already isolated
@@ -197,7 +196,7 @@ func (vmap *masterVNIDMap) updateNetID(nsName string, action networkapihelpers.P
 }
 
 // assignVNID, revokeVNID and updateVNID methods updates in-memory structs and persists etcd objects
-func (vmap *masterVNIDMap) assignVNID(networkClient networkclient.Interface, nsName string) error {
+func (vmap *masterVNIDMap) assignVNID(osdnClient osdnclient.Interface, nsName string) error {
 	vmap.lock.Lock()
 	defer vmap.lock.Unlock()
 
@@ -208,13 +207,13 @@ func (vmap *masterVNIDMap) assignVNID(networkClient networkclient.Interface, nsN
 
 	if !exists {
 		// Create NetNamespace Object and update vnid map
-		netns := &networkv1.NetNamespace{
+		netns := &osdnv1.NetNamespace{
 			TypeMeta:   metav1.TypeMeta{Kind: "NetNamespace"},
 			ObjectMeta: metav1.ObjectMeta{Name: nsName},
 			NetName:    nsName,
 			NetID:      netid,
 		}
-		if _, err := networkClient.NetworkV1().NetNamespaces().Create(context.TODO(), netns, metav1.CreateOptions{}); err != nil {
+		if _, err := osdnClient.NetworkV1().NetNamespaces().Create(context.TODO(), netns, metav1.CreateOptions{}); err != nil {
 			if er := vmap.releaseNetID(nsName); er != nil {
 				utilruntime.HandleError(er)
 			}
@@ -224,12 +223,12 @@ func (vmap *masterVNIDMap) assignVNID(networkClient networkclient.Interface, nsN
 	return nil
 }
 
-func (vmap *masterVNIDMap) revokeVNID(networkClient networkclient.Interface, nsName string) error {
+func (vmap *masterVNIDMap) revokeVNID(osdnClient osdnclient.Interface, nsName string) error {
 	vmap.lock.Lock()
 	defer vmap.lock.Unlock()
 
 	// Delete NetNamespace object
-	if err := networkClient.NetworkV1().NetNamespaces().Delete(context.TODO(), nsName, metav1.DeleteOptions{}); err != nil {
+	if err := osdnClient.NetworkV1().NetNamespaces().Delete(context.TODO(), nsName, metav1.DeleteOptions{}); err != nil {
 		// If the netnamespace is already deleted, emit a warning and move forward
 		if kapierrors.IsNotFound(err) {
 			klog.Warningf("Could not find the netnamespace %s: Must be already deleted.", nsName)
@@ -244,17 +243,17 @@ func (vmap *masterVNIDMap) revokeVNID(networkClient networkclient.Interface, nsN
 	return nil
 }
 
-func (vmap *masterVNIDMap) updateVNID(networkClient networkclient.Interface, origNetns *networkv1.NetNamespace) error {
+func (vmap *masterVNIDMap) updateVNID(osdnClient osdnclient.Interface, origNetns *osdnv1.NetNamespace) error {
 	// Informer cache should not be mutated, so get a copy of the object
 	netns := origNetns.DeepCopy()
 
-	action, args, err := networkapihelpers.GetChangePodNetworkAnnotation(netns)
-	if err == networkapihelpers.ErrorPodNetworkAnnotationNotFound {
+	action, args, err := osdnapihelpers.GetChangePodNetworkAnnotation(netns)
+	if err == osdnapihelpers.ErrorPodNetworkAnnotationNotFound {
 		// Nothing to update
 		return nil
 	} else if !vmap.allowRenumbering {
-		networkapihelpers.DeleteChangePodNetworkAnnotation(netns)
-		_, _ = networkClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{})
+		osdnapihelpers.DeleteChangePodNetworkAnnotation(netns)
+		_, _ = osdnClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{})
 		return fmt.Errorf("network plugin does not allow NetNamespace renumbering")
 	}
 
@@ -266,9 +265,9 @@ func (vmap *masterVNIDMap) updateVNID(networkClient networkclient.Interface, ori
 		return err
 	}
 	netns.NetID = netid
-	networkapihelpers.DeleteChangePodNetworkAnnotation(netns)
+	osdnapihelpers.DeleteChangePodNetworkAnnotation(netns)
 
-	if _, err := networkClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{}); err != nil {
+	if _, err := osdnClient.NetworkV1().NetNamespaces().Update(context.TODO(), netns, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -288,7 +287,7 @@ func (master *OsdnMaster) startVNIDMaster() error {
 }
 
 func (master *OsdnMaster) initNetIDAllocator() error {
-	netnsList, err := master.networkClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
+	netnsList, err := master.osdnClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -304,37 +303,37 @@ func (master *OsdnMaster) initNetIDAllocator() error {
 }
 
 func (master *OsdnMaster) watchNamespaces() {
-	funcs := common.InformerFuncs(&kapi.Namespace{}, master.handleAddOrUpdateNamespace, master.handleDeleteNamespace)
+	funcs := common.InformerFuncs(&corev1.Namespace{}, master.handleAddOrUpdateNamespace, master.handleDeleteNamespace)
 	master.namespaceInformer.Informer().AddEventHandler(funcs)
 }
 
 func (master *OsdnMaster) handleAddOrUpdateNamespace(obj, _ interface{}, eventType watch.EventType) {
-	ns := obj.(*kapi.Namespace)
+	ns := obj.(*corev1.Namespace)
 	klog.V(5).Infof("Watch %s event for Namespace %q", eventType, ns.Name)
 
-	if err := master.vnids.assignVNID(master.networkClient, ns.Name); err != nil {
+	if err := master.vnids.assignVNID(master.osdnClient, ns.Name); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error assigning netid: %v", err))
 	}
 }
 
 func (master *OsdnMaster) handleDeleteNamespace(obj interface{}) {
-	ns := obj.(*kapi.Namespace)
+	ns := obj.(*corev1.Namespace)
 	klog.V(5).Infof("Watch %s event for Namespace %q", watch.Deleted, ns.Name)
-	if err := master.vnids.revokeVNID(master.networkClient, ns.Name); err != nil {
+	if err := master.vnids.revokeVNID(master.osdnClient, ns.Name); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error revoking netid: %v", err))
 	}
 }
 
 func (master *OsdnMaster) watchNetNamespaces() {
-	funcs := common.InformerFuncs(&networkv1.NetNamespace{}, master.handleAddOrUpdateNetNamespace, nil)
+	funcs := common.InformerFuncs(&osdnv1.NetNamespace{}, master.handleAddOrUpdateNetNamespace, nil)
 	master.netNamespaceInformer.Informer().AddEventHandler(funcs)
 }
 
 func (master *OsdnMaster) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventType watch.EventType) {
-	netns := obj.(*networkv1.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
-	if err := master.vnids.updateVNID(master.networkClient, netns); err != nil {
+	if err := master.vnids.updateVNID(master.osdnClient, netns); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error updating netid: %v", err))
 	}
 }

@@ -1,14 +1,14 @@
-package openshift_sdn
+package openshift_sdn_node
 
 import (
 	"net"
 	"net/http"
 	"time"
 
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
-	v1 "k8s.io/api/core/v1"
-	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	kinformers "k8s.io/client-go/informers"
@@ -21,17 +21,15 @@ var defaultInformerResyncPeriod = 30 * time.Minute
 
 // informers is a small bag of data that holds our informers
 type informers struct {
-	KubeClient    kubernetes.Interface
-	NetworkClient networkclient.Interface
+	kubeClient kubernetes.Interface
+	osdnClient osdnclient.Interface
 
-	// External kubernetes shared informer factory.
-	KubeInformers kinformers.SharedInformerFactory
-	// Network shared informer factory.
-	NetworkInformers networkinformers.SharedInformerFactory
+	kubeInformers kinformers.SharedInformerFactory
+	osdnInformers osdninformers.SharedInformerFactory
 }
 
 // buildInformers creates all the informer factories.
-func (sdn *OpenShiftSDN) buildInformers() error {
+func (sdn *openShiftSDN) buildInformers() error {
 	kubeConfig, err := getInClusterConfig()
 	if err != nil {
 		return err
@@ -45,7 +43,7 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	networkClient, err := networkclient.NewForConfig(kubeConfig)
+	osdnClient, err := osdnclient.NewForConfig(kubeConfig)
 	if err != nil {
 		return err
 	}
@@ -53,34 +51,34 @@ func (sdn *OpenShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	noHeadlessEndpoints, err := labels.NewRequirement(v1.IsHeadlessService, selection.DoesNotExist, nil)
+	noHeadlessEndpoints, err := labels.NewRequirement(corev1.IsHeadlessService, selection.DoesNotExist, nil)
 	if err != nil {
 		return err
 	}
 	labelSelector := labels.NewSelector()
 	labelSelector = labelSelector.Add(*noProxyName, *noHeadlessEndpoints)
 
-	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.ProxyConfig.IPTables.SyncPeriod.Duration,
-		kinformers.WithTweakListOptions(func(options *v1meta.ListOptions) {
+	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.proxyConfig.IPTables.SyncPeriod.Duration,
+		kinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labelSelector.String()
 		}))
 
-	networkInformers := networkinformers.NewSharedInformerFactory(networkClient, defaultInformerResyncPeriod)
+	osdnInformers := osdninformers.NewSharedInformerFactory(osdnClient, defaultInformerResyncPeriod)
 
 	sdn.informers = &informers{
-		KubeClient:    kubeClient,
-		NetworkClient: networkClient,
+		kubeClient: kubeClient,
+		osdnClient: osdnClient,
 
-		KubeInformers:    kubeInformers,
-		NetworkInformers: networkInformers,
+		kubeInformers: kubeInformers,
+		osdnInformers: osdnInformers,
 	}
 	return nil
 }
 
 // start starts the informers.
 func (i *informers) start(stopCh <-chan struct{}) {
-	i.KubeInformers.Start(stopCh)
-	i.NetworkInformers.Start(stopCh)
+	i.kubeInformers.Start(stopCh)
+	i.osdnInformers.Start(stopCh)
 }
 
 // getInClusterConfig loads in-cluster config, then applies default overrides.

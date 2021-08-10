@@ -1,21 +1,17 @@
-// build +linux
-
-package main
+package openshift_sdn_cni
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -284,15 +280,4 @@ func convertToRequestedVersion(stdinData []byte, result *current.Result) (types.
 func (p *cniPlugin) CmdDel(args *skel.CmdArgs) error {
 	_, err := p.doCNI("http://dummy/", newCNIRequest(args))
 	return err
-}
-
-func main() {
-	rand.Seed(time.Now().UTC().UnixNano())
-	hostNS, err := ns.GetCurrentNS()
-	if err != nil {
-		panic(fmt.Sprintf("could not get current kernel netns: %v", err))
-	}
-	defer hostNS.Close()
-	p := NewCNIPlugin(cniserver.CNIServerSocketPath, hostNS)
-	skel.PluginMain(p.CmdAdd, p.CmdDel, version.All)
 }

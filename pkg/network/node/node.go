@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -38,13 +36,13 @@ import (
 	taints "k8s.io/kubernetes/pkg/util/taints"
 	kexec "k8s.io/utils/exec"
 
-	networkapi "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
-	"github.com/openshift/sdn/pkg/network/node/cniserver"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	"github.com/openshift/sdn/pkg/network/common/cniserver"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
 type osdnPolicy interface {
@@ -53,9 +51,9 @@ type osdnPolicy interface {
 	SupportsVNIDs() bool
 	AllowDuplicateNetID() bool
 
-	AddNetNamespace(netns *networkapi.NetNamespace)
-	UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32)
-	DeleteNetNamespace(netns *networkapi.NetNamespace)
+	AddNetNamespace(netns *osdnv1.NetNamespace)
+	UpdateNetNamespace(netns *osdnv1.NetNamespace, oldNetID uint32)
+	DeleteNetNamespace(netns *osdnv1.NetNamespace)
 
 	GetVNID(namespace string) (uint32, error)
 	GetNamespaces(vnid uint32) []string
@@ -69,12 +67,12 @@ type OsdnNodeConfig struct {
 	NodeName string
 	NodeIP   string
 
-	NetworkClient networkclient.Interface
-	KClient       kubernetes.Interface
-	Recorder      record.EventRecorder
+	OSDNClient osdnclient.Interface
+	KClient    kubernetes.Interface
+	Recorder   record.EventRecorder
 
-	KubeInformers    informers.SharedInformerFactory
-	NetworkInformers networkinformers.SharedInformerFactory
+	KubeInformers informers.SharedInformerFactory
+	OSDNInformers osdninformers.SharedInformerFactory
 
 	IPTables      iptables.Interface
 	ProxyMode     kubeproxyconfig.ProxyMode
@@ -84,7 +82,7 @@ type OsdnNodeConfig struct {
 type OsdnNode struct {
 	policy           osdnPolicy
 	kClient          kubernetes.Interface
-	networkClient    networkclient.Interface
+	osdnClient       osdnclient.Interface
 	recorder         record.EventRecorder
 	oc               *ovsController
 	networkInfo      *common.ParsedClusterNetwork
@@ -101,11 +99,11 @@ type OsdnNode struct {
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
-	egressPolicies     map[uint32][]networkapi.EgressNetworkPolicy
+	egressPolicies     map[uint32][]osdnv1.EgressNetworkPolicy
 	egressDNS          *common.EgressDNS
 
-	kubeInformers    informers.SharedInformerFactory
-	networkInformers networkinformers.SharedInformerFactory
+	kubeInformers informers.SharedInformerFactory
+	osdnInformers osdninformers.SharedInformerFactory
 
 	// Holds runtime endpoint shim to make SDN <-> runtime communication
 	runtimeService kubeletapi.RuntimeService
@@ -115,7 +113,7 @@ type OsdnNode struct {
 
 // Called by higher layers to create the plugin SDN node instance
 func New(c *OsdnNodeConfig) (*OsdnNode, error) {
-	networkInfo, err := common.GetParsedClusterNetwork(c.NetworkClient)
+	networkInfo, err := common.GetParsedClusterNetwork(c.OSDNClient)
 	if err != nil {
 		return nil, fmt.Errorf("could not get ClusterNetwork resource: %v", err)
 	}
@@ -169,23 +167,23 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	}
 
 	plugin := &OsdnNode{
-		policy:           policy,
-		kClient:          c.KClient,
-		networkClient:    c.NetworkClient,
-		recorder:         c.Recorder,
-		oc:               oc,
-		networkInfo:      networkInfo,
-		podManager:       newPodManager(c.KClient, policy, networkInfo.MTU, oc),
-		localIP:          c.NodeIP,
-		hostName:         c.NodeName,
-		useConnTrack:     useConnTrack,
-		ipt:              c.IPTables,
-		masqueradeBit:    masqBit,
-		egressPolicies:   make(map[uint32][]networkapi.EgressNetworkPolicy),
-		egressDNS:        egressDNS,
-		kubeInformers:    c.KubeInformers,
-		networkInformers: c.NetworkInformers,
-		egressIP:         newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
+		policy:         policy,
+		kClient:        c.KClient,
+		osdnClient:     c.OSDNClient,
+		recorder:       c.Recorder,
+		oc:             oc,
+		networkInfo:    networkInfo,
+		podManager:     newPodManager(c.KClient, policy, networkInfo.MTU, oc),
+		localIP:        c.NodeIP,
+		hostName:       c.NodeName,
+		useConnTrack:   useConnTrack,
+		ipt:            c.IPTables,
+		masqueradeBit:  masqBit,
+		egressPolicies: make(map[uint32][]osdnv1.EgressNetworkPolicy),
+		egressDNS:      egressDNS,
+		kubeInformers:  c.KubeInformers,
+		osdnInformers:  c.OSDNInformers,
+		egressIP:       newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
 	}
 
 	metrics.RegisterMetrics()
@@ -374,7 +372,7 @@ func (node *OsdnNode) Start() error {
 	}
 
 	hsw := newHostSubnetWatcher(node.oc, node.localIP, node.networkInfo)
-	hsw.Start(node.networkInformers)
+	hsw.Start(node.osdnInformers)
 
 	if err = node.policy.Start(node); err != nil {
 		return err
@@ -383,7 +381,7 @@ func (node *OsdnNode) Start() error {
 		if err := node.SetupEgressNetworkPolicy(); err != nil {
 			return err
 		}
-		if err := node.egressIP.Start(node.networkInformers, node.nodeIPTables); err != nil {
+		if err := node.egressIP.Start(node.osdnInformers, node.nodeIPTables); err != nil {
 			return err
 		}
 	}

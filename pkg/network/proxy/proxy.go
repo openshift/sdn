@@ -1,5 +1,3 @@
-// +build linux
-
 package proxy
 
 import (
@@ -21,15 +19,14 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
-	networkv1 "github.com/openshift/api/network/v1"
-	networkclient "github.com/openshift/client-go/network/clientset/versioned"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
-	"github.com/openshift/sdn/pkg/network"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
 type firewallItem struct {
-	ruleType networkv1.EgressNetworkPolicyRuleType
+	ruleType osdnv1.EgressNetworkPolicyRuleType
 	net      *net.IPNet
 }
 
@@ -56,13 +53,13 @@ type proxyNamespace struct {
 type OsdnProxy struct {
 	sync.Mutex
 
-	kClient          kubernetes.Interface
-	kubeInformers    informers.SharedInformerFactory
-	networkClient    networkclient.Interface
-	networkInformers networkinformers.SharedInformerFactory
-	networkInfo      *common.ParsedClusterNetwork
-	egressDNS        *common.EgressDNS
-	minSyncPeriod    time.Duration
+	kClient       kubernetes.Interface
+	kubeInformers informers.SharedInformerFactory
+	osdnClient    osdnclient.Interface
+	osdnInformers osdninformers.SharedInformerFactory
+	networkInfo   *common.ParsedClusterNetwork
+	egressDNS     *common.EgressDNS
+	minSyncPeriod time.Duration
 
 	baseProxy HybridizableProxy
 
@@ -78,8 +75,8 @@ type OsdnProxy struct {
 // Called by higher layers to create the proxy plugin instance
 func New(kClient kubernetes.Interface,
 	kubeInformers informers.SharedInformerFactory,
-	networkClient networkclient.Interface,
-	networkInformers networkinformers.SharedInformerFactory,
+	osdnClient osdnclient.Interface,
+	osdnInformers osdninformers.SharedInformerFactory,
 	minSyncPeriod time.Duration) (*OsdnProxy, error) {
 
 	egressDNS, err := common.NewEgressDNS(true, false)
@@ -87,13 +84,13 @@ func New(kClient kubernetes.Interface,
 		return nil, err
 	}
 	return &OsdnProxy{
-		kClient:          kClient,
-		kubeInformers:    kubeInformers,
-		networkClient:    networkClient,
-		networkInformers: networkInformers,
-		minSyncPeriod:    minSyncPeriod,
-		egressDNS:        egressDNS,
-		namespaces:       make(map[string]*proxyNamespace),
+		kClient:       kClient,
+		kubeInformers: kubeInformers,
+		osdnClient:    osdnClient,
+		osdnInformers: osdnInformers,
+		minSyncPeriod: minSyncPeriod,
+		egressDNS:     egressDNS,
+		namespaces:    make(map[string]*proxyNamespace),
 	}, nil
 }
 
@@ -113,13 +110,13 @@ func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 	klog.Infof("Starting multitenant SDN proxy endpoint filter")
 
 	var err error
-	proxy.networkInfo, err = common.GetParsedClusterNetwork(proxy.networkClient)
+	proxy.networkInfo, err = common.GetParsedClusterNetwork(proxy.osdnClient)
 	if err != nil {
 		return fmt.Errorf("could not get network info: %s", err)
 	}
 	proxy.waitChan = waitChan
 
-	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
@@ -166,12 +163,12 @@ func (proxy *OsdnProxy) maybeGarbageCollectNamespace(name string, ns *proxyNames
 }
 
 func (proxy *OsdnProxy) watchEgressNetworkPolicies() {
-	funcs := common.InformerFuncs(&networkv1.EgressNetworkPolicy{}, proxy.handleAddOrUpdateEgressNetworkPolicy, proxy.handleDeleteEgressNetworkPolicy)
-	proxy.networkInformers.Network().V1().EgressNetworkPolicies().Informer().AddEventHandler(funcs)
+	funcs := common.InformerFuncs(&osdnv1.EgressNetworkPolicy{}, proxy.handleAddOrUpdateEgressNetworkPolicy, proxy.handleDeleteEgressNetworkPolicy)
+	proxy.osdnInformers.Network().V1().EgressNetworkPolicies().Informer().AddEventHandler(funcs)
 }
 
 func (proxy *OsdnProxy) handleAddOrUpdateEgressNetworkPolicy(obj, _ interface{}, eventType watch.EventType) {
-	policy := obj.(*networkv1.EgressNetworkPolicy)
+	policy := obj.(*osdnv1.EgressNetworkPolicy)
 	klog.V(5).Infof("Watch %s event for EgressNetworkPolicy %s/%s", eventType, policy.Namespace, policy.Name)
 
 	proxy.egressDNS.Delete(*policy)
@@ -183,7 +180,7 @@ func (proxy *OsdnProxy) handleAddOrUpdateEgressNetworkPolicy(obj, _ interface{},
 }
 
 func (proxy *OsdnProxy) handleDeleteEgressNetworkPolicy(obj interface{}) {
-	policy := obj.(*networkv1.EgressNetworkPolicy)
+	policy := obj.(*osdnv1.EgressNetworkPolicy)
 	klog.V(5).Infof("Watch %s event for EgressNetworkPolicy %s/%s", watch.Deleted, policy.Namespace, policy.Name)
 
 	proxy.egressDNS.Delete(*policy)
@@ -195,23 +192,23 @@ func (proxy *OsdnProxy) handleDeleteEgressNetworkPolicy(obj interface{}) {
 }
 
 func (proxy *OsdnProxy) watchNetNamespaces() {
-	funcs := common.InformerFuncs(&networkv1.NetNamespace{}, proxy.handleAddOrUpdateNetNamespace, proxy.handleDeleteNetNamespace)
-	proxy.networkInformers.Network().V1().NetNamespaces().Informer().AddEventHandler(funcs)
+	funcs := common.InformerFuncs(&osdnv1.NetNamespace{}, proxy.handleAddOrUpdateNetNamespace, proxy.handleDeleteNetNamespace)
+	proxy.osdnInformers.Network().V1().NetNamespaces().Informer().AddEventHandler(funcs)
 }
 
 func (proxy *OsdnProxy) handleAddOrUpdateNetNamespace(obj, _ interface{}, eventType watch.EventType) {
-	netns := obj.(*networkv1.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
 	proxy.Lock()
 	defer proxy.Unlock()
 
 	ns := proxy.getNamespace(netns.Name)
-	ns.global = (netns.NetID == network.GlobalVNID)
+	ns.global = (netns.NetID == common.GlobalVNID)
 }
 
 func (proxy *OsdnProxy) handleDeleteNetNamespace(obj interface{}) {
-	netns := obj.(*networkv1.NetNamespace)
+	netns := obj.(*osdnv1.NetNamespace)
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", watch.Deleted, netns.Name)
 
 	proxy.Lock()
@@ -229,7 +226,7 @@ func (proxy *OsdnProxy) handleDeleteNetNamespace(obj interface{}) {
 }
 
 // Assumes lock is held
-func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy networkv1.EgressNetworkPolicy) {
+func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPolicy) {
 	ns := proxy.getNamespace(policy.Namespace)
 	if ns.global {
 		// Firewall not allowed for global namespaces
@@ -345,7 +342,7 @@ func (ns *proxyNamespace) firewallBlocks(ipStr string) bool {
 	ip := net.ParseIP(ipStr)
 	for _, item := range ns.firewalls[*ns.activePolicy] {
 		if item.net.Contains(ip) {
-			return item.ruleType == networkv1.EgressNetworkPolicyRuleDeny
+			return item.ruleType == osdnv1.EgressNetworkPolicyRuleDeny
 		}
 	}
 	return false
@@ -618,7 +615,7 @@ func (proxy *OsdnProxy) SyncLoop() {
 }
 
 func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
-	policies, err := proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Could not get EgressNetworkPolicies: %v", err))
 		return
@@ -633,7 +630,7 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 
 			policy, ok := getPolicy(policyUpdate.UID, policies)
 			if !ok {
-				policies, err = proxy.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+				policies, err = proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 				if err != nil {
 					utilruntime.HandleError(fmt.Errorf("Failed to update proxy firewall for policy: %v, Could not get EgressNetworkPolicies: %v", policyUpdate.UID, err))
 					continue
@@ -655,11 +652,11 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 	}
 }
 
-func getPolicy(policyUID ktypes.UID, policies *networkv1.EgressNetworkPolicyList) (networkv1.EgressNetworkPolicy, bool) {
+func getPolicy(policyUID ktypes.UID, policies *osdnv1.EgressNetworkPolicyList) (osdnv1.EgressNetworkPolicy, bool) {
 	for _, p := range policies.Items {
 		if p.UID == policyUID {
 			return p, true
 		}
 	}
-	return networkv1.EgressNetworkPolicy{}, false
+	return osdnv1.EgressNetworkPolicy{}, false
 }

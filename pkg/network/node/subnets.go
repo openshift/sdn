@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -17,8 +15,8 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 
-	networkapi "github.com/openshift/api/network/v1"
-	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
+	osdnv1 "github.com/openshift/api/network/v1"
+	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network/common"
 )
 
@@ -27,7 +25,7 @@ type hostSubnetWatcher struct {
 	localIP     string
 	networkInfo *common.ParsedClusterNetwork
 
-	hostSubnetMap map[ktypes.UID]*networkapi.HostSubnet
+	hostSubnetMap map[ktypes.UID]*osdnv1.HostSubnet
 }
 
 func newHostSubnetWatcher(oc *ovsController, localIP string, networkInfo *common.ParsedClusterNetwork) *hostSubnetWatcher {
@@ -36,17 +34,17 @@ func newHostSubnetWatcher(oc *ovsController, localIP string, networkInfo *common
 		localIP:     localIP,
 		networkInfo: networkInfo,
 
-		hostSubnetMap: make(map[ktypes.UID]*networkapi.HostSubnet),
+		hostSubnetMap: make(map[ktypes.UID]*osdnv1.HostSubnet),
 	}
 }
 
-func (hsw *hostSubnetWatcher) Start(networkInformers networkinformers.SharedInformerFactory) {
-	funcs := common.InformerFuncs(&networkapi.HostSubnet{}, hsw.handleAddOrUpdateHostSubnet, hsw.handleDeleteHostSubnet)
-	networkInformers.Network().V1().HostSubnets().Informer().AddEventHandler(funcs)
+func (hsw *hostSubnetWatcher) Start(osdnInformers osdninformers.SharedInformerFactory) {
+	funcs := common.InformerFuncs(&osdnv1.HostSubnet{}, hsw.handleAddOrUpdateHostSubnet, hsw.handleDeleteHostSubnet)
+	osdnInformers.Network().V1().HostSubnets().Informer().AddEventHandler(funcs)
 }
 
 func (hsw *hostSubnetWatcher) handleAddOrUpdateHostSubnet(obj, _ interface{}, eventType watch.EventType) {
-	hs := obj.(*networkapi.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
 	if err := common.ValidateHostSubnet(hs); err != nil {
@@ -60,7 +58,7 @@ func (hsw *hostSubnetWatcher) handleAddOrUpdateHostSubnet(obj, _ interface{}, ev
 }
 
 func (hsw *hostSubnetWatcher) handleDeleteHostSubnet(obj interface{}) {
-	hs := obj.(*networkapi.HostSubnet)
+	hs := obj.(*osdnv1.HostSubnet)
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", watch.Deleted, hs.Name)
 
 	if err := hsw.deleteHostSubnet(hs); err != nil {
@@ -68,7 +66,7 @@ func (hsw *hostSubnetWatcher) handleDeleteHostSubnet(obj interface{}) {
 	}
 }
 
-func (hsw *hostSubnetWatcher) updateHostSubnet(hs *networkapi.HostSubnet) error {
+func (hsw *hostSubnetWatcher) updateHostSubnet(hs *osdnv1.HostSubnet) error {
 	if hs.HostIP == hsw.localIP {
 		return nil
 	}
@@ -99,7 +97,7 @@ func (hsw *hostSubnetWatcher) updateHostSubnet(hs *networkapi.HostSubnet) error 
 	return kerrors.NewAggregate(errList)
 }
 
-func (hsw *hostSubnetWatcher) deleteHostSubnet(hs *networkapi.HostSubnet) error {
+func (hsw *hostSubnetWatcher) deleteHostSubnet(hs *osdnv1.HostSubnet) error {
 	if hs.HostIP == hsw.localIP {
 		return nil
 	}
@@ -131,7 +129,7 @@ func (hsw *hostSubnetWatcher) updateVXLANMulticastRules() error {
 }
 
 func (node *OsdnNode) getLocalSubnet() (string, error) {
-	var subnet *networkapi.HostSubnet
+	var subnet *osdnv1.HostSubnet
 	// If the HostSubnet doesn't already exist, it will be created by the SDN master in
 	// response to the kubelet registering itself with the master (which should be
 	// happening in another goroutine in parallel with this). Sometimes this takes
@@ -145,7 +143,7 @@ func (node *OsdnNode) getLocalSubnet() (string, error) {
 	}
 	err := utilwait.ExponentialBackoff(backoff, func() (bool, error) {
 		var err error
-		subnet, err = node.networkClient.NetworkV1().HostSubnets().Get(context.TODO(), node.hostName, metav1.GetOptions{})
+		subnet, err = node.osdnClient.NetworkV1().HostSubnets().Get(context.TODO(), node.hostName, metav1.GetOptions{})
 		if err == nil {
 			if err = common.ValidateHostSubnet(subnet); err != nil {
 				return false, err

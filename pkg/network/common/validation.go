@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 )
 
@@ -36,7 +36,7 @@ func validateIPv4(ip string) (net.IP, error) {
 }
 
 // ValidateClusterNetwork tests if required fields in the ClusterNetwork are set, and ensures that the "default" ClusterNetwork can only be set to the correct values
-func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
+func ValidateClusterNetwork(clusterNet *osdnv1.ClusterNetwork) error {
 	allErrs := validation.ValidateObjectMeta(&clusterNet.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 	var testedCIDRS []*net.IPNet
 
@@ -69,7 +69,7 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 		}
 	} else {
 		// "new" ClusterNetwork
-		if clusterNet.Name == networkapi.ClusterNetworkDefault {
+		if clusterNet.Name == osdnv1.ClusterNetworkDefault {
 			if clusterNet.Network != clusterNet.ClusterNetworks[0].CIDR {
 				allErrs = append(allErrs, field.Invalid(field.NewPath("network"), clusterNet.Network, "network must be identical to clusterNetworks[0].cidr"))
 			}
@@ -122,7 +122,7 @@ func ValidateClusterNetwork(clusterNet *networkapi.ClusterNetwork) error {
 }
 
 // ValidateHostSubnet checks if the system-maintained fields of hostsubnet are valid.
-func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
+func ValidateHostSubnet(hs *osdnv1.HostSubnet) error {
 	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	if hs.Host != hs.Name {
@@ -131,7 +131,7 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 
 	if hs.Subnet == "" {
 		// check if annotation exists, then let the Subnet field be empty
-		if _, ok := hs.Annotations[networkapi.AssignHostSubnetAnnotation]; !ok {
+		if _, ok := hs.Annotations[osdnv1.AssignHostSubnetAnnotation]; !ok {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("subnet"), hs.Subnet, "field cannot be empty"))
 		}
 	} else {
@@ -153,7 +153,7 @@ func ValidateHostSubnet(hs *networkapi.HostSubnet) error {
 }
 
 // ValidateHostSubnetEgress checks if the user-maintained fields of hostsubnet are valid.
-func ValidateHostSubnetEgress(hs *networkapi.HostSubnet) error {
+func ValidateHostSubnetEgress(hs *osdnv1.HostSubnet) error {
 	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	for i, egressIP := range hs.EgressIPs {

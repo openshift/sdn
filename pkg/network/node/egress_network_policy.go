@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -8,7 +6,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +16,7 @@ import (
 )
 
 func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
-	policies, err := plugin.networkClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := plugin.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
@@ -47,25 +45,25 @@ func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
 }
 
 func (plugin *OsdnNode) watchEgressNetworkPolicies() {
-	funcs := common.InformerFuncs(&networkapi.EgressNetworkPolicy{}, plugin.handleAddOrUpdateEgressNetworkPolicy, plugin.handleDeleteEgressNetworkPolicy)
-	plugin.networkInformers.Network().V1().EgressNetworkPolicies().Informer().AddEventHandler(funcs)
+	funcs := common.InformerFuncs(&osdnv1.EgressNetworkPolicy{}, plugin.handleAddOrUpdateEgressNetworkPolicy, plugin.handleDeleteEgressNetworkPolicy)
+	plugin.osdnInformers.Network().V1().EgressNetworkPolicies().Informer().AddEventHandler(funcs)
 }
 
 func (plugin *OsdnNode) handleAddOrUpdateEgressNetworkPolicy(obj, _ interface{}, eventType watch.EventType) {
-	policy := obj.(*networkapi.EgressNetworkPolicy)
+	policy := obj.(*osdnv1.EgressNetworkPolicy)
 	klog.V(5).Infof("Watch %s event for EgressNetworkPolicy %s/%s", eventType, policy.Namespace, policy.Name)
 
 	plugin.handleEgressNetworkPolicy(policy, eventType)
 }
 
 func (plugin *OsdnNode) handleDeleteEgressNetworkPolicy(obj interface{}) {
-	policy := obj.(*networkapi.EgressNetworkPolicy)
+	policy := obj.(*osdnv1.EgressNetworkPolicy)
 	klog.V(5).Infof("Watch %s event for EgressNetworkPolicy %s/%s", watch.Deleted, policy.Namespace, policy.Name)
 
 	plugin.handleEgressNetworkPolicy(policy, watch.Deleted)
 }
 
-func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *networkapi.EgressNetworkPolicy, eventType watch.EventType) {
+func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *osdnv1.EgressNetworkPolicy, eventType watch.EventType) {
 	vnid, err := plugin.policy.GetVNID(policy.Namespace)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Could not find netid for namespace %q: %v", policy.Namespace, err))
@@ -94,7 +92,7 @@ func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *networkapi.EgressNetwo
 }
 
 func (plugin *OsdnNode) UpdateEgressNetworkPolicyVNID(namespace string, oldVnid, newVnid uint32) {
-	var policy *networkapi.EgressNetworkPolicy
+	var policy *osdnv1.EgressNetworkPolicy
 
 	plugin.egressPoliciesLock.Lock()
 	defer plugin.egressPoliciesLock.Unlock()

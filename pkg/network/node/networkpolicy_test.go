@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/util/async"
 
-	networkv1 "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 )
 
 func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
@@ -98,7 +98,7 @@ func addNamespace(np *networkPolicyPlugin, name string, vnid uint32, labels map[
 		panic(fmt.Sprintf("Unexpected error waiting for namespace %q: %v", name, err))
 	}
 
-	np.vnids.handleAddOrUpdateNetNamespace(&networkv1.NetNamespace{
+	np.vnids.handleAddOrUpdateNetNamespace(&osdnv1.NetNamespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -114,7 +114,7 @@ func delNamespace(np *networkPolicyPlugin, name string, vnid uint32) {
 		npns.inUse = false
 	}
 
-	np.vnids.handleDeleteNetNamespace(&networkv1.NetNamespace{
+	np.vnids.handleDeleteNetNamespace(&osdnv1.NetNamespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},

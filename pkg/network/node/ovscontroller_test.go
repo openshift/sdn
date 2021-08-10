@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -10,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	networkapi "github.com/openshift/api/network/v1"
-	"github.com/openshift/sdn/pkg/network/node/ovs"
+	osdnv1 "github.com/openshift/api/network/v1"
+	"github.com/openshift/sdn/pkg/util/ovs"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -363,30 +361,30 @@ func TestOVSLocalMulticast(t *testing.T) {
 	}
 }
 
-var enp1 = networkapi.EgressNetworkPolicy{
+var enp1 = osdnv1.EgressNetworkPolicy{
 	TypeMeta: metav1.TypeMeta{
 		Kind: "EgressNetworkPolicy",
 	},
 	ObjectMeta: metav1.ObjectMeta{
 		Name: "enp1",
 	},
-	Spec: networkapi.EgressNetworkPolicySpec{
-		Egress: []networkapi.EgressNetworkPolicyRule{
+	Spec: osdnv1.EgressNetworkPolicySpec{
+		Egress: []osdnv1.EgressNetworkPolicyRule{
 			{
-				Type: networkapi.EgressNetworkPolicyRuleAllow,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleAllow,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "192.168.0.0/16",
 				},
 			},
 			{
-				Type: networkapi.EgressNetworkPolicyRuleDeny,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleDeny,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "192.168.1.0/24",
 				},
 			},
 			{
-				Type: networkapi.EgressNetworkPolicyRuleAllow,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleAllow,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "192.168.1.1/32",
 				},
 			},
@@ -394,30 +392,30 @@ var enp1 = networkapi.EgressNetworkPolicy{
 	},
 }
 
-var enp2 = networkapi.EgressNetworkPolicy{
+var enp2 = osdnv1.EgressNetworkPolicy{
 	TypeMeta: metav1.TypeMeta{
 		Kind: "EgressNetworkPolicy",
 	},
 	ObjectMeta: metav1.ObjectMeta{
 		Name: "enp2",
 	},
-	Spec: networkapi.EgressNetworkPolicySpec{
-		Egress: []networkapi.EgressNetworkPolicyRule{
+	Spec: osdnv1.EgressNetworkPolicySpec{
+		Egress: []osdnv1.EgressNetworkPolicyRule{
 			{
-				Type: networkapi.EgressNetworkPolicyRuleAllow,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleAllow,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "192.168.1.0/24",
 				},
 			},
 			{
-				Type: networkapi.EgressNetworkPolicyRuleAllow,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleAllow,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "192.168.2.0/24",
 				},
 			},
 			{
-				Type: networkapi.EgressNetworkPolicyRuleDeny,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleDeny,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					// "/32" is wrong but accepted for backward-compatibility
 					CIDRSelector: "0.0.0.0/32",
 				},
@@ -426,18 +424,18 @@ var enp2 = networkapi.EgressNetworkPolicy{
 	},
 }
 
-var enpDenyAll = networkapi.EgressNetworkPolicy{
+var enpDenyAll = osdnv1.EgressNetworkPolicy{
 	TypeMeta: metav1.TypeMeta{
 		Kind: "EgressNetworkPolicy",
 	},
 	ObjectMeta: metav1.ObjectMeta{
 		Name: "enpDenyAll",
 	},
-	Spec: networkapi.EgressNetworkPolicySpec{
-		Egress: []networkapi.EgressNetworkPolicyRule{
+	Spec: osdnv1.EgressNetworkPolicySpec{
+		Egress: []osdnv1.EgressNetworkPolicyRule{
 			{
-				Type: networkapi.EgressNetworkPolicyRuleDeny,
-				To: networkapi.EgressNetworkPolicyPeer{
+				Type: osdnv1.EgressNetworkPolicyRuleDeny,
+				To: osdnv1.EgressNetworkPolicyPeer{
 					CIDRSelector: "0.0.0.0/0",
 				},
 			},
@@ -446,7 +444,7 @@ var enpDenyAll = networkapi.EgressNetworkPolicy{
 }
 
 type enpFlowAddition struct {
-	policy *networkapi.EgressNetworkPolicy
+	policy *osdnv1.EgressNetworkPolicy
 	vnid   int
 }
 
@@ -466,7 +464,7 @@ func assertENPFlowAdditions(origFlows, newFlows []string, additions ...enpFlowAd
 			} else {
 				change.match = append(change.match, fmt.Sprintf("nw_dst=%s", rule.To.CIDRSelector))
 			}
-			if rule.Type == networkapi.EgressNetworkPolicyRuleAllow {
+			if rule.Type == osdnv1.EgressNetworkPolicyRuleAllow {
 				change.match = append(change.match, "actions=goto_table:101")
 			} else {
 				change.match = append(change.match, "actions=drop")
@@ -485,7 +483,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Set one EgressNetworkPolicy on VNID 42
 	err := oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp1},
+		[]osdnv1.EgressNetworkPolicy{enp1},
 		42,
 		[]string{"ns1"},
 		nil,
@@ -509,7 +507,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Set one EgressNetworkPolicy on VNID 43
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp2},
+		[]osdnv1.EgressNetworkPolicy{enp2},
 		43,
 		[]string{"ns2"},
 		nil,
@@ -537,7 +535,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Change VNID 42 from ENP1 to ENP2
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp2},
+		[]osdnv1.EgressNetworkPolicy{enp2},
 		42,
 		[]string{"ns1"},
 		nil,
@@ -565,7 +563,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Drop EgressNetworkPolicy from VNID 43
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{},
+		[]osdnv1.EgressNetworkPolicy{},
 		43,
 		[]string{"ns2"},
 		nil,
@@ -589,7 +587,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Set no EgressNetworkPolicy on VNID 0
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{},
+		[]osdnv1.EgressNetworkPolicy{},
 		0,
 		[]string{"default", "my-global-project"},
 		nil,
@@ -613,7 +611,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Set no EgressNetworkPolicy on a shared namespace
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{},
+		[]osdnv1.EgressNetworkPolicy{},
 		44,
 		[]string{"ns3", "ns4"},
 		nil,
@@ -639,7 +637,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Can't set non-empty ENP in default namespace
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp1},
+		[]osdnv1.EgressNetworkPolicy{enp1},
 		0,
 		[]string{"default"},
 		nil,
@@ -663,7 +661,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Can't set non-empty ENP in a shared namespace
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp1},
+		[]osdnv1.EgressNetworkPolicy{enp1},
 		45,
 		[]string{"ns3", "ns4"},
 		nil,
@@ -691,7 +689,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 
 	// Can't set multiple policies
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp1, enp2},
+		[]osdnv1.EgressNetworkPolicy{enp1, enp2},
 		46,
 		[]string{"ns5"},
 		nil,
@@ -724,7 +722,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 	// CLEARING ERRORS
 
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{},
+		[]osdnv1.EgressNetworkPolicy{},
 		45,
 		[]string{"ns3", "ns4"},
 		nil,
@@ -751,7 +749,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 	}
 
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{},
+		[]osdnv1.EgressNetworkPolicy{},
 		46,
 		[]string{"ns5"},
 		nil,
@@ -1187,7 +1185,7 @@ func TestRuleVersion(t *testing.T) {
 	}
 
 	// VXLAN flows
-	hs := networkapi.HostSubnet{
+	hs := osdnv1.HostSubnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "node1",
 			UID:  "node1UID",
@@ -1212,7 +1210,7 @@ func TestRuleVersion(t *testing.T) {
 
 	// EgressNetworkPolicy flows
 	err = oc.UpdateEgressNetworkPolicyRules(
-		[]networkapi.EgressNetworkPolicy{enp1},
+		[]osdnv1.EgressNetworkPolicy{enp1},
 		42,
 		[]string{"ns1"},
 		nil,

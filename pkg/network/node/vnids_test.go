@@ -1,5 +1,3 @@
-// +build linux
-
 package node
 
 import (
@@ -7,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/openshift/sdn/pkg/network"
+	"github.com/openshift/sdn/pkg/network/common"
 )
 
 func TestNodeVNIDMap(t *testing.T) {
@@ -203,7 +201,7 @@ func checkAllocatedVNIDs(t *testing.T, vmap *nodeVNIDMap, match []uint32) {
 	ids := []uint32{}
 	idSet := sets.Int{}
 	for _, id := range vmap.ids {
-		if id != network.GlobalVNID {
+		if id != common.GlobalVNID {
 			if !idSet.Has(int(id)) {
 				ids = append(ids, id)
 				idSet.Insert(int(id))

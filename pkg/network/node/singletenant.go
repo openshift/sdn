@@ -1,9 +1,7 @@
-// +build linux
-
 package node
 
 import (
-	networkapi "github.com/openshift/api/network/v1"
+	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 )
 
@@ -31,13 +29,13 @@ func (sp *singleTenantPlugin) Start(node *OsdnNode) error {
 	return otx.Commit()
 }
 
-func (sp *singleTenantPlugin) AddNetNamespace(netns *networkapi.NetNamespace) {
+func (sp *singleTenantPlugin) AddNetNamespace(netns *osdnv1.NetNamespace) {
 }
 
-func (sp *singleTenantPlugin) UpdateNetNamespace(netns *networkapi.NetNamespace, oldNetID uint32) {
+func (sp *singleTenantPlugin) UpdateNetNamespace(netns *osdnv1.NetNamespace, oldNetID uint32) {
 }
 
-func (sp *singleTenantPlugin) DeleteNetNamespace(netns *networkapi.NetNamespace) {
+func (sp *singleTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 }
 
 func (sp *singleTenantPlugin) GetVNID(namespace string) (uint32, error) {

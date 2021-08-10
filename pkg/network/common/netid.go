@@ -1,4 +1,4 @@
-package network
+package common
 
 const (
 	// Maximum VXLAN Virtual Network Identifier(VNID) as per RFC#7348
