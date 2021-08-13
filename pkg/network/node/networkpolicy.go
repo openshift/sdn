@@ -493,6 +493,95 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 	return ips
 }
 
+// parsePortFlows parses the Ports of a NetworkPolicyIngressRule, returning a list of
+// distinct restrictions consisting of OpenFlow match rules, each one ending with a
+// trailing "," (eg, "tcp, tp_dst=80, "). Every flow which is to be matched by the rule
+// must match at least one of the returned restrictions. (If there are no ports specified,
+// it returns the no-op restriction "".)
+func (np *networkPolicyPlugin) parsePortFlows(policy *networkingv1.NetworkPolicy, ports []networkingv1.NetworkPolicyPort) []string {
+	if len(ports) == 0 {
+		// no restrictions based on port
+		return []string{""}
+	}
+
+	portFlows := []string{}
+	for _, port := range ports {
+		var protocol string
+		if port.Protocol == nil {
+			protocol = "tcp"
+		} else if *port.Protocol == corev1.ProtocolTCP || *port.Protocol == corev1.ProtocolUDP || *port.Protocol == corev1.ProtocolSCTP {
+			protocol = strings.ToLower(string(*port.Protocol))
+		} else {
+			// upstream is unlikely to add any more protocol values, but just in case...
+			klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unrecognized Protocol %q", policy.Namespace, policy.Name, *port.Protocol)
+			continue
+		}
+		var portNum int
+		if port.Port == nil {
+			portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
+			continue
+		} else if port.Port.Type != intstr.Int {
+			klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unsupported named port %q", policy.Namespace, policy.Name, port.Port.StrVal)
+			continue
+		} else {
+			portNum = int(port.Port.IntVal)
+		}
+		portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%d, ", protocol, portNum))
+	}
+
+	return portFlows
+}
+
+// parsePeerFlows parses the From values of a NetworkPolicyIngressRule, returning a list
+// of distinct restrictions consisting of OpenFlow match rules, each one ending with a
+// trailing "," (eg, "reg0=42, ip, nw_src=10.128.2.4, "). Every flow which is to be
+// matched by the rule must match at least one of the returned restrictions. (If there are
+// no peers specified, it returns the no-op restriction "".)
+func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, peers []networkingv1.NetworkPolicyPeer) []string {
+	if len(peers) == 0 {
+		// no restrictions based on peers
+		return []string{""}
+	}
+
+	peerFlows := []string{}
+	for _, peer := range peers {
+		if peer.PodSelector != nil && peer.NamespaceSelector == nil {
+			if len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0 {
+				// The PodSelector is empty, meaning it selects all pods in this namespace
+				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
+			} else {
+				npp.watchesOwnPods = true
+				for _, ip := range np.selectPods(npns, peer.PodSelector) {
+					peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", npns.vnid, ip))
+				}
+			}
+		} else if peer.NamespaceSelector != nil && peer.PodSelector == nil {
+			if len(peer.NamespaceSelector.MatchLabels) == 0 && len(peer.NamespaceSelector.MatchExpressions) == 0 {
+				// The NamespaceSelector is empty, meaning it selects all namespaces
+				peerFlows = append(peerFlows, "")
+			} else {
+				npp.watchesNamespaces = true
+				peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector)...)
+			}
+		} else if peer.NamespaceSelector != nil && peer.PodSelector != nil {
+			npp.watchesNamespaces = true
+			npp.watchesAllPods = true
+			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector)...)
+		} else if peer.IPBlock != nil {
+			if peer.IPBlock.Except != nil {
+				// Currently IPBlocks with except rules are skipped.
+				klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", npp.policy.Name, npp.policy.Namespace)
+			} else {
+				// Network Policy has ipBlocks, allow traffic from/to those ips.
+				peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+			}
+		}
+	}
+
+	return peerFlows
+}
+
+// parseNetworkPolicy parses a NetworkPolicy into an npPolicy
 func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) *npPolicy {
 	npp := &npPolicy{policy: *policy}
 
@@ -530,70 +619,9 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 	}
 
 	for _, rule := range policy.Spec.Ingress {
-		var portFlows, peerFlows []string
-		if len(rule.Ports) == 0 {
-			portFlows = []string{""}
-		}
-		for _, port := range rule.Ports {
-			var protocol string
-			if port.Protocol == nil {
-				protocol = "tcp"
-			} else if *port.Protocol == corev1.ProtocolTCP || *port.Protocol == corev1.ProtocolUDP || *port.Protocol == corev1.ProtocolSCTP {
-				protocol = strings.ToLower(string(*port.Protocol))
-			} else {
-				// upstream is unlikely to add any more protocol values, but just in case...
-				klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unrecognized Protocol %q", policy.Namespace, policy.Name, *port.Protocol)
-				continue
-			}
-			var portNum int
-			if port.Port == nil {
-				portFlows = append(portFlows, fmt.Sprintf("%s, ", protocol))
-				continue
-			} else if port.Port.Type != intstr.Int {
-				klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unsupported named port %q", policy.Namespace, policy.Name, port.Port.StrVal)
-				continue
-			} else {
-				portNum = int(port.Port.IntVal)
-			}
-			portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%d, ", protocol, portNum))
-		}
+		portFlows := np.parsePortFlows(policy, rule.Ports)
+		peerFlows := np.parsePeerFlows(npns, npp, rule.From)
 
-		if len(rule.From) == 0 {
-			peerFlows = []string{""}
-		}
-		for _, peer := range rule.From {
-			if peer.PodSelector != nil && peer.NamespaceSelector == nil {
-				if len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0 {
-					// The PodSelector is empty, meaning it selects all pods in this namespace
-					peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
-				} else {
-					npp.watchesOwnPods = true
-					for _, ip := range np.selectPods(npns, peer.PodSelector) {
-						peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", npns.vnid, ip))
-					}
-				}
-			} else if peer.NamespaceSelector != nil && peer.PodSelector == nil {
-				if len(peer.NamespaceSelector.MatchLabels) == 0 && len(peer.NamespaceSelector.MatchExpressions) == 0 {
-					// The NamespaceSelector is empty, meaning it selects all namespaces
-					peerFlows = append(peerFlows, "")
-				} else {
-					npp.watchesNamespaces = true
-					peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector)...)
-				}
-			} else if peer.NamespaceSelector != nil && peer.PodSelector != nil {
-				npp.watchesNamespaces = true
-				npp.watchesAllPods = true
-				peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector)...)
-			} else if peer.IPBlock != nil {
-				if peer.IPBlock.Except != nil {
-					// Currently IPBlocks with except rules are skipped.
-					klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", policy.Name, policy.Namespace)
-				} else {
-					// Network Policy has ipBlocks, allow traffic from those ips.
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
-				}
-			}
-		}
 		for _, destFlow := range destFlows {
 			for _, peerFlow := range peerFlows {
 				for _, portFlow := range portFlows {
@@ -612,13 +640,17 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 func (np *networkPolicyPlugin) cleanupNetworkPolicy(policy *networkingv1.NetworkPolicy) {
 	for _, rule := range policy.Spec.Ingress {
 		for _, peer := range rule.From {
-			if peer.NamespaceSelector != nil {
-				if len(peer.NamespaceSelector.MatchLabels) != 0 || len(peer.NamespaceSelector.MatchExpressions) != 0 {
-					// This is overzealous; there may still be other policies
-					// with the same selector. But it's simple.
-					np.flushMatchCache(peer.NamespaceSelector)
-				}
-			}
+			np.cleanupPeer(peer)
+		}
+	}
+}
+
+func (np *networkPolicyPlugin) cleanupPeer(peer networkingv1.NetworkPolicyPeer) {
+	if peer.NamespaceSelector != nil {
+		if len(peer.NamespaceSelector.MatchLabels) != 0 || len(peer.NamespaceSelector.MatchExpressions) != 0 {
+			// This is overzealous; there may still be other policies
+			// with the same selector. But it's simple.
+			np.flushMatchCache(peer.NamespaceSelector)
 		}
 	}
 }
