@@ -580,13 +580,11 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 					npp.watchesNamespaces = true
 					peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector)...)
 				}
-			} else {
+			} else if peer.NamespaceSelector != nil && peer.PodSelector != nil {
 				npp.watchesNamespaces = true
 				npp.watchesAllPods = true
 				peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector)...)
-			}
-
-			if peer.IPBlock != nil {
+			} else if peer.IPBlock != nil {
 				if peer.IPBlock.Except != nil {
 					// Currently IPBlocks with except rules are skipped.
 					klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", policy.Name, policy.Namespace)

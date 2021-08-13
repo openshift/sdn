@@ -905,6 +905,165 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 }
 
+func TestNetworkPolicy_ipBlock(t *testing.T) {
+	np, synced, stopCh := newTestNPP()
+	defer close(stopCh)
+
+	// Create a default Namespace
+	addNamespace(np, "default", 0, map[string]string{"default": "true"})
+	npns := np.namespaces[0]
+	addPods(np, npns)
+
+	// Add a simple ipBlock policy
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-cidr",
+			UID:       uid(npns, "allow-from-cidr"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "192.168.0.0/16",
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "simple ipBlock policy")
+
+	err := assertPolicies(np, npns, 1, map[string]*npPolicy{
+		"allow-from-cidr": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a mixed ipBlock/podSelector policy
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-cidr-and-pods",
+			UID:       uid(npns, "allow-from-cidr-and-pods"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{
+					{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"kind": "client",
+							},
+						},
+					},
+					{
+						IPBlock: &networkingv1.IPBlock{
+							CIDR: "192.168.0.0/16",
+						},
+					},
+				},
+			}},
+		},
+	})
+	waitForSync(np, synced, "mixed ipBlock/podSelector policy")
+
+	err = assertPolicies(np, npns, 2, map[string]*npPolicy{
+		"allow-from-cidr-and-pods": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			flows: []string{
+				fmt.Sprintf("reg0=0, ip, nw_src=%s", clientIP(npns)),
+				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a policy with multiple ipBlocks, one of which will be ignored because
+	// of an "except" clause.
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-multiple-cidrs",
+			UID:       uid(npns, "allow-from-multiple-cidrs"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.0.0/24",
+							},
+						},
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.1.0/24",
+								Except: []string{
+									"192.168.1.1",
+								},
+							},
+						},
+					},
+				},
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.10.0/24",
+							},
+						},
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.20.0/24",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	waitForSync(np, synced, "multiple ipBlock policy")
+
+	err = assertPolicies(np, npns, 3, map[string]*npPolicy{
+		"allow-from-multiple-cidrs": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=192.168.0.0/24"),
+				// There is no rule allowing 192.168.1.0/24 because we can't
+				// implement the exception.
+				fmt.Sprintf("ip, nw_src=192.168.10.0/24"),
+				fmt.Sprintf("ip, nw_src=192.168.20.0/24"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+}
+
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
 func _TestNetworkPolicyCache(t *testing.T) {
 	const (
