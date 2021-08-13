@@ -20,14 +20,22 @@ import (
 	"k8s.io/kubernetes/pkg/util/async"
 
 	osdnv1 "github.com/openshift/api/network/v1"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
-func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
+func newTestNPP() (*networkPolicyPlugin, ovs.Interface, *atomic.Value, chan struct{}) {
 	kubeClient := fake.NewSimpleClientset()
+	ovsif := ovs.NewFake("br0")
+	ovsif.AddBridge()
+
 	np := &networkPolicyPlugin{
 		node: &OsdnNode{
 			kClient:       kubeClient,
 			kubeInformers: informers.NewSharedInformerFactory(kubeClient, time.Hour),
+
+			oc: &ovsController{
+				ovs: ovsif,
+			},
 		},
 
 		namespaces:       make(map[uint32]*npNamespace),
@@ -39,14 +47,7 @@ func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
 	synced := new(atomic.Value)
 	stopCh := make(chan struct{})
 	np.runner = async.NewBoundedFrequencyRunner("networkpolicy_test", func() {
-		np.lock.Lock()
-		defer np.lock.Unlock()
-
-		np.recalculate()
-		for _, npns := range np.namespaces {
-			npns.mustSync = false
-		}
-
+		np.syncFlows()
 		synced.Store(true)
 	}, 10*time.Millisecond, time.Hour, 10)
 	go np.runner.Loop(stopCh)
@@ -58,7 +59,7 @@ func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
 
 	np.node.kubeInformers.Start(stopCh)
 
-	return np, synced, stopCh
+	return np, ovsif, synced, stopCh
 }
 
 func waitForEvent(np *networkPolicyPlugin, f func() bool) error {
@@ -298,7 +299,7 @@ func addBadPods(np *networkPolicyPlugin, npns *npNamespace) {
 }
 
 func TestNetworkPolicy(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	// Create some Namespaces
@@ -906,7 +907,7 @@ func TestNetworkPolicy(t *testing.T) {
 }
 
 func TestNetworkPolicy_ipBlock(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	// Create a default Namespace
@@ -1065,16 +1066,45 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 }
 
 func TestNetworkPolicy_egress(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, ovsif, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
+	// We'll be checking the output OVS flows in this test, so get the initial state...
+	prevFlows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+
 	// Create Namespaces
+	synced.Store(false)
 	addNamespace(np, "default", 0, map[string]string{"default": "true"})
 	npns := np.namespaces[0]
 	addPods(np, npns)
 	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
 	npns1 := np.namespaces[1]
 	addPods(np, npns1)
+	waitForSync(np, synced, "initial namespaces")
+
+	// Both namespaces should get a "default allow" rule to override the
+	// "priority=0, actions=drop" rule at the end of table 80
+	flows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=1", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
 
 	// Add ingress/egress default-deny
 	synced.Store(false)
@@ -1096,7 +1126,7 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	})
 	waitForSync(np, synced, "default-deny")
 
-	err := assertPolicies(np, npns, 1, map[string]*npPolicy{
+	err = assertPolicies(np, npns, 1, map[string]*npPolicy{
 		"default-deny": {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
@@ -1107,6 +1137,22 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	}
+
+	// NS 0 now has default-deny, so its allow rule will be deleted
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
 
 	// Add a just-egress policy, which should have no effect
 	synced.Store(false)
@@ -1147,6 +1193,17 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	}
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows) // no changes
+
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
 
 	// Add a mixed-ingress-egress policy, which should affect ingress but not egress
 	synced.Store(false)
@@ -1197,6 +1254,20 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	}
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=0", "reg0=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
 }
 
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
@@ -1206,7 +1277,7 @@ func _TestNetworkPolicyCache(t *testing.T) {
 		extraNamespaces   uint32 = 500
 	)
 
-	np, _, stopCh := newTestNPP()
+	np, _, _, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	start := time.Now()
@@ -1354,7 +1425,7 @@ func _TestNetworkPolicyCache(t *testing.T) {
 }
 
 func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	// Create some Namespaces
