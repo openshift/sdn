@@ -1064,6 +1064,141 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 	}
 }
 
+func TestNetworkPolicy_egress(t *testing.T) {
+	np, synced, stopCh := newTestNPP()
+	defer close(stopCh)
+
+	// Create Namespaces
+	addNamespace(np, "default", 0, map[string]string{"default": "true"})
+	npns := np.namespaces[0]
+	addPods(np, npns)
+	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
+	npns1 := np.namespaces[1]
+	addPods(np, npns1)
+
+	// Add ingress/egress default-deny
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-deny",
+			UID:       uid(npns, "default-deny"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{},
+			Egress:  []networkingv1.NetworkPolicyEgressRule{},
+		},
+	})
+	waitForSync(np, synced, "default-deny")
+
+	err := assertPolicies(np, npns, 1, map[string]*npPolicy{
+		"default-deny": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows:             []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a just-egress policy, which should have no effect
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress",
+			UID:       uid(npns, "egress"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "client",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "server",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "egress-only policy")
+
+	err = assertPolicies(np, npns, 2, map[string]*npPolicy{
+		"egress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false, // Spec.PodSelector is ignored for egress-only
+			flows:             []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a mixed-ingress-egress policy, which should affect ingress but not egress
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ingress-egress",
+			UID:       uid(npns, "ingress-egress"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"parity": "odd",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "mixed-ingress-egress policy")
+
+	err = assertPolicies(np, npns, 3, map[string]*npPolicy{
+		"ingress-egress": {
+			watchesNamespaces: false, // egress NamespaceSelector is ignored
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			flows: []string{
+				fmt.Sprintf("reg0=%d, ip, nw_src=%s", npns.vnid, clientIP(npns)),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+}
+
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
 func _TestNetworkPolicyCache(t *testing.T) {
 	const (
