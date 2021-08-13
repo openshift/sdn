@@ -426,7 +426,7 @@ func TestNetworkPolicy(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 		})
@@ -517,8 +517,8 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
 			},
 		},
 	})
@@ -561,11 +561,11 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[4])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[5])),
 			},
 		},
 	})
@@ -642,7 +642,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 				"allow-from-even": {
@@ -661,10 +661,10 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=7, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
-						// but NOT from reg0=9
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
+						// but NOT from namespace 9
 					},
 				},
 			})
@@ -695,7 +695,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 				"allow-from-all-clients": {
@@ -703,15 +703,15 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[4])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=6, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[6])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=7, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=8, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[8])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=9, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[9])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[4])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[6])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[8])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[9])),
 					},
 				},
 			})
@@ -742,7 +742,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 			})
@@ -840,7 +840,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns4), npns4.vnid, clientIP(npns4)),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns4), clientIP(npns4)),
 			},
 		},
 	})
@@ -988,7 +988,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("reg0=0, ip, nw_src=%s", clientIP(npns)),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
 				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
 			},
 		},
@@ -1247,7 +1247,7 @@ func TestNetworkPolicy_egress(t *testing.T) {
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("reg0=%d, ip, nw_src=%s", npns.vnid, clientIP(npns)),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
 			},
 		},
 	})
@@ -1262,7 +1262,7 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	err = assertFlowChanges(prevFlows, flows,
 		flowChange{
 			kind:  flowAdded,
-			match: []string{"table=80", "reg1=0", "reg0=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
+			match: []string{"table=80", "reg1=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
 		},
 	)
 	if err != nil {
@@ -1493,7 +1493,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 			"allow-client-to-server-2": {
@@ -1501,7 +1501,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 		})

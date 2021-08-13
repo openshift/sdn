@@ -437,7 +437,7 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 	}
 
 	nsLister := np.node.kubeInformers.Core().V1().Pods().Lister()
-	for namespace, vnid := range np.selectNamespacesInternal(nsSel) {
+	for namespace := range np.selectNamespacesInternal(nsSel) {
 		pods, err := nsLister.Pods(namespace).List(podSel)
 		if err != nil {
 			// Shouldn't happen
@@ -446,7 +446,7 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 		}
 		for _, pod := range pods {
 			if isOnPodNetwork(pod) {
-				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", vnid, pod.Status.PodIP))
+				peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", pod.Status.PodIP))
 			}
 		}
 	}
@@ -534,7 +534,7 @@ func (np *networkPolicyPlugin) parsePortFlows(policy *networkingv1.NetworkPolicy
 
 // parsePeerFlows parses the From values of a NetworkPolicyIngressRule, returning a list
 // of distinct restrictions consisting of OpenFlow match rules, each one ending with a
-// trailing "," (eg, "reg0=42, ip, nw_src=10.128.2.4, "). Every flow which is to be
+// trailing "," (eg, "ip, nw_src=10.128.2.4, "). Every flow which is to be
 // matched by the rule must match at least one of the returned restrictions. (If there are
 // no peers specified, it returns the no-op restriction "".)
 func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, peers []networkingv1.NetworkPolicyPeer) []string {
@@ -552,7 +552,7 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 			} else {
 				npp.watchesOwnPods = true
 				for _, ip := range np.selectPods(npns, peer.PodSelector) {
-					peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ip, nw_src=%s, ", npns.vnid, ip))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", ip))
 				}
 			}
 		} else if peer.NamespaceSelector != nil && peer.PodSelector == nil {
