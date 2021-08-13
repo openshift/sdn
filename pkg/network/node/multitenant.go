@@ -51,6 +51,7 @@ func (mp *multiTenantPlugin) Start(node *OsdnNode) error {
 	}
 
 	otx := node.oc.NewTransaction()
+	otx.AddFlow("table=27, priority=500, actions=goto_table:30")
 	otx.AddFlow("table=80, priority=200, reg0=0, actions=output:NXM_NX_REG2[]")
 	otx.AddFlow("table=80, priority=200, reg1=0, actions=output:NXM_NX_REG2[]")
 	if err := otx.Commit(); err != nil {

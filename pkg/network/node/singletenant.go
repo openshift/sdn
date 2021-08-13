@@ -25,6 +25,7 @@ func (np *singleTenantPlugin) AllowDuplicateNetID() bool {
 
 func (sp *singleTenantPlugin) Start(node *OsdnNode) error {
 	otx := node.oc.NewTransaction()
+	otx.AddFlow("table=27, priority=500, actions=goto_table:30")
 	otx.AddFlow("table=80, priority=200, actions=output:NXM_NX_REG2[]")
 	return otx.Commit()
 }

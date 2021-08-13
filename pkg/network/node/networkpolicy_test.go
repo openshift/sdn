@@ -1097,8 +1097,8 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	addPods(np, npns1)
 	waitForSync(np, synced, "initial namespaces")
 
-	// Both namespaces should get a "default allow" rule to override the
-	// "priority=0, actions=drop" rule at the end of table 80
+	// Both namespaces should get "default allow" rules to override the
+	// "priority=0, actions=drop" rules at the end of tables 27 and 80
 	flows, err := ovsif.DumpFlows("")
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
@@ -1106,7 +1106,15 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	err = assertFlowChanges(prevFlows, flows,
 		flowChange{
 			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
 			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=1", "actions=goto_table:30"},
 		},
 		flowChange{
 			kind:  flowAdded,
@@ -1151,12 +1159,16 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	// NS 0 now has default-deny, so its allow rule will be deleted
+	// NS 0 now has default-deny, so its allow rules will be deleted
 	flows, err = ovsif.DumpFlows("")
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
 	}
 	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=27", "reg0=0", "actions=goto_table:30"},
+		},
 		flowChange{
 			kind:  flowRemoved,
 			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
@@ -1167,7 +1179,7 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	}
 	prevFlows = flows
 
-	// Add a just-egress policy, which should have no effect
+	// Add a just-egress policy
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1214,14 +1226,18 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
 	}
-	err = assertFlowChanges(prevFlows, flows) // no changes
-
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_src=10.0.0.2", "nw_dst=10.0.0.3", "actions=goto_table:30"},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 	prevFlows = flows
 
-	// Add a mixed-ingress-egress policy, which should affect ingress but not egress
+	// Add a mixed-ingress-egress policy
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1284,6 +1300,14 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_dst=10.1.0.2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_dst=10.1.0.3", "actions=goto_table:30"},
 		},
 	)
 	if err != nil {
