@@ -42,7 +42,7 @@ func (sdn *openShiftSDN) runSDN() error {
 
 func (sdn *openShiftSDN) writeConfigFile() error {
 	// Make an event that openshift-sdn started
-	sdn.sdnRecorder.Eventf(&corev1.ObjectReference{Kind: "Node", Name: sdn.nodeName}, corev1.EventTypeNormal, "Starting", "openshift-sdn done initializing node networking.")
+	sdn.sdnRecorder.Eventf(&corev1.ObjectReference{Kind: "Node", Name: sdn.nodeName}, corev1.EventTypeNormal, "Starting", "Starting", "openshift-sdn done initializing node networking.")
 
 	// Write our CNI config file out to disk to signal to kubelet that
 	// our network plugin is ready

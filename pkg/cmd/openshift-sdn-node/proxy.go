@@ -17,7 +17,9 @@ import (
 	"k8s.io/apiserver/pkg/server/routes"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/scheme"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
@@ -180,7 +182,15 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 	}
 
 	if enableUnidling {
-		signaler := unidler.NewEventSignaler(recorder)
+		// FIXME: openshift-controller-manager assumes the LastTimestamp field in
+		// the Event will be set, which is only true if we use the legacy
+		// corev1.Event API rather than the new eventsv1.Event API. So we need a
+		// legacy event recorder.
+		unidlingBroadcaster := record.NewBroadcaster()
+		unidlingBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: sdn.informers.kubeClient.CoreV1().Events("")})
+		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
+
+		signaler := unidler.NewEventSignaler(unidlingRecorder)
 		unidlingProxy, err = unidler.NewUnidlerProxier(
 			userspace.NewLoadBalancerRR(),
 			bindAddr,

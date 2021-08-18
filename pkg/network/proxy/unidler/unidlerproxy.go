@@ -7,7 +7,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
@@ -22,7 +22,7 @@ type NeedPodsSignaler interface {
 }
 
 type eventSignaler struct {
-	recorder events.EventRecorder
+	recorder record.EventRecorder
 }
 
 func (sig *eventSignaler) NeedPods(serviceName types.NamespacedName, port string) error {
@@ -35,14 +35,14 @@ func (sig *eventSignaler) NeedPods(serviceName types.NamespacedName, port string
 	}
 
 	// HACK: make the message different to prevent event aggregation
-	sig.recorder.Eventf(&serviceRef, nil, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
+	sig.recorder.Eventf(&serviceRef, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
 
 	return nil
 }
 
 // NewEventSignaler constructs a NeedPodsSignaler which signals by recording
 // an event for the service with the "NeedPods" reason.
-func NewEventSignaler(eventRecorder events.EventRecorder) NeedPodsSignaler {
+func NewEventSignaler(eventRecorder record.EventRecorder) NeedPodsSignaler {
 	return &eventSignaler{
 		recorder: eventRecorder,
 	}
