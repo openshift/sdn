@@ -67,12 +67,12 @@ func (master *OsdnMaster) handleAddOrUpdateNode(obj, _ interface{}, eventType wa
 
 	master.clearInitialNodeNetworkUnavailableCondition(node)
 
-	usedNodeIP, err := master.addNode(node.Name, string(node.UID), nodeIP, nil)
+	err := master.addNode(node.Name, string(node.UID), nodeIP, nil)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Error creating subnet for node %s, ip %s: %v", node.Name, nodeIP, err))
 		return
 	}
-	master.hostSubnetNodeIPs[node.UID] = usedNodeIP
+	master.hostSubnetNodeIPs[node.UID] = nodeIP
 }
 
 func (master *OsdnMaster) handleDeleteNode(obj interface{}) {
@@ -93,11 +93,10 @@ func (master *OsdnMaster) handleDeleteNode(obj interface{}) {
 
 // addNode takes the nodeName, a preferred nodeIP and the node's annotations
 // Creates or updates a HostSubnet if needed
-// Returns the IP address used for hostsubnet (either the preferred or one from the otherValidAddresses) and any error
-func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string, hsAnnotations map[string]string) (string, error) {
+func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string, hsAnnotations map[string]string) error {
 	// Validate node IP before proceeding
 	if err := master.networkInfo.ValidateNodeIP(nodeIP); err != nil {
-		return "", err
+		return err
 	}
 
 	// Check if subnet needs to be created or updated
@@ -108,16 +107,16 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 			_ = master.osdnClient.NetworkV1().HostSubnets().Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
 			// fall through to create new subnet below
 		} else if sub.HostIP == nodeIP {
-			return nodeIP, nil
+			return nil
 		} else {
 			// Node IP changed, update old subnet
 			sub.HostIP = nodeIP
 			sub, err = master.osdnClient.NetworkV1().HostSubnets().Update(context.TODO(), sub, metav1.UpdateOptions{})
 			if err != nil {
-				return "", fmt.Errorf("error updating subnet %s for node %s: %v", sub.Subnet, nodeName, err)
+				return fmt.Errorf("error updating subnet %s for node %s: %v", sub.Subnet, nodeName, err)
 			}
 			klog.Infof("Updated HostSubnet %s", common.HostSubnetToString(sub))
-			return nodeIP, nil
+			return nil
 		}
 	}
 
@@ -130,7 +129,7 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 	}
 	network, err := master.subnetAllocator.AllocateNetwork()
 	if err != nil {
-		return "", fmt.Errorf("error allocating network for node %s: %v", nodeName, err)
+		return fmt.Errorf("error allocating network for node %s: %v", nodeName, err)
 	}
 	sub = &osdnv1.HostSubnet{
 		TypeMeta:   metav1.TypeMeta{Kind: "HostSubnet"},
@@ -144,10 +143,10 @@ func (master *OsdnMaster) addNode(nodeName string, nodeUID string, nodeIP string
 		if er := master.subnetAllocator.ReleaseNetwork(network); er != nil {
 			utilruntime.HandleError(er)
 		}
-		return "", fmt.Errorf("error allocating subnet for node %q: %v", nodeName, err)
+		return fmt.Errorf("error allocating subnet for node %q: %v", nodeName, err)
 	}
 	klog.Infof("Created HostSubnet %s", common.HostSubnetToString(sub))
-	return nodeIP, nil
+	return nil
 }
 
 func (master *OsdnMaster) deleteNode(nodeName string) error {
@@ -337,7 +336,7 @@ func (master *OsdnMaster) handleAssignHostSubnetAnnotation(hs *osdnv1.HostSubnet
 		}
 	}
 
-	if _, err := master.addNode(hs.Name, "", hs.HostIP, hsAnnotations); err != nil {
+	if err := master.addNode(hs.Name, "", hs.HostIP, hsAnnotations); err != nil {
 		return fmt.Errorf("error creating subnet: %s, %v", hs.Name, err)
 	}
 	klog.Infof("Created HostSubnet not backed by node: %s", common.HostSubnetToString(hs))
