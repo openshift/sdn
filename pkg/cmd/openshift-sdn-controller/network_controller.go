@@ -2,13 +2,9 @@ package openshift_sdn_controller
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -42,10 +38,6 @@ func RunOpenShiftNetworkController() error {
 	}
 
 	originControllerManager := func(ctx context.Context) {
-		if err := WaitForHealthyAPIServer(kubeClient.Discovery().RESTClient()); err != nil {
-			klog.Fatal(err)
-		}
-
 		controllerContext, err := newControllerContext(clientConfig)
 		if err != nil {
 			klog.Fatal(err)
@@ -98,29 +90,6 @@ func RunOpenShiftNetworkController() error {
 				},
 			},
 		})
-
-	return nil
-}
-
-func WaitForHealthyAPIServer(client rest.Interface) error {
-	var healthzContent string
-	// If apiserver is not running we should wait for some time and fail only then. This is particularly
-	// important when we start apiserver and controller manager at the same time.
-	err := wait.PollImmediate(time.Second, 5*time.Minute, func() (bool, error) {
-		healthStatus := 0
-		resp := client.Get().AbsPath("/healthz").Do(context.TODO()).StatusCode(&healthStatus)
-		if healthStatus != http.StatusOK {
-			klog.Errorf("Server isn't healthy yet. Waiting a little while.")
-			return false, nil
-		}
-		content, _ := resp.Raw()
-		healthzContent = string(content)
-
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("server unhealthy: %v: %v", healthzContent, err)
-	}
 
 	return nil
 }

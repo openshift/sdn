@@ -6,7 +6,6 @@ require (
 	github.com/containernetworking/cni v0.8.1
 	github.com/containernetworking/plugins v0.6.0
 	github.com/coreos/go-iptables v0.0.0-00010101000000-000000000000 // indirect
-	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35

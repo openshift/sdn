@@ -1,7 +1,6 @@
 package openshift_sdn_controller
 
 import (
-	"github.com/coreos/go-systemd/daemon"
 	"github.com/spf13/cobra"
 
 	"k8s.io/klog/v2"
@@ -46,6 +45,5 @@ func (o *OpenShiftNetworkController) StartNetworkController() error {
 		return err
 	}
 
-	go daemon.SdNotify(false, "READY=1")
 	select {}
 }
