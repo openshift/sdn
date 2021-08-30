@@ -24,7 +24,7 @@ func main() {
 	pflag.CommandLine.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 
-	cmd := openshift_sdn_controller.NewOpenShiftNetworkControllerCommand("openshift-sdn-controller", os.Stdout, os.Stderr)
+	cmd := openshift_sdn_controller.NewOpenShiftNetworkControllerCommand("openshift-sdn-controller")
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Println("Error:", err)
