@@ -140,8 +140,8 @@ func ValidateHostSubnet(hs *osdnv1.HostSubnet) error {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("subnet"), hs.Subnet, err.Error()))
 		}
 	}
-	// In theory this has to be IPv4, but it's possible some clusters might be limping along with IPv6 values?
-	if net.ParseIP(hs.HostIP) == nil {
+	_, err := validateIPv4(hs.HostIP)
+	if err != nil {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("hostIP"), hs.HostIP, "invalid IP address"))
 	}
 
