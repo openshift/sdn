@@ -25,6 +25,8 @@ type RunnableProxy interface {
 
 	SyncProxyRules()
 	SetSyncRunner(b *async.BoundedFrequencyRunner)
+
+	ReloadIPTables()
 }
 
 // HybridProxier runs an unidling proxy and a primary proxy at the same time,
@@ -377,4 +379,9 @@ func (p *HybridProxier) SyncLoop() {
 	// All this does is start our syncRunner, since we pass it *back* in to
 	// the mainProxy
 	p.mainProxy.SyncLoop()
+}
+
+func (p *HybridProxier) ReloadIPTables() {
+	p.mainProxy.ReloadIPTables()
+	p.unidlingProxy.ReloadIPTables()
 }
