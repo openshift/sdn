@@ -2,7 +2,10 @@ package node
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
+	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -57,6 +60,14 @@ type flowChange struct {
 // added to newFlows. There must be exactly 1 matching flow that contains all of the
 // strings in match and none of the strings in noMatch.
 func assertFlowChanges(origFlows, newFlows []string, changes ...flowChange) error {
+	err := findFlowChangesInternal(origFlows, newFlows, changes...)
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%v\n%s", err, diffFlows(origFlows, newFlows))
+}
+
+func findFlowChangesInternal(origFlows, newFlows []string, changes ...flowChange) error {
 	// copy to avoid modifying originals
 	dup := make([]string, 0, len(origFlows))
 	origFlows = append(dup, origFlows...)
@@ -106,6 +117,39 @@ func assertFlowChanges(origFlows, newFlows []string, changes ...flowChange) erro
 	return nil
 }
 
+func diffFlows(origFlows, newFlows []string) string {
+	orig, err := ioutil.TempFile("", "flows-orig-")
+	if err != nil {
+		return err.Error()
+	}
+	_, err = io.WriteString(orig, strings.Join(origFlows, "\n"))
+	if err != nil {
+		return err.Error()
+	}
+	_, err = io.WriteString(orig, "\n")
+	if err != nil {
+		return err.Error()
+	}
+	_ = orig.Close()
+
+	new, err := ioutil.TempFile("", "flows-new-")
+	if err != nil {
+		return err.Error()
+	}
+	_, err = io.WriteString(new, strings.Join(newFlows, "\n"))
+	if err != nil {
+		return err.Error()
+	}
+	_, err = io.WriteString(new, "\n")
+	if err != nil {
+		return err.Error()
+	}
+	_ = new.Close()
+
+	output, _ := exec.Command("diff", "-u", orig.Name(), new.Name()).CombinedOutput()
+	return string(output)
+}
+
 func TestOVSService(t *testing.T) {
 	ovsif, oc, origFlows := setupOVSController(t)
 
@@ -149,7 +193,7 @@ func TestOVSService(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	err = oc.DeleteServiceRules(&svc)
@@ -163,7 +207,7 @@ func TestOVSService(t *testing.T) {
 	err = assertFlowChanges(origFlows, flows) // no changes
 
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 }
 
@@ -209,7 +253,7 @@ func TestOVSPod(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Update
@@ -247,7 +291,7 @@ func TestOVSPod(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Delete
@@ -262,7 +306,7 @@ func TestOVSPod(t *testing.T) {
 	err = assertFlowChanges(origFlows, flows) // no changes
 
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 }
 
@@ -330,7 +374,7 @@ func TestOVSLocalMulticast(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	err = oc.UpdateLocalMulticastFlows(88, false, []int{7, 8})
@@ -344,7 +388,7 @@ func TestOVSLocalMulticast(t *testing.T) {
 	}
 	err = assertFlowChanges(lastFlows, flows) // no changes
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	err = oc.UpdateLocalMulticastFlows(99, false, []int{4, 5})
@@ -357,7 +401,7 @@ func TestOVSLocalMulticast(t *testing.T) {
 	}
 	err = assertFlowChanges(origFlows, flows) // no changes
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 }
 
@@ -502,7 +546,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Set one EgressNetworkPolicy on VNID 43
@@ -530,7 +574,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Change VNID 42 from ENP1 to ENP2
@@ -558,7 +602,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Drop EgressNetworkPolicy from VNID 43
@@ -582,7 +626,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Set no EgressNetworkPolicy on VNID 0
@@ -606,7 +650,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Set no EgressNetworkPolicy on a shared namespace
@@ -630,7 +674,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// ERROR CASES
@@ -656,7 +700,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Can't set non-empty ENP in a shared namespace
@@ -684,7 +728,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// Can't set multiple policies
@@ -716,7 +760,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	// CLEARING ERRORS
@@ -745,7 +789,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 
 	err = oc.UpdateEgressNetworkPolicyRules(
@@ -768,7 +812,7 @@ func TestOVSEgressNetworkPolicy(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 }
 
@@ -1235,23 +1279,7 @@ func TestRuleVersion(t *testing.T) {
 		return
 	}
 
-	out := &strings.Builder{}
-	firstDiff := ""
-	for i, flow := range flows {
-		if firstDiff == "" {
-			if i > len(expectedFlows) {
-				firstDiff = fmt.Sprintf("Extra flows at end. First additional flow is line %d:\n    %s", i+1, flows[i])
-			} else if flows[i] != expectedFlows[i] {
-				firstDiff = fmt.Sprintf("First non-matching flow is line %d:\n    Expected: %s\n    Got:      %s\n", i+1, expectedFlows[i], flows[i])
-			}
-		}
-		fmt.Fprintf(out, "%q,\n", flow)
-	}
-	expectedOut := &strings.Builder{}
-	for _, flow := range expectedFlows {
-		fmt.Fprintf(expectedOut, "%q,\n", flow)
-	}
-	t.Logf("*** FLOWS HAVE CHANGED FROM PREVIOUS COMMIT ***\nExpected:\n%s\nActual:\n%s\nIf this change is expected then make sure you have bumped ruleVersion in pkg/network/node/ovscontroller.go, and then copy the \"Actual\" output above into expectedFlows in pkg/network/node/ovscontroller_test.go", expectedOut.String(), out.String())
+	t.Logf("*** FLOWS HAVE CHANGED FROM PREVIOUS COMMIT ***\n%s\nIf this change is expected then make sure you have bumped ruleVersion in pkg/network/node/ovscontroller.go, and then update expectedFlows in pkg/network/node/ovscontroller_test.go", diffFlows(expectedFlows, flows))
 
-	t.Fatalf("flows changed: %s", firstDiff)
+	t.Fatalf("flows changed")
 }
