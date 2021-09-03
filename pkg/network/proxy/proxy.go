@@ -25,6 +25,7 @@ import (
 	networkinformers "github.com/openshift/client-go/network/informers/externalversions"
 	"github.com/openshift/sdn/pkg/network"
 	"github.com/openshift/sdn/pkg/network/common"
+	"github.com/openshift/sdn/pkg/network/proxyimpl/hybrid"
 )
 
 // EndpointsConfigHandler is an abstract interface of objects which receive update notifications for the set of endpoints.
@@ -123,7 +124,9 @@ func (proxy *OsdnProxy) Start(proxier kubeproxy.Provider, waitChan chan<- bool) 
 }
 
 func (proxy *OsdnProxy) ReloadIPTables() error {
-	proxy.Sync()
+	if hybrid, ok := proxy.baseProxy.(*hybrid.HybridProxier); ok {
+		hybrid.ReloadIPTables()
+	}
 	return nil
 }
 
