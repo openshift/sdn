@@ -12,6 +12,8 @@ import (
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
+	proxyutiliptables "k8s.io/kubernetes/pkg/proxy/util/iptables"
+	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/network/proxy/unidler"
@@ -42,14 +44,14 @@ func (sdn *openShiftSDN) initProxy() error {
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
 func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
-	if string(sdn.proxyConfig.Mode) == "disabled" {
+	if sdn.proxyConfig.Mode == proxyModeDisabled {
 		klog.Warningf("Built-in kube-proxy is disabled")
-		sdn.startMetricsServer()
+		serveMetrics(sdn.proxyConfig.MetricsBindAddress, "disabled", false, nil)
 		close(waitChan)
 		return
 	}
 
-	s, err := sdn.newProxyServer()
+	s, err := newProxyServer(sdn.proxyConfig, sdn.informers.kubeClient, sdn.nodeName, sdn.nodeIP)
 	if err != nil {
 		klog.Fatalf("Unable to create proxy server: %v", err)
 	}
@@ -59,7 +61,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		klog.Fatalf("Unable to create proxy wrapper: %v", err)
 	}
 
-	err = sdn.startProxyServer(s)
+	err = startProxyServer(s, sdn.informers.kubeInformers)
 	if err != nil {
 		klog.Fatalf("Unable to start proxy: %v", err)
 	}
@@ -105,4 +107,24 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 
 	s.Proxier = sdn.osdnProxy
 	return nil
+}
+
+func detectNodeIP(config *kubeproxyconfig.KubeProxyConfiguration, sdnNodeIP string) net.IP {
+	if config.BindAddress != "" {
+		bindIP := net.ParseIP(config.BindAddress)
+		if bindIP != nil && !bindIP.IsUnspecified() {
+			return bindIP
+		}
+	}
+
+	return net.ParseIP(sdnNodeIP)
+}
+
+func getLocalDetector(config *kubeproxyconfig.KubeProxyConfiguration, iptInterface utiliptables.Interface) (proxyutiliptables.LocalTrafficDetector, error) {
+	if config.ClusterCIDR == "" {
+		klog.Warningf("Kubeproxy does not support multiple cluster CIDRs, configuring no-op local traffic detector")
+		return proxyutiliptables.NewNoOpLocalDetector(), nil
+	} else {
+		return proxyutiliptables.NewDetectLocalByCIDR(config.ClusterCIDR, iptInterface)
+	}
 }

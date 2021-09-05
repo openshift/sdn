@@ -6,41 +6,61 @@ import (
 	"net/http"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	// In this file we use the import names that the upstream kube-proxy code uses.
+	// eg, "v1", "wait" rather than "corev1", "utilwait".
+
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	utilwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/component-base/configz"
+	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/proxy"
-	pconfig "k8s.io/kubernetes/pkg/proxy/config"
+	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
+	"k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
 	"k8s.io/kubernetes/pkg/proxy/iptables"
-	"k8s.io/kubernetes/pkg/proxy/metrics"
+	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	proxyutiliptables "k8s.io/kubernetes/pkg/proxy/util/iptables"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
-	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/exec"
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
+)
+
+const (
+	proxyModeUserspace = "userspace"
+	proxyModeIPTables  = "iptables"
+	proxyModeUnidling  = "unidling+iptables"
+	proxyModeIPVS      = "ipvs"
+	proxyModeDisabled  = "disabled"
 )
 
 // This is a stripped-down copy of ProxyServer from
 // k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be kept in sync with that.
 type ProxyServer struct {
-	IptInterface      utiliptables.Interface
-	execer            utilexec.Interface
-	Proxier           proxy.Provider
-	UseEndpointSlices bool
-	HealthzServer     healthcheck.ProxierHealthUpdater
+	IptInterface       utiliptables.Interface
+	execer             exec.Interface
+	Broadcaster        events.EventBroadcaster
+	Proxier            proxy.Provider
+	ProxyMode          string
+	MetricsBindAddress string
+	EnableProfiling    bool
+	UseEndpointSlices  bool
+	ConfigSyncPeriod   time.Duration
+	HealthzServer      healthcheck.ProxierHealthUpdater
 
 	// Not in the upstream version
 	baseProxy      sdnproxy.HybridizableProxy
@@ -50,201 +70,237 @@ type ProxyServer struct {
 // newProxyServer creates the service proxy. This is a modified version of
 // newProxyServer() from k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go, and should
 // be kept in sync with that.
-func (sdn *openShiftSDN) newProxyServer() (*ProxyServer, error) {
-	bindAddr := net.ParseIP(sdn.proxyConfig.BindAddress)
-	nodeAddr := bindAddr
-
-	if nodeAddr.IsUnspecified() {
-		nodeAddr = net.ParseIP(sdn.nodeIP)
-		if nodeAddr == nil {
-			return nil, fmt.Errorf("unable to parse node IP %q", sdn.nodeIP)
-		}
-	}
-
-	protocol := utiliptables.ProtocolIPv4
-	if nodeAddr.To4() == nil {
-		protocol = utiliptables.ProtocolIPv6
-	}
-
-	portRange := utilnet.ParsePortRangeOrDie(sdn.proxyConfig.PortRange)
-
-	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: sdn.informers.kubeClient.EventsV1()})
-	stopCh := make(chan struct{})
-	eventBroadcaster.StartRecordingToSink(stopCh)
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, "kube-proxy")
-
-	execer := utilexec.New()
-	iptInterface := utiliptables.New(execer, protocol)
-
-	var healthzServer healthcheck.ProxierHealthUpdater
-	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
-		nodeRef := &corev1.ObjectReference{
-			Kind:      "Node",
-			Name:      sdn.nodeName,
-			UID:       types.UID(sdn.nodeName),
-			Namespace: "",
-		}
-		healthzServer = healthcheck.NewProxierHealthServer(sdn.proxyConfig.HealthzBindAddress, 2*sdn.proxyConfig.IPTables.SyncPeriod.Duration, recorder, nodeRef)
-	}
-
-	enableUnidling := false
-	usingEndpointSlices := false
+func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clientset.Interface, hostname, sdnNodeIP string) (*ProxyServer, error) {
 	var err error
 
-	var proxier sdnproxy.HybridizableProxy
-	switch string(sdn.proxyConfig.Mode) {
-	case "unidling+iptables":
-		enableUnidling = true
-		fallthrough
-	case "iptables":
-		klog.V(0).Infof("Using %s Proxier.", sdn.proxyConfig.Mode)
-		usingEndpointSlices = utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying)
+	var iptInterface utiliptables.Interface
+	execer := exec.New()
 
-		if sdn.proxyConfig.IPTables.MasqueradeBit == nil {
-			// IPTablesMasqueradeBit must be specified or defaulted.
-			return nil, fmt.Errorf("unable to read IPTablesMasqueradeBit from config")
+	// SDNMISSING: upstream implements --show-hidden-metrics-for-version here
+
+	nodeIP := detectNodeIP(config, sdnNodeIP)
+	klog.Infof("Detected node IP %s", nodeIP.String())
+
+	// Create event recorder
+	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: client.EventsV1()})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, "kube-proxy")
+
+	nodeRef := &v1.ObjectReference{
+		Kind:      "Node",
+		Name:      hostname,
+		UID:       types.UID(hostname),
+		Namespace: "",
+	}
+
+	var healthzServer healthcheck.ProxierHealthUpdater
+	if len(config.HealthzBindAddress) > 0 {
+		healthzServer = healthcheck.NewProxierHealthServer(config.HealthzBindAddress, 2*config.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+	}
+
+	var proxier sdnproxy.HybridizableProxy
+	var enableUnidling bool
+
+	proxyMode := config.Mode
+	if proxyMode == proxyModeUnidling {
+		enableUnidling = true
+		proxyMode = proxyModeIPTables
+	}
+
+	// SDNMISSING: upstream supports dual-stack
+	primaryProtocol := utiliptables.ProtocolIPv4
+	iptInterface = utiliptables.New(execer, primaryProtocol)
+
+	klog.V(0).Infof("kube-proxy running in single-stack %s mode", iptInterface.Protocol())
+
+	if proxyMode == proxyModeIPTables {
+		klog.V(0).Info("Using iptables Proxier.")
+		if config.IPTables.MasqueradeBit == nil {
+			// MasqueradeBit must be specified or defaulted.
+			return nil, fmt.Errorf("unable to read IPTables MasqueradeBit from config")
 		}
 
 		var localDetector proxyutiliptables.LocalTrafficDetector
-		if sdn.proxyConfig.ClusterCIDR == "" {
-			klog.Warningf("Kubeproxy does not support multiple cluster CIDRs, configuring no-op local traffic detector")
-			localDetector = proxyutiliptables.NewNoOpLocalDetector()
-		} else {
-			localDetector, err = proxyutiliptables.NewDetectLocalByCIDR(sdn.proxyConfig.ClusterCIDR, iptInterface)
-			if err != nil {
-				return nil, fmt.Errorf("unable to configure local traffic detector: %v", err)
-			}
+		localDetector, err = getLocalDetector(config, iptInterface)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create proxier: %v", err)
 		}
 
 		proxier, err = iptables.NewProxier(
 			iptInterface,
 			utilsysctl.New(),
 			execer,
-			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.proxyConfig.IPTables.MasqueradeAll,
-			int(*sdn.proxyConfig.IPTables.MasqueradeBit),
+			config.IPTables.SyncPeriod.Duration,
+			config.IPTables.MinSyncPeriod.Duration,
+			config.IPTables.MasqueradeAll,
+			int(*config.IPTables.MasqueradeBit),
 			localDetector,
-			sdn.nodeName,
-			nodeAddr,
+			hostname,
+			nodeIP,
 			recorder,
 			healthzServer,
-			sdn.proxyConfig.NodePortAddresses,
+			config.NodePortAddresses,
 		)
-		metrics.RegisterMetrics()
-
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to create proxier: %v", err)
 		}
-		// No turning back. Remove artifacts that might still exist from the userspace Proxier.
-		klog.V(0).Info("Tearing down userspace rules.")
-		userspace.CleanupLeftovers(iptInterface)
-	case "userspace":
+		proxymetrics.RegisterMetrics()
+	} else if proxyMode == proxyModeIPVS {
+		// SDNMISSING: NOT REACHED: We don't support IPVS mode. (CNO doesn't
+		// allow you to set "mode: ipvs".)
+	} else {
 		klog.V(0).Info("Using userspace Proxier.")
 
-		execer := utilexec.New()
 		proxier, err = userspace.NewProxier(
 			userspace.NewLoadBalancerRR(),
-			bindAddr,
+			net.ParseIP(config.BindAddress),
 			iptInterface,
 			execer,
-			*portRange,
-			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
-			sdn.proxyConfig.UDPIdleTimeout.Duration,
-			sdn.proxyConfig.NodePortAddresses,
+			*utilnet.ParsePortRangeOrDie(config.PortRange),
+			config.IPTables.SyncPeriod.Duration,
+			config.IPTables.MinSyncPeriod.Duration,
+			config.UDPIdleTimeout.Duration,
+			config.NodePortAddresses,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to create proxier: %v", err)
 		}
-		// Remove artifacts from the pure-iptables Proxier.
-		klog.V(0).Info("Tearing down pure-iptables proxy rules.")
-		iptables.CleanupLeftovers(iptInterface)
-	default:
-		return nil, fmt.Errorf("unknown proxy mode %q", sdn.proxyConfig.Mode)
+	}
+
+	useEndpointSlices := true
+	if proxyMode == proxyModeUserspace {
+		// userspace mode doesn't support endpointslice.
+		useEndpointSlices = false
 	}
 
 	return &ProxyServer{
-		IptInterface:      iptInterface,
-		execer:            execer,
-		HealthzServer:     healthzServer,
-		UseEndpointSlices: usingEndpointSlices,
+		IptInterface:       iptInterface,
+		execer:             execer,
+		Broadcaster:        eventBroadcaster,
+		ProxyMode:          string(proxyMode),
+		MetricsBindAddress: config.MetricsBindAddress,
+		EnableProfiling:    config.EnableProfiling,
+		ConfigSyncPeriod:   config.ConfigSyncPeriod.Duration,
+		HealthzServer:      healthzServer,
+		UseEndpointSlices:  useEndpointSlices,
 
 		baseProxy:      proxier,
 		enableUnidling: enableUnidling,
 	}, nil
 }
 
-func serveHealthz(hz healthcheck.ProxierHealthUpdater) {
-	go utilwait.Until(func() {
-		err := hz.Run()
-		if err != nil {
-			// For historical reasons we do not abort on errors here.  We may
-			// change that in the future.
-			klog.Errorf("healthz server failed: %v", err)
-		} else {
-			klog.Errorf("healthz server returned without error")
-		}
-	}, 5*time.Second, utilwait.NeverStop)
-}
-
-func (sdn *openShiftSDN) startMetricsServer() {
-	if sdn.proxyConfig.MetricsBindAddress == "" {
+// serveHealthz runs the healthz server. This is an exact copy of serveHealthz() from
+// k8s.io/kubernetes/cmd/kube-proxy/app/server.go
+func serveHealthz(hz healthcheck.ProxierHealthUpdater, errCh chan error) {
+	if hz == nil {
 		return
 	}
 
-	mux := mux.NewPathRecorderMux("kube-proxy")
-	mux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s", sdn.proxyConfig.Mode)
-	})
-	mux.Handle("/metrics", legacyregistry.Handler())
-	if sdn.proxyConfig.EnableProfiling {
-		routes.Profiling{}.Install(mux)
-	}
-	go utilwait.Until(func() {
-		err := http.ListenAndServe(sdn.proxyConfig.MetricsBindAddress, mux)
+	fn := func() {
+		err := hz.Run()
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("starting metrics server failed: %v", err))
+			klog.Errorf("healthz server failed: %v", err)
+			if errCh != nil {
+				errCh <- fmt.Errorf("healthz server failed: %v", err)
+				// if in hardfail mode, never retry again
+				blockCh := make(chan error)
+				<-blockCh
+			}
+		} else {
+			klog.Errorf("healthz server returned without error")
 		}
-	}, 5*time.Second, utilwait.NeverStop)
+	}
+	go wait.Until(fn, 5*time.Second, wait.NeverStop)
+}
+
+// serveMetrics runs the metrics server. This is an exact copy of serveMetrics() from
+// k8s.io/kubernetes/cmd/kube-proxy/app/server.go
+func serveMetrics(bindAddress, proxyMode string, enableProfiling bool, errCh chan error) {
+	if len(bindAddress) == 0 {
+		return
+	}
+
+	proxyMux := mux.NewPathRecorderMux("kube-proxy")
+	healthz.InstallHandler(proxyMux)
+	proxyMux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		fmt.Fprintf(w, "%s", proxyMode)
+	})
+
+	//lint:ignore SA1019 See the Metrics Stability Migration KEP
+	proxyMux.Handle("/metrics", legacyregistry.Handler())
+
+	if enableProfiling {
+		routes.Profiling{}.Install(proxyMux)
+		routes.DebugFlags{}.Install(proxyMux, "v", routes.StringFlagPutHandler(logs.GlogSetter))
+	}
+
+	configz.InstallHandler(proxyMux)
+
+	fn := func() {
+		err := http.ListenAndServe(bindAddress, proxyMux)
+		if err != nil {
+			err = fmt.Errorf("starting metrics server failed: %v", err)
+			utilruntime.HandleError(err)
+			if errCh != nil {
+				errCh <- err
+				// if in hardfail mode, never retry again
+				blockCh := make(chan error)
+				<-blockCh
+			}
+		}
+	}
+	go wait.Until(fn, 5*time.Second, wait.NeverStop)
 }
 
 // startProxyServer starts the service proxy. This is a modified version of
 // ProxyServer.Run() from k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be
 // kept in sync with that.
-func (sdn *openShiftSDN) startProxyServer(s *ProxyServer) error {
-	serviceConfig := pconfig.NewServiceConfig(
-		sdn.informers.kubeInformers.Core().V1().Services(),
-		sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-	)
-	serviceConfig.RegisterEventHandler(sdn.osdnProxy)
-	go serviceConfig.Run(utilwait.NeverStop)
+func startProxyServer(s *ProxyServer, informerFactory informers.SharedInformerFactory) error {
+	// SDNMISSING: upstream handles the --oom-score-adj flag here
 
-	if s.UseEndpointSlices {
-		endpointSliceConfig := pconfig.NewEndpointSliceConfig(
-			sdn.informers.kubeInformers.Discovery().V1().EndpointSlices(),
-			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-		)
-		endpointSliceConfig.RegisterEventHandler(sdn.osdnProxy)
-		go endpointSliceConfig.Run(utilwait.NeverStop)
-	} else {
-		endpointsConfig := pconfig.NewEndpointsConfig(
-			sdn.informers.kubeInformers.Core().V1().Endpoints(),
-			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-		)
-		endpointsConfig.RegisterEventHandler(sdn.osdnProxy)
-		go endpointsConfig.Run(utilwait.NeverStop)
+	if s.Broadcaster != nil {
+		stopCh := make(chan struct{})
+		s.Broadcaster.StartRecordingToSink(stopCh)
 	}
 
-	// Start up healthz server
-	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
-		serveHealthz(s.HealthzServer)
-	}
+	var errCh chan error
+	// SDNMISSING: upstream handles the --bind-address-hard-fail flag here
+
+	// Start up a healthz server if requested
+	serveHealthz(s.HealthzServer, errCh)
 
 	// Start up a metrics server if requested
-	sdn.startMetricsServer()
+	serveMetrics(s.MetricsBindAddress, s.ProxyMode, s.EnableProfiling, errCh)
 
-	// periodically sync k8s iptables rules
-	go utilwait.Forever(sdn.osdnProxy.SyncLoop, 0)
+	// SDNMISSING: upstream handles the --conntrack-max-per-core, --conntrack-min,
+	// --conntrack-tcp-timeout-close-wait, and --conntrack-tcp-timeout-close-wait
+	// flags here.
+
+	// SDNMISSING: upstream sets up its own informers here (and starts them after the
+	// next section).
+
+	// Create configs (i.e. Watches for Services and Endpoints or EndpointSlices)
+	// Note: RegisterHandler() calls need to happen before creation of Sources because sources
+	// only notify on changes, and the initial update (on process start) may be lost if no handlers
+	// are registered yet.
+	serviceConfig := config.NewServiceConfig(informerFactory.Core().V1().Services(), s.ConfigSyncPeriod)
+	serviceConfig.RegisterEventHandler(s.Proxier)
+	go serviceConfig.Run(wait.NeverStop)
+
+	if s.UseEndpointSlices {
+		endpointSliceConfig := config.NewEndpointSliceConfig(informerFactory.Discovery().V1().EndpointSlices(), s.ConfigSyncPeriod)
+		endpointSliceConfig.RegisterEventHandler(s.Proxier)
+		go endpointSliceConfig.Run(wait.NeverStop)
+	} else {
+		endpointsConfig := config.NewEndpointsConfig(informerFactory.Core().V1().Endpoints(), s.ConfigSyncPeriod)
+		endpointsConfig.RegisterEventHandler(s.Proxier)
+		go endpointsConfig.Run(wait.NeverStop)
+	}
+
+	// SDNMISSING: upstream handles features.TopologyAwareHints here
+
+	go s.Proxier.SyncLoop()
+
 	return nil
 }
