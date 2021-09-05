@@ -19,8 +19,8 @@ import (
 
 var defaultInformerResyncPeriod = 30 * time.Minute
 
-// informers is a small bag of data that holds our informers
-type informers struct {
+// sdnInformers is a small bag of data that holds our informers
+type sdnInformers struct {
 	kubeClient kubernetes.Interface
 	osdnClient osdnclient.Interface
 
@@ -65,7 +65,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 
 	osdnInformers := osdninformers.NewSharedInformerFactory(osdnClient, defaultInformerResyncPeriod)
 
-	sdn.informers = &informers{
+	sdn.informers = &sdnInformers{
 		kubeClient: kubeClient,
 		osdnClient: osdnClient,
 
@@ -76,7 +76,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 }
 
 // start starts the informers.
-func (i *informers) start(stopCh <-chan struct{}) {
+func (i *sdnInformers) start(stopCh <-chan struct{}) {
 	i.kubeInformers.Start(stopCh)
 	i.osdnInformers.Start(stopCh)
 }
