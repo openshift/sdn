@@ -7,14 +7,9 @@ import (
 
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	kinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/kubernetes/pkg/proxy/apis"
 )
 
 var defaultInformerResyncPeriod = 30 * time.Minute
@@ -47,22 +42,8 @@ func (sdn *openShiftSDN) buildInformers() error {
 	if err != nil {
 		return err
 	}
-	noProxyName, err := labels.NewRequirement(apis.LabelServiceProxyName, selection.DoesNotExist, nil)
-	if err != nil {
-		return err
-	}
-	noHeadlessEndpoints, err := labels.NewRequirement(corev1.IsHeadlessService, selection.DoesNotExist, nil)
-	if err != nil {
-		return err
-	}
-	labelSelector := labels.NewSelector()
-	labelSelector = labelSelector.Add(*noProxyName, *noHeadlessEndpoints)
 
-	kubeInformers := kinformers.NewSharedInformerFactoryWithOptions(kubeClient, sdn.proxyConfig.IPTables.SyncPeriod.Duration,
-		kinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = labelSelector.String()
-		}))
-
+	kubeInformers := kinformers.NewSharedInformerFactory(kubeClient, defaultInformerResyncPeriod)
 	osdnInformers := osdninformers.NewSharedInformerFactory(osdnClient, defaultInformerResyncPeriod)
 
 	sdn.informers = &sdnInformers{

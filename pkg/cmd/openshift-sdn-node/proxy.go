@@ -61,7 +61,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		klog.Fatalf("Unable to create proxy wrapper: %v", err)
 	}
 
-	err = startProxyServer(s, sdn.informers.kubeInformers)
+	err = startProxyServer(s)
 	if err != nil {
 		klog.Fatalf("Unable to start proxy: %v", err)
 	}

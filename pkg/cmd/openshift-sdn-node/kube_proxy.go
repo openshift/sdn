@@ -10,6 +10,9 @@ import (
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -26,6 +29,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/proxy"
+	"k8s.io/kubernetes/pkg/proxy/apis"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
@@ -50,6 +54,7 @@ const (
 // This is a stripped-down copy of ProxyServer from
 // k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be kept in sync with that.
 type ProxyServer struct {
+	Client             clientset.Interface
 	IptInterface       utiliptables.Interface
 	execer             exec.Interface
 	Broadcaster        events.EventBroadcaster
@@ -168,6 +173,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 	}
 
 	return &ProxyServer{
+		Client:             client,
 		IptInterface:       iptInterface,
 		execer:             execer,
 		Broadcaster:        eventBroadcaster,
@@ -251,7 +257,7 @@ func serveMetrics(bindAddress, proxyMode string, enableProfiling bool, errCh cha
 // startProxyServer starts the service proxy. This is a modified version of
 // ProxyServer.Run() from k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be
 // kept in sync with that.
-func startProxyServer(s *ProxyServer, informerFactory informers.SharedInformerFactory) error {
+func startProxyServer(s *ProxyServer) error {
 	// SDNMISSING: upstream handles the --oom-score-adj flag here
 
 	if s.Broadcaster != nil {
@@ -272,8 +278,24 @@ func startProxyServer(s *ProxyServer, informerFactory informers.SharedInformerFa
 	// --conntrack-tcp-timeout-close-wait, and --conntrack-tcp-timeout-close-wait
 	// flags here.
 
-	// SDNMISSING: upstream sets up its own informers here (and starts them after the
-	// next section).
+	noProxyName, err := labels.NewRequirement(apis.LabelServiceProxyName, selection.DoesNotExist, nil)
+	if err != nil {
+		return err
+	}
+
+	noHeadlessEndpoints, err := labels.NewRequirement(v1.IsHeadlessService, selection.DoesNotExist, nil)
+	if err != nil {
+		return err
+	}
+
+	labelSelector := labels.NewSelector()
+	labelSelector = labelSelector.Add(*noProxyName, *noHeadlessEndpoints)
+
+	// Make informers that filter out objects that want a non-default service proxy.
+	informerFactory := informers.NewSharedInformerFactoryWithOptions(s.Client, s.ConfigSyncPeriod,
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = labelSelector.String()
+		}))
 
 	// Create configs (i.e. Watches for Services and Endpoints or EndpointSlices)
 	// Note: RegisterHandler() calls need to happen before creation of Sources because sources
@@ -292,6 +314,10 @@ func startProxyServer(s *ProxyServer, informerFactory informers.SharedInformerFa
 		endpointsConfig.RegisterEventHandler(s.Proxier)
 		go endpointsConfig.Run(wait.NeverStop)
 	}
+
+	// This has to start after the calls to NewServiceConfig and NewEndpointsConfig because those
+	// functions must configure their shared informer event handlers first.
+	informerFactory.Start(wait.NeverStop)
 
 	// SDNMISSING: upstream handles features.TopologyAwareHints here
 
