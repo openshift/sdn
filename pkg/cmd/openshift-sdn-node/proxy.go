@@ -13,8 +13,8 @@ import (
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	proxyutiliptables "k8s.io/kubernetes/pkg/proxy/util/iptables"
-	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 
+	sdnnode "github.com/openshift/sdn/pkg/network/node"
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/network/proxy/unidler"
 )
@@ -120,11 +120,21 @@ func detectNodeIP(config *kubeproxyconfig.KubeProxyConfiguration, sdnNodeIP stri
 	return net.ParseIP(sdnNodeIP)
 }
 
-func getLocalDetector(config *kubeproxyconfig.KubeProxyConfiguration, iptInterface utiliptables.Interface) (proxyutiliptables.LocalTrafficDetector, error) {
-	if config.ClusterCIDR == "" {
-		klog.Warningf("Kubeproxy does not support multiple cluster CIDRs, configuring no-op local traffic detector")
-		return proxyutiliptables.NewNoOpLocalDetector(), nil
-	} else {
-		return proxyutiliptables.NewDetectLocalByCIDR(config.ClusterCIDR, iptInterface)
-	}
+type sdnLocalDetector struct {
+}
+
+func (d *sdnLocalDetector) IsImplemented() bool {
+	return true
+}
+
+func (d *sdnLocalDetector) JumpIfLocal(args []string, toChain string) []string {
+	return append(args, "-i", sdnnode.Tun0, "-j", toChain)
+}
+
+func (d *sdnLocalDetector) JumpIfNotLocal(args []string, toChain string) []string {
+	return append(args, "!", "-i", sdnnode.Tun0, "-j", toChain)
+}
+
+func getLocalDetector() proxyutiliptables.LocalTrafficDetector {
+	return &sdnLocalDetector{}
 }

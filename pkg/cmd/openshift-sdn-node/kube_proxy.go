@@ -32,7 +32,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
-	proxyutiliptables "k8s.io/kubernetes/pkg/proxy/util/iptables"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	"k8s.io/utils/exec"
@@ -119,11 +118,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 			return nil, fmt.Errorf("unable to read IPTables MasqueradeBit from config")
 		}
 
-		var localDetector proxyutiliptables.LocalTrafficDetector
-		localDetector, err = getLocalDetector(config, iptInterface)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create proxier: %v", err)
-		}
+		localDetector := getLocalDetector()
 
 		proxier, err = iptables.NewProxier(
 			iptInterface,
