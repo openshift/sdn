@@ -32,7 +32,7 @@ Network Operator creates the CRD definitions.
 
 ## The OpenShift SDN Controller
 
-The [network controller](./cmd/network-controller) is run on
+The [network controller](./cmd/openshift-sdn-controller) is run on
 the masters to handle cluster-level processing:
 
   - Creating `NetNamespace` objects corresponding to `Namespace`s
@@ -47,13 +47,13 @@ Operator.
 
 ## OpenShift SDN Nodes
 
-The [`openshift-sdn` daemon](./cmd/openshift-sdn) runs on every node,
+The [`openshift-sdn` daemon](./cmd/openshift-sdn-node) runs on every node,
 reads the `ClusterNetwork` object and the `HostSubnet` object for the
 node it is running on, and uses that information to configure the node
 as part of the cluster. This includes:
 
   - Providing networking to Pods, as requested by the [`openshift-sdn`
-    CNI plugin](./cmd/sdn-cni-plugin) (which is a small shim that just
+    CNI plugin](./cmd/openshift-sdn-cni) (which is a small shim that just
     talks to the daemon).
 
   - Setting up the OVS bridge, and managing OVS flows as needed for
@@ -68,3 +68,6 @@ as part of the cluster. This includes:
   - Implementing the Service proxy via a built-in copy of kube-proxy,
     in either the "userspace" mode, "iptables" mode, or the hybrid
     "unidling" mode.
+
+## Development 
+See [Development workflow](./docs/source/openshift_sdn/workflow.rst)
