@@ -25,6 +25,8 @@ type HybridizableProxy interface {
 
 	SyncProxyRules()
 	SetSyncRunner(b *async.BoundedFrequencyRunner)
+
+	ReloadIPTables()
 }
 
 // hybridProxierService is our cached state for a given Service/Endpoints.
@@ -464,4 +466,9 @@ func (p *HybridProxier) SyncProxyRules() {
 }
 
 func (p *HybridProxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
+}
+
+func (p *HybridProxier) ReloadIPTables() {
+	p.mainProxy.ReloadIPTables()
+	p.unidlingProxy.ReloadIPTables()
 }

@@ -136,7 +136,7 @@ func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 }
 
 func (proxy *OsdnProxy) ReloadIPTables() error {
-	proxy.Sync()
+	proxy.baseProxy.ReloadIPTables()
 	return nil
 }
 

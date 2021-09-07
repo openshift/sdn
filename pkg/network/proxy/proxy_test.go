@@ -247,6 +247,9 @@ func (tp *testProxy) SyncProxyRules() {
 func (tp *testProxy) SetSyncRunner(b *async.BoundedFrequencyRunner) {
 }
 
+func (tp *testProxy) ReloadIPTables() {
+}
+
 func mustParseCIDR(cidr string) *net.IPNet {
 	_, net, err := net.ParseCIDR(cidr)
 	if err != nil {
