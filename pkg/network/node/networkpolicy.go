@@ -26,6 +26,7 @@ import (
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/util/ovs"
+	"github.com/openshift/sdn/pkg/util/ranges"
 )
 
 const HostNetworkNamespace = "openshift-host-network"
@@ -720,20 +721,17 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 			npp.watchesAllPods = true
 			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector, dir)...)
 		} else if peer.IPBlock != nil {
+			// Network Policy has ipBlocks, allow traffic from/to those ips.
 			if !utilnet.IsIPv4CIDRString(peer.IPBlock.CIDR) {
 				// We don't support IPv6, so we don't need to do anything
 				// to allow IPv6 CIDRs.
 				continue
 			}
-			if peer.IPBlock.Except != nil {
-				// Currently IPBlocks with except rules are skipped.
-				klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", npp.policy.Name, npp.policy.Namespace)
-			} else {
-				// Network Policy has ipBlocks, allow traffic from/to those ips.
+			for _, cidr := range ranges.IPBlockToCIDRs(peer.IPBlock) {
 				if dir == ingressFlow {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", cidr))
 				} else {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", peer.IPBlock.CIDR))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", cidr))
 				}
 			}
 		}

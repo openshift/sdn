@@ -1023,8 +1023,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	// Add a policy with multiple ipBlocks, one of which will be ignored because
-	// of an "except" clause.
+	// Add a policy with multiple ipBlocks, including an "except" clause.
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1047,7 +1046,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 							IPBlock: &networkingv1.IPBlock{
 								CIDR: "192.168.1.0/24",
 								Except: []string{
-									"192.168.1.1",
+									"192.168.1.1/32",
 								},
 							},
 						},
@@ -1079,8 +1078,17 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesOwnPods:    false,
 			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=192.168.0.0/24"),
-				// There is no rule allowing 192.168.1.0/24 because we can't
-				// implement the exception.
+
+				// rule with except gets exploded to multiple flows
+				fmt.Sprintf("ip, nw_src=192.168.1.128/25"),
+				fmt.Sprintf("ip, nw_src=192.168.1.64/26"),
+				fmt.Sprintf("ip, nw_src=192.168.1.32/27"),
+				fmt.Sprintf("ip, nw_src=192.168.1.16/28"),
+				fmt.Sprintf("ip, nw_src=192.168.1.8/29"),
+				fmt.Sprintf("ip, nw_src=192.168.1.4/30"),
+				fmt.Sprintf("ip, nw_src=192.168.1.2/31"),
+				fmt.Sprintf("ip, nw_src=192.168.1.0/32"),
+
 				fmt.Sprintf("ip, nw_src=192.168.10.0/24"),
 				fmt.Sprintf("ip, nw_src=192.168.20.0/24"),
 			},
