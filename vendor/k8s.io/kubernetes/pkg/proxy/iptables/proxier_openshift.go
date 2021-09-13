@@ -23,3 +23,7 @@ func (p *Proxier) SyncProxyRules() {
 func (p *Proxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
 	p.syncRunner = b
 }
+
+func (p *Proxier) ReloadIPTables() {
+	// Ignore this; the iptables proxier has its own iptables.Monitor
+}
