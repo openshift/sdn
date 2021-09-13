@@ -657,6 +657,12 @@ func (np *networkPolicyPlugin) parsePortFlows(policy *networkingv1.NetworkPolicy
 		} else if port.Port.Type != intstr.Int {
 			klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unsupported named port %q", policy.Namespace, policy.Name, port.Port.StrVal)
 			continue
+		} else if port.EndPort != nil {
+			start := int(port.Port.IntVal)
+			end := int(*port.EndPort)
+			for _, portMask := range ranges.PortRangeToPortMasks(start, end) {
+				portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%s, ", protocol, portMask))
+			}
 		} else {
 			portNum = int(port.Port.IntVal)
 		}

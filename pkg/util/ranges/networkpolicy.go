@@ -2,6 +2,7 @@ package ranges
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -90,4 +91,25 @@ func rangesForIPBlock(ipBlock *networkingv1.IPBlock) []intRange {
 	}
 
 	return ranges
+}
+
+// PortRangeToPortMasks returns an array of port/mask strings corresponding to the given
+// start and end values.
+//
+// Here the problem is that we need ">=" and "<=", which OpenFlow doesn't have. So we have
+// to figure out how to express "tp_dst >= ${START} && tp_dst <= ${END}" as a series of
+// "tp_dst=${VALUE}/${MASK}" matches.
+//
+// (The naive implementation of port range matching would be to just check tp_dst against
+// each value from start to end, for a total of (end-start+1) rules. PortRangeToPortMasks
+// generates the same number of rules as the naive implementation when start==end or when
+// start is odd and end==start+1, but in all other cases it generates fewer total rules.)
+func PortRangeToPortMasks(start, end int) []string {
+	portRange := intRange{uint32(start), uint32(end)}
+	rangeMasks := portRange.toRangeMasks()
+	masks := make([]string, len(rangeMasks))
+	for i, rm := range rangeMasks {
+		masks[i] = fmt.Sprintf("0x%04x/0x%04x", uint16(rm.start), uint16(rm.mask))
+	}
+	return masks
 }

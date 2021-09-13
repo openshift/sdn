@@ -208,3 +208,66 @@ func TestIPBlockToCIDRs(t *testing.T) {
 		}
 	}
 }
+
+func TestPortRangeToPortMasks(t *testing.T) {
+	for i, tc := range []struct {
+		start  uint16
+		end    uint16
+		result []string
+	}{
+		{
+			start: 0,
+			end:   0,
+			result: []string{
+				"0x0000/0xffff",
+			},
+		},
+		{
+			start: 0,
+			end:   65535,
+			result: []string{
+				"0x0000/0x0000",
+			},
+		},
+		{
+			start: 0,
+			end:   1023,
+			result: []string{
+				"0x0000/0xfc00",
+			},
+		},
+		{
+			start: 1024,
+			end:   65535,
+			result: []string{
+				"0x0400/0xfc00",
+				"0x0800/0xf800",
+				"0x1000/0xf000",
+				"0x2000/0xe000",
+				"0x4000/0xc000",
+				"0x8000/0x8000",
+			},
+		},
+		{
+			start: 6000,
+			end:   6100,
+			result: []string{
+				"0x1770/0xfff0",
+				"0x1780/0xffc0",
+				"0x17c0/0xfff0",
+				"0x17d0/0xfffc",
+				"0x17d4/0xffff",
+			},
+		},
+	} {
+		masks := PortRangeToPortMasks(int(tc.start), int(tc.end))
+		if !reflect.DeepEqual(masks, tc.result) {
+			fmt.Printf("\t\t\tresult: []string{\n")
+			for _, mask := range masks {
+				fmt.Printf("\t\t\t\t%q,\n", mask)
+			}
+			fmt.Printf("\t\t\t},\n")
+			t.Fatalf("bad result for %d\nexpected %v\ngot      %v", i, tc.result, masks)
+		}
+	}
+}
