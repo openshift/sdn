@@ -250,67 +250,20 @@ func (p *HybridProxier) OnServiceSynced() {
 	p.mainProxy.OnServiceSynced()
 }
 
-func endpointsIfEmpty(endpoints *corev1.Endpoints) *corev1.Endpoints {
-	for _, subset := range endpoints.Subsets {
-		if len(subset.Addresses) > 0 {
-			return nil
-		}
-	}
-	return endpoints
-}
-
 func (p *HybridProxier) OnEndpointsAdd(endpoints *corev1.Endpoints) {
-	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	hsvc := p.getService(svcName)
-	defer p.releaseService(svcName)
-
-	hsvc.knownEndpoints = true
-	hsvc.emptyEndpoints = endpointsIfEmpty(endpoints)
-
-	klog.V(6).Infof("add ep %s", svcName)
-	p.mainProxy.OnEndpointsAdd(endpoints)
-	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsAdd(endpoints)
-	}
+	panic("not reached")
 }
 
 func (p *HybridProxier) OnEndpointsUpdate(oldEndpoints, endpoints *corev1.Endpoints) {
-	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	hsvc := p.getService(svcName)
-	defer p.releaseService(svcName)
-
-	hsvc.emptyEndpoints = endpointsIfEmpty(endpoints)
-
-	klog.V(6).Infof("update ep %s", svcName)
-	p.mainProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
-	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsUpdate(oldEndpoints, endpoints)
-	} else if hsvc.unidlingPeriodHasExpired() {
-		p.unidlingProxy.OnEndpointsDelete(oldEndpoints)
-		hsvc.unidledAt = nil
-	}
+	panic("not reached")
 }
 
 func (p *HybridProxier) OnEndpointsDelete(endpoints *corev1.Endpoints) {
-	svcName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	hsvc := p.getService(svcName)
-	defer p.releaseService(svcName)
-
-	hsvc.knownEndpoints = false
-	hsvc.emptyEndpoints = nil
-
-	klog.V(6).Infof("del ep %s", svcName)
-	p.mainProxy.OnEndpointsDelete(endpoints)
-	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsDelete(endpoints)
-		hsvc.unidledAt = nil
-	}
+	panic("not reached")
 }
 
 func (p *HybridProxier) OnEndpointsSynced() {
-	p.unidlingProxy.OnEndpointsSynced()
-	p.mainProxy.OnEndpointsSynced()
-	klog.V(6).Infof("endpoints synced")
+	panic("not reached")
 }
 
 func endpointSliceServiceName(slice *discoveryv1.EndpointSlice) string {
