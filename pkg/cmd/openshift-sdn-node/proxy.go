@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/pkg/features"
+	"k8s.io/kubernetes/pkg/proxy"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
@@ -68,13 +69,49 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		return
 	}
 
+	s, err := sdn.newProxyServer()
+	if err != nil {
+		klog.Fatalf("Unable to create proxy server: %v", err)
+	}
+
+	err = sdn.wrapProxy(s, waitChan)
+	if err != nil {
+		klog.Fatalf("Unable to create proxy wrapper: %v", err)
+	}
+
+	err = sdn.startProxyServer(s)
+	if err != nil {
+		klog.Fatalf("Unable to start proxy: %v", err)
+	}
+
+	klog.Infof("Started Kubernetes Proxy on %s", sdn.proxyConfig.BindAddress)
+}
+
+// This is a stripped-down copy of ProxyServer from
+// k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be kept in sync with that.
+type ProxyServer struct {
+	IptInterface      utiliptables.Interface
+	execer            utilexec.Interface
+	Proxier           proxy.Provider
+	UseEndpointSlices bool
+	HealthzServer     healthcheck.ProxierHealthUpdater
+
+	// Not in the upstream version
+	baseProxy      sdnproxy.HybridizableProxy
+	enableUnidling bool
+}
+
+// newProxyServer creates the service proxy. This is a modified version of
+// newProxyServer() from k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go, and should
+// be kept in sync with that.
+func (sdn *openShiftSDN) newProxyServer() (*ProxyServer, error) {
 	bindAddr := net.ParseIP(sdn.proxyConfig.BindAddress)
 	nodeAddr := bindAddr
 
 	if nodeAddr.IsUnspecified() {
 		nodeAddr = net.ParseIP(sdn.nodeIP)
 		if nodeAddr == nil {
-			klog.Fatalf("Unable to parse node IP %q", sdn.nodeIP)
+			return nil, fmt.Errorf("unable to parse node IP %q", sdn.nodeIP)
 		}
 	}
 
@@ -108,7 +145,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 	usingEndpointSlices := false
 	var err error
 
-	var proxier, unidlingProxy sdnproxy.HybridizableProxy
+	var proxier sdnproxy.HybridizableProxy
 	switch string(sdn.proxyConfig.Mode) {
 	case "unidling+iptables":
 		enableUnidling = true
@@ -119,7 +156,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 
 		if sdn.proxyConfig.IPTables.MasqueradeBit == nil {
 			// IPTablesMasqueradeBit must be specified or defaulted.
-			klog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
+			return nil, fmt.Errorf("unable to read IPTablesMasqueradeBit from config")
 		}
 
 		var localDetector proxyutiliptables.LocalTrafficDetector
@@ -129,7 +166,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		} else {
 			localDetector, err = proxyutiliptables.NewDetectLocalByCIDR(sdn.proxyConfig.ClusterCIDR, iptInterface)
 			if err != nil {
-				klog.Fatalf("Unable to configure local traffic detector: %v", err)
+				return nil, fmt.Errorf("unable to configure local traffic detector: %v", err)
 			}
 		}
 
@@ -151,7 +188,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		metrics.RegisterMetrics()
 
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
+			return nil, err
 		}
 		// No turning back. Remove artifacts that might still exist from the userspace Proxier.
 		klog.V(0).Info("Tearing down userspace rules.")
@@ -172,16 +209,32 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.proxyConfig.NodePortAddresses,
 		)
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
+			return nil, err
 		}
 		// Remove artifacts from the pure-iptables Proxier.
 		klog.V(0).Info("Tearing down pure-iptables proxy rules.")
 		iptables.CleanupLeftovers(iptInterface)
 	default:
-		klog.Fatalf("Unknown proxy mode %q", sdn.proxyConfig.Mode)
+		return nil, fmt.Errorf("unknown proxy mode %q", sdn.proxyConfig.Mode)
 	}
 
-	if enableUnidling {
+	return &ProxyServer{
+		IptInterface:      iptInterface,
+		execer:            execer,
+		HealthzServer:     healthzServer,
+		UseEndpointSlices: usingEndpointSlices,
+
+		baseProxy:      proxier,
+		enableUnidling: enableUnidling,
+	}, nil
+}
+
+// wrapProxy wraps the created proxier with the unidling and firewalling proxies
+func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
+	var err error
+	var unidlingProxy sdnproxy.HybridizableProxy
+
+	if s.enableUnidling {
 		// FIXME: openshift-controller-manager assumes the LastTimestamp field in
 		// the Event will be set, which is only true if we use the legacy
 		// corev1.Event API rather than the new eventsv1.Event API. So we need a
@@ -193,25 +246,33 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		signaler := unidler.NewEventSignaler(unidlingRecorder)
 		unidlingProxy, err = unidler.NewUnidlerProxier(
 			userspace.NewLoadBalancerRR(),
-			bindAddr,
-			iptInterface,
-			execer,
-			*portRange,
+			net.ParseIP(sdn.proxyConfig.BindAddress),
+			s.IptInterface,
+			s.execer,
+			*utilnet.ParsePortRangeOrDie(sdn.proxyConfig.PortRange),
 			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
 			sdn.proxyConfig.UDPIdleTimeout.Duration,
 			sdn.proxyConfig.NodePortAddresses,
 			signaler)
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
+			return err
 		}
 	}
 
-	sdn.osdnProxy.SetBaseProxies(proxier, unidlingProxy)
+	sdn.osdnProxy.SetBaseProxies(s.baseProxy, unidlingProxy)
 	if err := sdn.osdnProxy.Start(waitChan); err != nil {
-		klog.Fatalf("error: node proxy plugin startup failed: %v", err)
+		return err
 	}
 
+	s.Proxier = sdn.osdnProxy
+	return nil
+}
+
+// startProxyServer starts the service proxy. This is a modified version of
+// ProxyServer.Run() from k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be
+// kept in sync with that.
+func (sdn *openShiftSDN) startProxyServer(s *ProxyServer) error {
 	serviceConfig := pconfig.NewServiceConfig(
 		sdn.informers.kubeInformers.Core().V1().Services(),
 		sdn.proxyConfig.IPTables.SyncPeriod.Duration,
@@ -219,7 +280,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 	serviceConfig.RegisterEventHandler(sdn.osdnProxy)
 	go serviceConfig.Run(utilwait.NeverStop)
 
-	if usingEndpointSlices {
+	if s.UseEndpointSlices {
 		endpointSliceConfig := pconfig.NewEndpointSliceConfig(
 			sdn.informers.kubeInformers.Discovery().V1().EndpointSlices(),
 			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
@@ -237,7 +298,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// Start up healthz server
 	if len(sdn.proxyConfig.HealthzBindAddress) > 0 {
-		serveHealthz(healthzServer)
+		serveHealthz(s.HealthzServer)
 	}
 
 	// Start up a metrics server if requested
@@ -245,7 +306,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 
 	// periodically sync k8s iptables rules
 	go utilwait.Forever(sdn.osdnProxy.SyncLoop, 0)
-	klog.Infof("Started Kubernetes Proxy on %s", sdn.proxyConfig.BindAddress)
+	return nil
 }
 
 func (sdn *openShiftSDN) startMetricsServer() {
