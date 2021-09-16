@@ -11,7 +11,6 @@ import (
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -27,7 +26,6 @@ type masterVNIDMap struct {
 	ids          map[string]uint32
 	netIDManager *pnetid.Allocator
 
-	adminNamespaces  sets.String
 	allowRenumbering bool
 }
 
@@ -39,7 +37,6 @@ func newMasterVNIDMap(allowRenumbering bool) *masterVNIDMap {
 
 	return &masterVNIDMap{
 		netIDManager:     pnetid.NewInMemory(netIDRange),
-		adminNamespaces:  sets.NewString(metav1.NamespaceDefault),
 		ids:              make(map[string]uint32),
 		allowRenumbering: allowRenumbering,
 	}
@@ -70,13 +67,6 @@ func (vmap *masterVNIDMap) getVNIDCount(id uint32) int {
 	return count
 }
 
-func (vmap *masterVNIDMap) isAdminNamespace(nsName string) bool {
-	if vmap.adminNamespaces.Has(nsName) {
-		return true
-	}
-	return false
-}
-
 func (vmap *masterVNIDMap) markAllocatedNetID(netid uint32) error {
 	// Skip GlobalVNID, not part of netID allocation range
 	if netid < common.MinVNID {
@@ -102,7 +92,7 @@ func (vmap *masterVNIDMap) allocateNetID(nsName string) (uint32, bool, error) {
 
 	// NetNamespace not found, so allocate new NetID
 	var netid uint32
-	if vmap.isAdminNamespace(nsName) {
+	if nsName == metav1.NamespaceDefault {
 		netid = common.GlobalVNID
 	} else {
 		var err error

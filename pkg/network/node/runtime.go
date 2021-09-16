@@ -6,7 +6,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	kwait "k8s.io/apimachinery/pkg/util/wait"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	kubeletremote "k8s.io/kubernetes/pkg/kubelet/cri/remote"
@@ -23,31 +22,8 @@ func (node *OsdnNode) getRuntimeService() (kubeletapi.RuntimeService, error) {
 		return node.runtimeService, nil
 	}
 
-	// Kubelet starts asynchronously and when we get an Update op, kubelet may not have created runtime endpoint.
-	// So try couple of times before bailing out (~30 seconds timeout).
-	err := kwait.ExponentialBackoff(
-		kwait.Backoff{
-			Duration: 100 * time.Millisecond,
-			Factor:   1.2,
-			Steps:    24,
-		},
-		func() (bool, error) {
-			runtimeService, err := kubeletremote.NewRemoteRuntimeService(runtimeEndpoint, runtimeRequestTimeout)
-			if err != nil {
-				// Wait longer
-				return false, nil
-			}
-
-			// Ensure the runtime is actually alive; gRPC may create the client but
-			// it may not be responding to requests yet
-			if _, err := runtimeService.ListPodSandbox(&kruntimeapi.PodSandboxFilter{}); err != nil {
-				// Wait longer
-				return false, nil
-			}
-
-			node.runtimeService = runtimeService
-			return true, nil
-		})
+	var err error
+	node.runtimeService, err = kubeletremote.NewRemoteRuntimeService(runtimeEndpoint, runtimeRequestTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch runtime service: %v", err)
 	}

@@ -189,7 +189,6 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			rules: [][]string{
 				{"-p", "udp", "--dport", fmt.Sprintf("%d", n.vxlanPort), "-m", "comment", "--comment", "VXLAN incoming", "-j", "ACCEPT"},
 				{"-i", Tun0, "-m", "comment", "--comment", "from SDN to localhost", "-j", "ACCEPT"},
-				{"-i", "docker0", "-m", "comment", "--comment", "from docker to localhost", "-j", "ACCEPT"},
 			},
 		},
 		Chain{

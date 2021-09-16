@@ -130,11 +130,10 @@ func (hsw *hostSubnetWatcher) updateVXLANMulticastRules() error {
 
 func (node *OsdnNode) getLocalSubnet() (string, error) {
 	var subnet *osdnv1.HostSubnet
-	// If the HostSubnet doesn't already exist, it will be created by the SDN master in
-	// response to the kubelet registering itself with the master (which should be
-	// happening in another goroutine in parallel with this). Sometimes this takes
-	// unexpectedly long though, so give it plenty of time before returning an error
-	// (since that will cause the node process to exit).
+	// The HostSubnet should already have been created by the SDN master in response
+	// to the kubelet creating its Node. Sometimes this takes unexpectedly long
+	// though. (The timeout here is based on no-longer-correct assumptions and is
+	// probably far longer than it really needs to be, but whatever.)
 	backoff := utilwait.Backoff{
 		// ~2 mins total
 		Duration: time.Second,

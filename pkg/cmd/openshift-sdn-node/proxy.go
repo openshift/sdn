@@ -151,7 +151,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		metrics.RegisterMetrics()
 
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
+			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
 		}
 		// No turning back. Remove artifacts that might still exist from the userspace Proxier.
 		klog.V(0).Info("Tearing down userspace rules.")
@@ -172,7 +172,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.proxyConfig.NodePortAddresses,
 		)
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
+			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
 		}
 		// Remove artifacts from the pure-iptables Proxier.
 		klog.V(0).Info("Tearing down pure-iptables proxy rules.")
@@ -203,7 +203,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 			sdn.proxyConfig.NodePortAddresses,
 			signaler)
 		if err != nil {
-			klog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root (and if containerized, in the host network namespace as privileged) to use the service proxy: %v", err)
+			klog.Fatalf("error: Could not initialize Kubernetes Proxy %v", err)
 		}
 	}
 

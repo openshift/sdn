@@ -6,7 +6,6 @@ require (
 	github.com/containernetworking/cni v0.8.1
 	github.com/containernetworking/plugins v0.6.0
 	github.com/coreos/go-iptables v0.0.0-00010101000000-000000000000 // indirect
-	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
@@ -25,7 +24,6 @@ require (
 	k8s.io/component-base v1.22.0-rc.0
 	k8s.io/cri-api v1.22.0-rc.0
 	k8s.io/klog/v2 v2.9.0
-	k8s.io/kubectl v1.22.0-rc.0
 	k8s.io/kubernetes v1.22.0-rc.0 // actually sdn-4.10-kubernetes-1.22.0-rc.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9 // same as sdn-4.10-kubernetes-1.22.0-rc.0
 )
