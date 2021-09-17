@@ -279,5 +279,18 @@ func convertToRequestedVersion(stdinData []byte, result *current.Result) (types.
 
 func (p *cniPlugin) CmdDel(args *skel.CmdArgs) error {
 	_, err := p.doCNI("http://dummy/", newCNIRequest(args))
-	return err
+
+	delErr := ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
+		if link, err := netlink.LinkByName(args.IfName); err == nil {
+			return netlink.LinkDel(link)
+		} else {
+			return err
+		}
+	})
+
+	if err != nil {
+		return err
+	} else {
+		return delErr
+	}
 }
