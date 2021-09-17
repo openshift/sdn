@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -18,6 +19,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utiltrace "k8s.io/utils/trace"
 )
 
 type ovsController struct {
@@ -343,10 +345,14 @@ func (oc *ovsController) cleanupPodFlows(podIP net.IP) error {
 }
 
 func (oc *ovsController) SetUpPod(sandboxID, hostVeth string, podIP net.IP, vnid uint32) (int, error) {
+	trace := utiltrace.New("SetUpPod")
 	ofport, err := oc.ensureOvsPort(hostVeth, sandboxID, podIP.String())
+	trace.LogIfLong(time.Second)
 	if err != nil {
 		return -1, err
 	}
+	trace = utiltrace.New("setupPodFlows")
+	defer trace.LogIfLong(time.Second)
 	return ofport, oc.setupPodFlows(ofport, podIP, vnid)
 }
 

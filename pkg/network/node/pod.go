@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 	kcontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	kbandwidth "k8s.io/kubernetes/pkg/util/bandwidth"
+	utiltrace "k8s.io/utils/trace"
 
 	"github.com/containernetworking/cni/pkg/invoke"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
@@ -210,14 +211,17 @@ func (m *podManager) waitRequest(request *cniserver.PodRequest) *cniserver.PodRe
 // Enqueue incoming pod requests from the CNI server, wait on the result,
 // and return that result to the CNI client
 func (m *podManager) handleCNIRequest(request *cniserver.PodRequest) ([]byte, error) {
-	klog.V(5).Infof("Dispatching pod network request %v", request)
+	klog.Infof("Dispatching pod network request %v", request)
 	m.addRequest(request)
 	result := m.waitRequest(request)
-	klog.V(5).Infof("Returning pod network request %v, result %s err %v", request, string(result.Response), result.Err)
+	klog.Infof("Returning pod network request %v, result %s err %v", request, string(result.Response), result.Err)
 	return result.Response, result.Err
 }
 
 func (m *podManager) updateLocalMulticastRulesWithLock(vnid uint32) {
+	trace := utiltrace.New("updateLocalMulticastRulesWithLock")
+	defer trace.LogIfLong(time.Second)
+
 	var ofports []int
 	enabled := m.policy.GetMulticastEnabled(vnid)
 	if enabled {
@@ -253,6 +257,7 @@ func (m *podManager) processCNIRequests() {
 }
 
 func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.PodResult {
+	klog.Infof("processRequest(%v)", request)
 	pk := getPodKey(request.PodNamespace, request.PodName)
 	result := &cniserver.PodResult{}
 	switch request.Command {
@@ -261,7 +266,9 @@ func (m *podManager) processRequest(request *cniserver.PodRequest) *cniserver.Po
 		if ipamResult != nil {
 			result.Response, err = json.Marshal(ipamResult)
 			if err == nil {
+				trace := utiltrace.New("getting runningPodsLock")
 				m.runningPodsLock.Lock()
+				trace.LogIfLong(time.Second)
 				defer m.runningPodsLock.Unlock()
 				m.runningPods[pk] = runningPod
 				if m.ovs != nil {
@@ -471,7 +478,9 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 		}
 	}()
 
+	trace := utiltrace.New("get pod")
 	v1Pod, err := m.kClient.CoreV1().Pods(req.PodNamespace).Get(context.TODO(), req.PodName, metav1.GetOptions{})
+	trace.LogIfLong(time.Second)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -479,7 +488,9 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 	var ipamResult cnitypes.Result
 	podIP := net.ParseIP(req.AssignedIP)
 	if podIP == nil {
+		trace = utiltrace.New("ipamAdd")
 		ipamResult, podIP, err = m.ipamAdd(req.Netns, req.SandboxID)
+		trace.LogIfLong(time.Second)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to run IPAM for %v: %v", req.SandboxID, err)
 		}
@@ -488,20 +499,29 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 		}
 	}
 
+	trace = utiltrace.New("GetVNID")
 	vnid, err := m.policy.GetVNID(req.PodNamespace)
+	trace.LogIfLong(time.Second)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	trace = utiltrace.New("SetUpPod")
 	ofport, err := m.ovs.SetUpPod(req.SandboxID, req.HostVeth, podIP, vnid)
+	trace.LogIfLong(time.Second)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := setupPodBandwidth(m.ovs, v1Pod, req.HostVeth, req.SandboxID); err != nil {
+	trace = utiltrace.New("setupPodBandwidth")
+	err = setupPodBandwidth(m.ovs, v1Pod, req.HostVeth, req.SandboxID)
+	trace.LogIfLong(time.Second)
+	if err != nil {
 		return nil, nil, err
 	}
 
+	trace = utiltrace.New("EnsureVNIDRules")
 	m.policy.EnsureVNIDRules(vnid)
+	trace.LogIfLong(time.Second)
 	success = true
 	klog.Infof("CNI_ADD %s/%s got IP %s, ofport %d", req.PodNamespace, req.PodName, podIP, ofport)
 	return ipamResult, &runningPod{vnid: vnid, ofport: ofport}, nil
