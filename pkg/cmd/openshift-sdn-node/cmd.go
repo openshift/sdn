@@ -35,7 +35,7 @@ type openShiftSDN struct {
 	proxyConfigFilePath string
 	proxyConfig         *kubeproxyconfig.KubeProxyConfiguration
 
-	informers   *informers
+	informers   *sdnInformers
 	osdnNode    *sdnnode.OsdnNode
 	sdnRecorder record.EventRecorder
 	osdnProxy   *sdnproxy.OsdnProxy
