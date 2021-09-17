@@ -19,3 +19,8 @@ func (p *Proxier) SyncProxyRules() {
 func (p *Proxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
 	p.syncRunner = b
 }
+
+func (p *Proxier) ReloadIPTables() {
+	p.forceReload = true
+	p.syncProxyRules()
+}
