@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	libcontaineruserns "github.com/opencontainers/runc/libcontainer/userns"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -233,7 +235,7 @@ func NewCustomProxier(loadBalancer LoadBalancer, listenIP net.IP, iptables iptab
 		}
 	}
 
-	err = setRLimit(64 * 1000)
+	err = unix.Setrlimit(unix.RLIMIT_NOFILE, &unix.Rlimit{Max: 64 * 1000, Cur: 64 * 1000})
 	if err != nil {
 		if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.KubeletInUserNamespace) && libcontaineruserns.RunningInUserNS() {
 			klog.V(2).InfoS("Failed to set open file handler limit to 64000 (running in UserNS, ignoring)", "err", err)
@@ -713,6 +715,22 @@ func (proxier *Proxier) OnEndpointsSynced() {
 	// service event handler on startup with large numbers
 	// of initial objects
 	go proxier.syncProxyRules()
+}
+
+// SyncProxyRules is part of sdnproxy.HybridizableProxy
+func (p *Proxier) SyncProxyRules() {
+	p.syncProxyRules()
+}
+
+// SetSyncRunner is part of sdnproxy.HybridizableProxy
+func (p *Proxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
+	p.syncRunner = b
+}
+
+// ReloadIPTables is part of sdnproxy.HybridizableProxy
+func (p *Proxier) ReloadIPTables() {
+	p.forceReload = true
+	p.syncProxyRules()
 }
 
 func sameConfig(info *ServiceInfo, service *v1.Service, port *v1.ServicePort) bool {
