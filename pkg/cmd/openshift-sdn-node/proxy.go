@@ -82,7 +82,6 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 		unidlingBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: sdn.informers.kubeClient.CoreV1().Events("")})
 		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
 
-		signaler := unidler.NewEventSignaler(unidlingRecorder)
 		unidlingProxy, err = unidler.NewUnidlerProxier(
 			unidler.NewLoadBalancerRR(),
 			net.ParseIP(sdn.proxyConfig.BindAddress),
@@ -93,7 +92,7 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
 			sdn.proxyConfig.UDPIdleTimeout.Duration,
 			sdn.proxyConfig.NodePortAddresses,
-			signaler)
+			unidlingRecorder)
 		if err != nil {
 			return err
 		}

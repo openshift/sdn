@@ -114,7 +114,7 @@ var (
 	needPodsTickLen     = 5 * time.Second
 )
 
-func newUnidlerSocket(protocol corev1.Protocol, ip net.IP, port int, signaler NeedPodsSignaler) (ProxySocket, error) {
+func newUnidlerSocket(protocol corev1.Protocol, ip net.IP, port int, signaler *NeedPodsSignaler) (ProxySocket, error) {
 	host := ""
 	if ip != nil {
 		host = ip.String()
@@ -146,7 +146,7 @@ func newUnidlerSocket(protocol corev1.Protocol, ip net.IP, port int, signaler Ne
 type tcpUnidlerSocket struct {
 	net.Listener
 	port     int
-	signaler NeedPodsSignaler
+	signaler *NeedPodsSignaler
 }
 
 func (tcp *tcpUnidlerSocket) ListenPort() int {
@@ -302,7 +302,7 @@ func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *S
 type udpUnidlerSocket struct {
 	*net.UDPConn
 	port     int
-	signaler NeedPodsSignaler
+	signaler *NeedPodsSignaler
 }
 
 func (udp *udpUnidlerSocket) ListenPort() int {
