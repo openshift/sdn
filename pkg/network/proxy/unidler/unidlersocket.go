@@ -10,7 +10,6 @@ import (
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 )
@@ -52,7 +51,7 @@ func newConnectionList(maxSize int, tickSize time.Duration, timeout time.Duratio
 func (l *connectionList) Add(conn net.Conn) {
 	if len(l.conns) >= l.maxSize {
 		// TODO: look for closed connections
-		utilruntime.HandleError(fmt.Errorf("max connections exceeded while waiting for idled service %s to awaken, dropping oldest", l.svcName))
+		klog.Errorf("Max connections exceeded while waiting for idled service %s to awaken, dropping oldest", l.svcName)
 		var oldConn net.Conn
 		oldConn, l.conns = l.conns[0], l.conns[1:]
 		oldConn.Close()
@@ -78,7 +77,7 @@ func (l *connectionList) cleanOldConnections() {
 	if cleanInd > 0 {
 		oldConns := l.conns[:cleanInd]
 		l.conns = l.conns[cleanInd:]
-		utilruntime.HandleError(fmt.Errorf("timed out %v connections while waiting for idled service %s to awaken.", len(oldConns), l.svcName))
+		klog.Errorf("Timed out %v connections while waiting for idled service %s to awaken.", len(oldConns), l.svcName)
 
 		for _, conn := range oldConns {
 			conn.Close()
@@ -187,7 +186,7 @@ func (tcp *tcpUnidlerSocket) acceptConns(ch chan<- net.Conn, svcInfo *userspace.
 				// Then the service port was just closed so the accept failure is to be expected.
 				return
 			}
-			utilruntime.HandleError(fmt.Errorf("Accept failed: %v", err))
+			klog.Errorf("Accept failed: %v", err)
 			continue
 		}
 
@@ -278,7 +277,7 @@ func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *u
 		}
 	case <-time.NewTimer(needPodsWaitTimeout).C:
 		if allConns.Len() > 0 {
-			utilruntime.HandleError(fmt.Errorf("timed out %v TCP connections while waiting for idled service %s/%s:%s to awaken.", allConns.Len(), service.Namespace, service.Name, service.Port))
+			klog.Errorf("Timed out %v TCP connections while waiting for idled service %s/%s:%s to awaken.", allConns.Len(), service.Namespace, service.Name, service.Port)
 			allConns.Clear()
 		}
 		return
@@ -289,7 +288,7 @@ func (tcp *tcpUnidlerSocket) ProxyLoop(service proxy.ServicePortName, svcInfo *u
 		klog.V(3).Infof("Accepted TCP connection from %v to %v", inConn.RemoteAddr(), inConn.LocalAddr())
 		outConn, err := userspace.TryConnectEndpoints(service, inConn.(*net.TCPConn).RemoteAddr(), "tcp", loadBalancer)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Failed to connect to balancer: %v", err))
+			klog.Errorf("Failed to connect to balancer: %v", err)
 			inConn.Close()
 			continue
 		}
@@ -333,7 +332,7 @@ func (udp *udpUnidlerSocket) readFromSock(buffer []byte, svcInfo *userspace.Serv
 				return true
 			}
 		}
-		utilruntime.HandleError(fmt.Errorf("ReadFrom failed, exiting ProxyLoop: %v", err))
+		klog.Errorf("ReadFrom failed, exiting ProxyLoop: %v", err)
 		return false
 	}
 

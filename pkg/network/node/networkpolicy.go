@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -262,7 +261,7 @@ func (np *networkPolicyPlugin) syncNamespaceImmediately(npns *npNamespace) {
 	otx := np.node.oc.NewTransaction()
 	np.generateNamespaceFlows(otx, npns)
 	if err := otx.Commit(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error syncing OVS flows for namespace %q: %v", npns.name, err))
+		klog.Errorf("Error syncing OVS flows for namespace %q: %v", npns.name, err)
 	}
 }
 
@@ -282,7 +281,7 @@ func (np *networkPolicyPlugin) syncFlows() {
 		}
 	}
 	if err := otx.Commit(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error syncing OVS flows: %v", err))
+		klog.Errorf("Error syncing OVS flows: %v", err)
 	}
 }
 
@@ -414,7 +413,7 @@ func (np *networkPolicyPlugin) flushMatchCache(lsel *metav1.LabelSelector) {
 	selector, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
+		klog.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err)
 		return
 	}
 	delete(np.nsMatchCache, selector.String())
@@ -426,14 +425,14 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 	nsSel, err := metav1.LabelSelectorAsSelector(nsLabelSel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
+		klog.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err)
 		return nil
 	}
 
 	podSel, err := metav1.LabelSelectorAsSelector(podLabelSel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid PodSelector: %v", err))
+		klog.Errorf("ValidateNetworkPolicy() failure! Invalid PodSelector: %v", err)
 		return nil
 	}
 
@@ -442,7 +441,7 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 		pods, err := nsLister.Pods(namespace).List(podSel)
 		if err != nil {
 			// Shouldn't happen
-			utilruntime.HandleError(fmt.Errorf("Could not find matching pods in namespace %q: %v", namespace, err))
+			klog.Errorf("Could not find matching pods in namespace %q: %v", namespace, err)
 			continue
 		}
 		for _, pod := range pods {
@@ -460,7 +459,7 @@ func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector) []st
 	sel, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err))
+		klog.Errorf("ValidateNetworkPolicy() failure! Invalid NamespaceSelector: %v", err)
 		return peerFlows
 	}
 
@@ -476,14 +475,14 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 	sel, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("ValidateNetworkPolicy() failure! Invalid PodSelector: %v", err))
+		klog.Errorf("ValidateNetworkPolicy() failure! Invalid PodSelector: %v", err)
 		return ips
 	}
 
 	pods, err := np.node.kubeInformers.Core().V1().Pods().Lister().Pods(npns.name).List(sel)
 	if err != nil {
 		// Shouldn't happen
-		utilruntime.HandleError(fmt.Errorf("Could not find matching pods in namespace %q: %v", npns.name, err))
+		klog.Errorf("Could not find matching pods in namespace %q: %v", npns.name, err)
 		return ips
 	}
 	for _, pod := range pods {
@@ -649,7 +648,7 @@ func (np *networkPolicyPlugin) handleAddOrUpdateNetworkPolicy(obj, _ interface{}
 
 	vnid, err := np.vnids.WaitAndGetVNID(policy.Namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not find VNID for NetworkPolicy %s/%s", policy.Namespace, policy.Name))
+		klog.Errorf("Could not find VNID for NetworkPolicy %s/%s", policy.Namespace, policy.Name)
 		return
 	}
 
@@ -671,7 +670,7 @@ func (np *networkPolicyPlugin) handleDeleteNetworkPolicy(obj interface{}) {
 
 	vnid, err := np.vnids.WaitAndGetVNID(policy.Namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not find VNID for NetworkPolicy %s/%s", policy.Namespace, policy.Name))
+		klog.Errorf("Could not find VNID for NetworkPolicy %s/%s", policy.Namespace, policy.Name)
 		return
 	}
 

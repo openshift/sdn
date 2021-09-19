@@ -8,7 +8,6 @@ import (
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
@@ -48,7 +47,7 @@ type EgressDNS struct {
 func NewEgressDNS(ipv4, ipv6 bool) (*EgressDNS, error) {
 	dnsInfo, err := NewDNS("/etc/resolv.conf", ipv4, ipv6)
 	if err != nil {
-		utilruntime.HandleError(err)
+		klog.Errorf("Error creating EgressDNS: %v", err)
 		return nil, err
 	}
 	return &EgressDNS{
@@ -72,7 +71,7 @@ func (e *EgressDNS) Add(policy osdnv1.EgressNetworkPolicy) {
 				e.dnsNamesToPolicies[rule.To.DNSName] = sets.NewString(string(policy.UID))
 				//only call Add if the dnsName doesn't exist in the dnsNamesToPolicies
 				if err := e.dns.Add(rule.To.DNSName); err != nil {
-					utilruntime.HandleError(err)
+					klog.Errorf("Error adding EgressNetworkPolicy DNSName rule: %v", err)
 				}
 				e.signalAdded()
 			} else {

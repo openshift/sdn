@@ -9,7 +9,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 
@@ -85,12 +84,12 @@ func (eip *egressIPWatcher) Synced() {
 	}
 	label, err := egressIPLabel(link)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not check for stale egress IPs: %v", err))
+		klog.Errorf("Could not check for stale egress IPs: %v", err)
 		return
 	}
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not check for stale egress IPs: %v", err))
+		klog.Errorf("Could not check for stale egress IPs: %v", err)
 		return
 	}
 
@@ -100,7 +99,7 @@ func (eip *egressIPWatcher) Synced() {
 			klog.Infof("Cleaning up stale egress IP %s", addr.IP.String())
 			err = netlink.AddrDel(link, &addr)
 			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("Could not clean up stale egress IP: %v", err))
+				klog.Errorf("Could not clean up stale egress IP: %v", err)
 			}
 		}
 	}
@@ -135,7 +134,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) 
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
 		if err := eip.assignEgressIP(egressIP, mark); err != nil {
-			utilruntime.HandleError(fmt.Errorf("Error assigning Egress IP %q: %v", egressIP, err))
+			klog.Errorf("Error assigning Egress IP %q: %v", egressIP, err)
 		}
 	} else {
 		eip.addEgressIP(nodeIP, egressIP)
@@ -147,7 +146,7 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 		mark := eip.iptablesMark[egressIP]
 		delete(eip.iptablesMark, egressIP)
 		if err := eip.releaseEgressIP(egressIP, mark); err != nil {
-			utilruntime.HandleError(fmt.Errorf("Error releasing Egress IP %q: %v", egressIP, err))
+			klog.Errorf("Error releasing Egress IP %q: %v", egressIP, err)
 		}
 	} else {
 		eip.removeEgressIP(nodeIP, egressIP)
@@ -253,13 +252,13 @@ func (eip *egressIPWatcher) UpdateEgressCIDRs() {
 
 func (eip *egressIPWatcher) SetNamespaceEgressNormal(vnid uint32) {
 	if err := eip.oc.SetNamespaceEgressNormal(vnid); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err))
+		klog.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err)
 	}
 }
 
 func (eip *egressIPWatcher) SetNamespaceEgressDropped(vnid uint32) {
 	if err := eip.oc.SetNamespaceEgressDropped(vnid); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err))
+		klog.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err)
 	}
 }
 
@@ -269,7 +268,7 @@ func (eip *egressIPWatcher) SetNamespaceEgressViaEgressIPs(vnid uint32, activeEg
 		egressIPsMetaData = append(egressIPsMetaData, egressIPMetaData{nodeIP: egressIPAssignment.NodeIP, packetMark: eip.iptablesMark[egressIPAssignment.EgressIP]})
 	}
 	if err := eip.oc.SetNamespaceEgressViaEgressIPs(vnid, egressIPsMetaData); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err))
+		klog.Errorf("Error updating Namespace egress rules for VNID %d: %v", vnid, err)
 	}
 }
 

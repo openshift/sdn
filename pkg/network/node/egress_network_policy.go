@@ -10,7 +10,6 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 )
@@ -66,7 +65,7 @@ func (plugin *OsdnNode) handleDeleteEgressNetworkPolicy(obj interface{}) {
 func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *osdnv1.EgressNetworkPolicy, eventType watch.EventType) {
 	vnid, err := plugin.policy.GetVNID(policy.Namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not find netid for namespace %q: %v", policy.Namespace, err))
+		klog.Errorf("Could not find netid for namespace %q: %v", policy.Namespace, err)
 		return
 	}
 

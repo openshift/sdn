@@ -2,12 +2,10 @@ package master
 
 import (
 	"context"
-	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
@@ -74,7 +72,7 @@ func Start(kClient kclientset.Interface,
 		return err
 	}
 	if err = master.checkClusterNetworkAgainstClusterObjects(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Cluster contains objects incompatible with ClusterNetwork: %v", err))
+		klog.Errorf("Cluster contains objects incompatible with ClusterNetwork: %v", err)
 	}
 
 	// FIXME: this is required to register informers for the types we care about to ensure the informers are started.

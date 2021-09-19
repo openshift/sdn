@@ -1,13 +1,12 @@
 package common
 
 import (
-	"fmt"
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	kcache "k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 )
 
 type InformerAddOrUpdateFunc func(interface{}, interface{}, watch.EventType)
@@ -28,13 +27,13 @@ func InformerFuncs(objType runtime.Object, addOrUpdateFunc InformerAddOrUpdateFu
 			if reflect.TypeOf(objType) != reflect.TypeOf(obj) {
 				tombstone, ok := obj.(kcache.DeletedFinalStateUnknown)
 				if !ok {
-					utilruntime.HandleError(fmt.Errorf("Couldn't get object from tombstone: %+v", obj))
+					klog.Errorf("Couldn't get object from tombstone: %+v", obj)
 					return
 				}
 
 				obj = tombstone.Obj
 				if reflect.TypeOf(objType) != reflect.TypeOf(obj) {
-					utilruntime.HandleError(fmt.Errorf("Tombstone contained object, expected resource type: %v but got: %v", reflect.TypeOf(objType), reflect.TypeOf(obj)))
+					klog.Errorf("Tombstone contained object, expected resource type: %v but got: %v", reflect.TypeOf(objType), reflect.TypeOf(obj))
 					return
 				}
 			}

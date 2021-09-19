@@ -8,7 +8,6 @@ import (
 	"time"
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/exec"
@@ -418,7 +417,7 @@ func (ovsif *ovsExec) UpdateOVSMetrics() {
 	if err == nil {
 		metrics.OVSFlows.Set(float64(len(flows)))
 	} else {
-		utilruntime.HandleError(fmt.Errorf("failed to dump OVS flows for metrics: %v", err))
+		klog.Errorf("Failed to dump OVS flows for metrics: %v", err)
 	}
 }
 
