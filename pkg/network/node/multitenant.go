@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/openshift/library-go/pkg/network/networkutils"
@@ -13,7 +12,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -69,11 +67,11 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 
 	pods, err := mp.node.GetRunningPods(namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not get list of local pods in namespace %q: %v", namespace, err))
+		klog.Errorf("Could not get list of local pods in namespace %q: %v", namespace, err)
 	}
 	services, err := mp.node.kClient.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not get list of services in namespace %q: %v", namespace, err))
+		klog.Errorf("Could not get list of services in namespace %q: %v", namespace, err)
 		services = &corev1.ServiceList{}
 	}
 
@@ -82,7 +80,7 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 		for _, pod := range pods {
 			err = mp.node.UpdatePod(pod)
 			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("Could not update pod %q in namespace %q: %v", pod.Name, namespace, err))
+				klog.Errorf("Could not update pod %q in namespace %q: %v", pod.Name, namespace, err)
 			}
 		}
 
@@ -148,7 +146,7 @@ func (mp *multiTenantPlugin) EnsureVNIDRules(vnid uint32) {
 	otx := mp.node.oc.NewTransaction()
 	otx.AddFlow("table=80, priority=100, reg0=%d, reg1=%d, actions=output:NXM_NX_REG2[]", vnid, vnid)
 	if err := otx.Commit(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error adding OVS flow for VNID: %v", err))
+		klog.Errorf("Error adding OVS flow for VNID: %v", err)
 	}
 }
 
@@ -165,6 +163,6 @@ func (mp *multiTenantPlugin) SyncVNIDRules() {
 		otx.DeleteFlows("table=80, reg1=%d", vnid)
 	}
 	if err := otx.Commit(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error deleting syncing OVS VNID rules: %v", err))
+		klog.Errorf("Error deleting syncing OVS VNID rules: %v", err)
 	}
 }

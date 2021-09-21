@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/util/async"
@@ -159,7 +157,7 @@ func (p *HybridProxier) releaseService(svcName types.NamespacedName) {
 	if hsvc.knownService && (hsvc.shouldBeIdled() != hsvc.isIdled) {
 		service, err := p.serviceLister.Services(svcName.Namespace).Get(svcName.Name)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Error while getting service %s from cache: %v", svcName, err))
+			klog.Errorf("Error while getting service %s from cache: %v", svcName, err)
 			return
 		}
 

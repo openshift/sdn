@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -205,7 +204,7 @@ func (vmap *masterVNIDMap) assignVNID(osdnClient osdnclient.Interface, nsName st
 		}
 		if _, err := osdnClient.NetworkV1().NetNamespaces().Create(context.TODO(), netns, metav1.CreateOptions{}); err != nil {
 			if er := vmap.releaseNetID(nsName); er != nil {
-				utilruntime.HandleError(er)
+				klog.Errorf("Could not release NetID: %v", er)
 			}
 			return err
 		}
@@ -284,7 +283,7 @@ func (master *OsdnMaster) initNetIDAllocator() error {
 
 	for _, netns := range netnsList.Items {
 		if err := master.vnids.markAllocatedNetID(netns.NetID); err != nil {
-			utilruntime.HandleError(err)
+			klog.Errorf("Error marking allocated VNID: %v", err)
 		}
 		master.vnids.setVNID(netns.Name, netns.NetID)
 	}
@@ -302,7 +301,7 @@ func (master *OsdnMaster) handleAddOrUpdateNamespace(obj, _ interface{}, eventTy
 	klog.V(5).Infof("Watch %s event for Namespace %q", eventType, ns.Name)
 
 	if err := master.vnids.assignVNID(master.osdnClient, ns.Name); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error assigning netid: %v", err))
+		klog.Errorf("Error assigning netid: %v", err)
 	}
 }
 
@@ -310,7 +309,7 @@ func (master *OsdnMaster) handleDeleteNamespace(obj interface{}) {
 	ns := obj.(*corev1.Namespace)
 	klog.V(5).Infof("Watch %s event for Namespace %q", watch.Deleted, ns.Name)
 	if err := master.vnids.revokeVNID(master.osdnClient, ns.Name); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error revoking netid: %v", err))
+		klog.Errorf("Error revoking netid: %v", err)
 	}
 }
 
@@ -324,6 +323,6 @@ func (master *OsdnMaster) handleAddOrUpdateNetNamespace(obj, _ interface{}, even
 	klog.V(5).Infof("Watch %s event for NetNamespace %q", eventType, netns.Name)
 
 	if err := master.vnids.updateVNID(master.osdnClient, netns); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error updating netid: %v", err))
+		klog.Errorf("Error updating netid: %v", err)
 	}
 }

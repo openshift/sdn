@@ -2,7 +2,6 @@ package master
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"k8s.io/klog/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
@@ -117,7 +115,7 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 			return err
 		})
 		if resultErr != nil {
-			utilruntime.HandleError(fmt.Errorf("Could not update HostSubnet EgressIPs: %v", resultErr))
+			klog.Errorf("Could not update HostSubnet EgressIPs: %v", resultErr)
 		}
 	}
 

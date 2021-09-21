@@ -18,7 +18,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/klog/v2"
@@ -229,7 +228,7 @@ func (m *podManager) updateLocalMulticastRulesWithLock(vnid uint32) {
 	}
 
 	if err := m.ovs.UpdateLocalMulticastFlows(vnid, enabled, ofports); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Error updating OVS multicast flows for VNID %d: %v", vnid, err))
+		klog.Errorf("Error updating OVS multicast flows for VNID %d: %v", vnid, err)
 
 	}
 }

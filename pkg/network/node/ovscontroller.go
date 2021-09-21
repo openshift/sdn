@@ -16,7 +16,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -258,27 +257,27 @@ func (oc *ovsController) GetPodNetworkInfo() (map[string]podNetworkInfo, error) 
 	results := make(map[string]podNetworkInfo)
 	for _, row := range rows {
 		if row["name"] == "" || row["external_ids"] == "" || row["ofport"] == "" {
-			utilruntime.HandleError(fmt.Errorf("ovs-vsctl output missing one or more fields: %v", row))
+			klog.Errorf("ovs-vsctl output missing one or more fields: %v", row)
 			continue
 		}
 
 		ids, err := ovs.ParseExternalIDs(row["external_ids"])
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Could not parse external_ids %q: %v", row["external_ids"], err))
+			klog.Errorf("Could not parse external_ids %q: %v", row["external_ids"], err)
 			continue
 		}
 		if ids["ip"] == "" || ids["sandbox"] == "" {
-			utilruntime.HandleError(fmt.Errorf("ovs-vsctl output missing one or more external_ids: %v", ids))
+			klog.Errorf("ovs-vsctl output missing one or more external_ids: %v", ids)
 			continue
 		}
 		if net.ParseIP(ids["ip"]) == nil {
-			utilruntime.HandleError(fmt.Errorf("Could not parse IP %q for sandbox %q", ids["ip"], ids["sandbox"]))
+			klog.Errorf("Could not parse IP %q for sandbox %q", ids["ip"], ids["sandbox"])
 			continue
 		}
 
 		ofport, err := strconv.Atoi(row["ofport"])
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Could not parse ofport %q: %v", row["ofport"], err))
+			klog.Errorf("Could not parse ofport %q: %v", row["ofport"], err)
 			continue
 		}
 
@@ -602,7 +601,7 @@ func (oc *ovsController) AddServiceRules(service *corev1.Service, netID uint32) 
 	for _, port := range service.Spec.Ports {
 		baseRule, err := generateBaseAddServiceRule(service.Spec.ClusterIP, port.Protocol, int(port.Port))
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Error creating OVS flow for service %v, netid %d: %v", service, netID, err))
+			klog.Errorf("Error creating OVS flow for service %v, netid %d: %v", service, netID, err)
 		}
 		otx.AddFlow(baseRule + action)
 	}
@@ -706,7 +705,7 @@ func (oc *ovsController) findInUseAndPolicyVNIDs() (sets.Int, sets.Int) {
 
 	flows, err := oc.ovs.DumpFlows("")
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("findInUseAndPolicyVNIDs: could not DumpFlows: %v", err))
+		klog.Errorf("findInUseAndPolicyVNIDs: could not DumpFlows: %v", err)
 		return inUseVNIDs, policyVNIDs
 	}
 

@@ -12,7 +12,6 @@ import (
 	"k8s.io/klog/v2"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
@@ -187,11 +186,11 @@ func (sdn *openShiftSDN) start(stopCh <-chan struct{}) error {
 // reloadIPTables reloads node and proxy iptables rules after a flush
 func (sdn *openShiftSDN) reloadIPTables() {
 	if err := sdn.osdnNode.ReloadIPTables(); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Reloading openshift node iptables rules failed: %v", err))
+		klog.Errorf("Reloading openshift node iptables rules failed: %v", err)
 	}
 	if sdn.osdnProxy != nil {
 		if err := sdn.osdnProxy.ReloadIPTables(); err != nil {
-			utilruntime.HandleError(fmt.Errorf("Reloading openshift proxy iptables rules failed: %v", err))
+			klog.Errorf("Reloading openshift proxy iptables rules failed: %v", err)
 		}
 	}
 }

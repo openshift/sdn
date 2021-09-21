@@ -13,7 +13,6 @@ import (
 	"github.com/gorilla/mux"
 	"k8s.io/klog/v2"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -193,7 +192,7 @@ func (s *CNIServer) Start(requestFunc cniRequestFunc) error {
 	s.SetKeepAlivesEnabled(false)
 	go utilwait.Forever(func() {
 		if err := s.Serve(l); err != nil {
-			utilruntime.HandleError(fmt.Errorf("CNI server Serve() failed: %v", err))
+			klog.Errorf("CNI server Serve() failed: %v", err)
 		}
 	}, 0)
 	return nil

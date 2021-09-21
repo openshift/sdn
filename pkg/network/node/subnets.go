@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 
@@ -48,12 +47,12 @@ func (hsw *hostSubnetWatcher) handleAddOrUpdateHostSubnet(obj, _ interface{}, ev
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
 	if err := common.ValidateHostSubnet(hs); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Ignoring invalid HostSubnet %s: %v", common.HostSubnetToString(hs), err))
+		klog.Errorf("Ignoring invalid HostSubnet %s: %v", common.HostSubnetToString(hs), err)
 		return
 	}
 
 	if err := hsw.updateHostSubnet(hs); err != nil {
-		utilruntime.HandleError(err)
+		klog.Errorf("Error processing new/updated HostSubnet: %v", err)
 	}
 }
 
@@ -62,7 +61,7 @@ func (hsw *hostSubnetWatcher) handleDeleteHostSubnet(obj interface{}) {
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", watch.Deleted, hs.Name)
 
 	if err := hsw.deleteHostSubnet(hs); err != nil {
-		utilruntime.HandleError(err)
+		klog.Errorf("Error processing deleted HostSubnet: %v", err)
 	}
 }
 

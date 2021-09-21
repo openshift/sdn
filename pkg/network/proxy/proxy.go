@@ -13,7 +13,6 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
@@ -230,7 +229,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPol
 	ns := proxy.getNamespace(policy.Namespace)
 	if ns.global {
 		// Firewall not allowed for global namespaces
-		utilruntime.HandleError(fmt.Errorf("EgressNetworkPolicy in global network namespace (%s) is not allowed (%s); ignoring firewall rules", policy.Namespace, policy.Name))
+		klog.Errorf("EgressNetworkPolicy in global network namespace (%s) is not allowed (%s); ignoring firewall rules", policy.Namespace, policy.Name)
 		return
 	}
 
@@ -245,7 +244,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPol
 			_, cidr, err := net.ParseCIDR(selector)
 			if err != nil {
 				// should have been caught by validation
-				utilruntime.HandleError(fmt.Errorf("Illegal CIDR value %q in EgressNetworkPolicy rule for policy: %v", rule.To.CIDRSelector, policy.UID))
+				klog.Errorf("Illegal CIDR value %q in EgressNetworkPolicy rule for policy: %v", rule.To.CIDRSelector, policy.UID)
 				continue
 			}
 			firewall = append(firewall, firewallItem{rule.Type, cidr})
@@ -256,7 +255,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPol
 			}
 		} else {
 			// Should have been caught by validation
-			utilruntime.HandleError(fmt.Errorf("Invalid EgressNetworkPolicy rule: %v for policy: %v", rule, policy.UID))
+			klog.Errorf("Invalid EgressNetworkPolicy rule: %v for policy: %v", rule, policy.UID)
 		}
 	}
 
@@ -278,7 +277,7 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPol
 
 		if len(ns.firewalls) > 1 {
 			// We only allow one policy per namespace otherwise it's hard to determine which policy to apply first
-			utilruntime.HandleError(fmt.Errorf("Found multiple egress policies, dropping all firewall rules for namespace: %q", policy.Namespace))
+			klog.Errorf("Found multiple egress policies, dropping all firewall rules for namespace: %q", policy.Namespace)
 		}
 	}
 
@@ -617,7 +616,7 @@ func (proxy *OsdnProxy) SyncLoop() {
 func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 	policies, err := proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Could not get EgressNetworkPolicies: %v", err))
+		klog.Errorf("Could not get EgressNetworkPolicies: %v", err)
 		return
 	}
 
@@ -632,7 +631,7 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 			if !ok {
 				policies, err = proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 				if err != nil {
-					utilruntime.HandleError(fmt.Errorf("Failed to update proxy firewall for policy: %v, Could not get EgressNetworkPolicies: %v", policyUpdate.UID, err))
+					klog.Errorf("Failed to update proxy firewall for policy: %v, Could not get EgressNetworkPolicies: %v", policyUpdate.UID, err)
 					continue
 				}
 

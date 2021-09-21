@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -196,7 +195,7 @@ func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork
 		if err == ErrorNetworkInterfaceNotFound {
 			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.NodeIP, c.NodeName)
 		}
-		utilruntime.HandleError(fmt.Errorf("Unable to find network interface for node IP; some features will not work! (%v)", err))
+		klog.Errorf("Unable to find network interface for node IP; some features will not work! (%v)", err)
 	}
 
 	hostIPNets, _, err := common.GetHostIPNetworks([]string{Tun0})
@@ -205,7 +204,7 @@ func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork
 	}
 	if err := networkInfo.CheckHostNetworks(hostIPNets); err != nil {
 		// checkHostNetworks() errors *should* be fatal, but we didn't used to check this, and we can't break (mostly-)working nodes on upgrade.
-		utilruntime.HandleError(fmt.Errorf("Local networks conflict with SDN; this will eventually cause problems: %v", err))
+		klog.Errorf("Local networks conflict with SDN; this will eventually cause problems: %v", err)
 	}
 
 	return nil
@@ -416,7 +415,7 @@ func (node *OsdnNode) Start() error {
 	}
 
 	if err := node.validateMTU(); err != nil {
-		utilruntime.HandleError(err)
+		klog.Errorf("Error validating node MTU: %v", err)
 	}
 
 	go kwait.Forever(node.policy.SyncVNIDRules, time.Hour)
@@ -563,7 +562,7 @@ func (node *OsdnNode) handleAddOrUpdateService(obj, oldObj interface{}, eventTyp
 
 	netid, err := node.policy.GetVNID(serv.Namespace)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Skipped adding service rules for serviceEvent: %v, Error: %v", eventType, err))
+		klog.Errorf("Skipped adding service rules for serviceEvent: %v, Error: %v", eventType, err)
 		return
 	}
 

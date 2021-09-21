@@ -11,7 +11,6 @@ import (
 	"k8s.io/klog/v2"
 
 	ktypes "k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -186,7 +185,7 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 	klog.V(5).Infof("Watch %s event for HostSubnet %q", eventType, hs.Name)
 
 	if err := ValidateHostSubnetEgress(hs); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err))
+		klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
 		return
 	}
 
@@ -211,7 +210,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	if hs.Subnet != "" {
 		_, cidr, err := net.ParseCIDR(hs.Subnet)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("could not parse HostSubnet %q CIDR: %v", hs.Name, err))
+			klog.Errorf("Could not parse HostSubnet %q CIDR: %v", hs.Name, err)
 		}
 		sdnIP = GenerateDefaultGateway(cidr).String()
 	}
@@ -385,7 +384,7 @@ func (eit *EgressIPTracker) syncEgressIPs() {
 	for eg := range changedEgressIPs {
 		active, err := eit.egressIPActive(eg)
 		if err != nil {
-			utilruntime.HandleError(err)
+			klog.Errorf("Error processing egress IPs: %v", err)
 		}
 		eit.syncEgressNodeState(eg, active)
 	}
