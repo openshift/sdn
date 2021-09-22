@@ -164,6 +164,7 @@ type Proxier struct {
 	serviceChangesLock sync.Mutex
 	serviceChanges     map[types.NamespacedName]*serviceChange // map of service changes
 	syncRunner         asyncRunnerInterface                    // governs calls to syncProxyRules
+	forceReload        bool
 
 	stopChan chan struct{}
 }
@@ -269,6 +270,7 @@ func createProxier(loadBalancer LoadBalancer, listenIP net.IP, iptables iptables
 		makeProxySocket: makeProxySocket,
 		exec:            exec,
 		stopChan:        make(chan struct{}),
+		forceReload:     true, // force a full ensurePortals() on first sync
 	}
 	klog.V(3).Infof("minSyncPeriod: %v, syncPeriod: %v, burstSyncs: %d", minSyncPeriod, syncPeriod, numBurstSyncs)
 	proxier.syncRunner = async.NewBoundedFrequencyRunner("userspace-proxy-sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, numBurstSyncs)
@@ -377,8 +379,10 @@ func (proxier *Proxier) syncProxyRules() {
 		return
 	}
 
-	if err := iptablesInit(proxier.iptables); err != nil {
-		klog.Errorf("Failed to ensure iptables: %v", err)
+	if proxier.forceReload {
+		if err := iptablesInit(proxier.iptables); err != nil {
+			klog.Errorf("Failed to ensure iptables: %v", err)
+		}
 	}
 
 	proxier.serviceChangesLock.Lock()
@@ -406,7 +410,11 @@ func (proxier *Proxier) syncProxyRules() {
 	localAddrSet.Insert(localAddrs...)
 	proxier.localAddrs = localAddrSet
 
-	proxier.ensurePortals()
+	if proxier.forceReload {
+		proxier.forceReload = false
+		proxier.ensurePortals()
+	}
+
 	proxier.cleanupStaleStickySessions()
 }
 
