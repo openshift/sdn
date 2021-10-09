@@ -2,6 +2,7 @@ package openshift_sdn_controller
 
 import (
 	"context"
+	"net/http"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,7 @@ import (
 	leaderelectionconverter "github.com/openshift/library-go/pkg/config/leaderelection"
 	"github.com/openshift/library-go/pkg/serviceability"
 	sdnmaster "github.com/openshift/sdn/pkg/network/master"
+	"github.com/openshift/sdn/pkg/network/master/metrics"
 
 	// for metrics
 	_ "k8s.io/component-base/metrics/prometheus/restclient"
@@ -77,6 +79,7 @@ func RunOpenShiftNetworkController() error {
 	if err != nil {
 		return err
 	}
+	var metricsServer *http.Server
 	go leaderelection.RunOrDie(context.Background(),
 		leaderelection.LeaderElectionConfig{
 			Lock:          rl,
@@ -84,9 +87,14 @@ func RunOpenShiftNetworkController() error {
 			RenewDeadline: leaderConfig.RenewDeadline.Duration,
 			RetryPeriod:   leaderConfig.RetryPeriod.Duration,
 			Callbacks: leaderelection.LeaderCallbacks{
-				OnStartedLeading: originControllerManager,
+				OnStartedLeading: func(ctx context.Context) {
+					metricsServer = metrics.StartServer()
+					originControllerManager(ctx)
+				},
 				OnStoppedLeading: func() {
-					klog.Fatalf("leaderelection lost")
+					metrics.StopServer(metricsServer)
+					klog.Errorf("leader election lost")
+					os.Exit(1)
 				},
 			},
 		})

@@ -36,6 +36,7 @@ type OsdnMaster struct {
 	namespaceInformer    kcoreinformers.NamespaceInformer
 	hostSubnetInformer   osdninformersv1.HostSubnetInformer
 	netNamespaceInformer osdninformersv1.NetNamespaceInformer
+	egressNetPolInformer osdninformersv1.EgressNetworkPolicyInformer
 
 	// Used for allocating subnets in order
 	subnetAllocator *masterutil.SubnetAllocator
@@ -64,6 +65,7 @@ func Start(kClient kclientset.Interface,
 		namespaceInformer:    kubeInformers.Core().V1().Namespaces(),
 		hostSubnetInformer:   osdnInformers.Network().V1().HostSubnets(),
 		netNamespaceInformer: osdnInformers.Network().V1().NetNamespaces(),
+		egressNetPolInformer: osdnInformers.Network().V1().EgressNetworkPolicies(),
 
 		hostSubnetNodeIPs: map[ktypes.UID]string{},
 	}
@@ -81,6 +83,7 @@ func Start(kClient kclientset.Interface,
 	master.namespaceInformer.Informer().GetController()
 	master.hostSubnetInformer.Informer().GetController()
 	master.netNamespaceInformer.Informer().GetController()
+	master.egressNetPolInformer.Informer().GetController()
 
 	go master.startSubSystems(master.networkInfo.PluginName)
 
@@ -93,7 +96,8 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 		master.nodeInformer.Informer().GetController().HasSynced,
 		master.namespaceInformer.Informer().GetController().HasSynced,
 		master.hostSubnetInformer.Informer().GetController().HasSynced,
-		master.netNamespaceInformer.Informer().GetController().HasSynced) {
+		master.netNamespaceInformer.Informer().GetController().HasSynced,
+		master.egressNetPolInformer.Informer().GetController().HasSynced) {
 		klog.Fatalf("failed to sync SDN master informers")
 	}
 
@@ -115,6 +119,8 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 
 	eim := newEgressIPManager()
 	eim.Start(master.osdnClient, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
+	enp := newEgressNetworkPolicyManager()
+	enp.start(master.egressNetPolInformer)
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
