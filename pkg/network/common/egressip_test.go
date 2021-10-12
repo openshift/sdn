@@ -18,7 +18,7 @@ func (w *testEIPWatcher) Synced() {
 	panic("should not be reached in unit test")
 }
 
-func (w *testEIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (w *testEIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
 	w.changes = append(w.changes, fmt.Sprintf("claim %s on %s for namespace %d", egressIP, nodeIP, vnid))
 }
 
@@ -120,9 +120,11 @@ func TestEgressIP(t *testing.T) {
 	eit, w := setupEgressIPTracker(t)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Subnet: "10.128.0.0/23",
 		HostIP: "172.17.0.3",
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Subnet: "10.128.0.0/23",
 		HostIP: "172.17.0.4",
 	})
 	eit.DeleteNetNamespaceEgress(42)
@@ -148,6 +150,7 @@ func TestEgressIP(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"}, // Added .100
 	})
 	err = w.assertChanges(
@@ -161,10 +164,12 @@ func TestEgressIP(t *testing.T) {
 	// Assign HostSubnet.EgressIP first, then NetNamespace.EgressIP
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100", "172.17.0.101"}, // Added .101
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.5",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.105"},
 	})
 	err = w.assertNoChanges()
@@ -212,6 +217,7 @@ func TestEgressIP(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.102", "172.17.0.104"}, // Added .102, .104
 	})
 	err = w.assertChanges(
@@ -239,6 +245,7 @@ func TestEgressIP(t *testing.T) {
 	// Assign HostSubnet.EgressIP first, then NetNamespace.EgressIP
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.102", "172.17.0.103"}, // Added .103, Dropped .104
 	})
 	err = w.assertNoChanges()
@@ -284,6 +291,7 @@ func TestEgressIP(t *testing.T) {
 	// Drop node EgressIPs
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"}, // Dropped .101
 	})
 	err = w.assertChanges(
@@ -296,6 +304,7 @@ func TestEgressIP(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.102"}, // Dropped .103
 	})
 	err = w.assertChanges(
@@ -309,6 +318,7 @@ func TestEgressIP(t *testing.T) {
 	// Add them back, swapped
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100", "172.17.0.103"}, // Added .103
 	})
 	err = w.assertChanges(
@@ -321,6 +331,7 @@ func TestEgressIP(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101", "172.17.0.102"}, // Added .101
 	})
 	err = w.assertChanges(
@@ -341,6 +352,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err := w.assertChanges(
@@ -367,6 +379,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	// Now assigning that IP to a node should cause ovs to add both of them
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	err = w.assertChanges(
@@ -391,6 +404,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	// Removing the 1 egress IP from its node should cause it to be removed
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.200"},
 	})
 	err = w.assertChanges(
@@ -404,6 +418,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	// Removing the remaining egress IP should now kill the namespace
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{},
 	})
 	err = w.assertChanges(
@@ -417,10 +432,12 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	// Now add the egress IPs back...this will cause them to all be added
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	err = w.assertChanges(
@@ -494,6 +511,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err := w.assertChanges(
@@ -512,6 +530,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// in a ClaimEgressIP for the new IP.)
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err = w.assertChanges(
@@ -525,6 +544,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// Auto-egress-IP assignment should ignore the IP while it is double-booked
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	err = w.assertChanges(
@@ -541,6 +561,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	}
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
 	})
 	err = w.assertNoChanges()
@@ -551,6 +572,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// Removing the duplicate node egressIP should restore traffic to the broken namespace
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{},
 	})
 	err = w.assertChanges(
@@ -564,6 +586,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// As above, but with a different node IP
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.5",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err = w.assertChanges(
@@ -599,6 +622,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 	// now being used.
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{},
 	})
 	err = w.assertChanges(
@@ -619,6 +643,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err := w.assertChanges(
@@ -650,6 +675,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	// Auto-egress-IP assignment should ignore the IP while it is double-booked
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	err = w.assertChanges(
@@ -666,6 +692,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	}
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
 	})
 	err = w.assertNoChanges()
@@ -702,6 +729,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 	// whether the IP is assigned to a node or not.
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{},
 	})
 	err = w.assertNoChanges()
@@ -711,6 +739,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	err = w.assertNoChanges()
@@ -736,10 +765,12 @@ func TestOfflineEgressIPs(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
@@ -813,6 +844,7 @@ func updateAllocations(eit *EgressIPTracker, allocation map[string][]string) {
 				}
 				updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 					HostIP:      node.nodeIP,
+					Subnet:      "10.128.0.0/23",
 					EgressIPs:   StringsToHSEgressIPs(egressIPs),
 					EgressCIDRs: ec,
 				})
@@ -827,16 +859,19 @@ func TestEgressCIDRAllocationWithMultipleAssignmentOptions(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.4",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
 	})
@@ -873,16 +908,19 @@ func TestEgressCIDRAllocation(t *testing.T) {
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.100/32", "172.17.0.101/32", "172.17.0.102/32", "172.17.0.103/32", "172.17.1.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.4",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
 	})
@@ -979,6 +1017,7 @@ func TestEgressCIDRAllocation(t *testing.T) {
 	// egress CIDRs" notification).
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.5",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.2.100"},
 	})
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
@@ -1043,6 +1082,7 @@ func TestEgressCIDRAllocation(t *testing.T) {
 	// If we then reallocate, the dropped Egress IP(s) might be allocated to new nodes.
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   StringsToHSEgressIPs(allocation["node-3"]),
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.100/32", "172.17.0.101/32", "172.17.0.102/32", "172.17.1.0/24"}, // removed "172.17.0.103/32"
 	})
@@ -1144,16 +1184,19 @@ func TestEgressNodeRenumbering(t *testing.T) {
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:      "alpha",
 		HostIP:    "172.17.0.3",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.100"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:      "beta",
 		HostIP:    "172.17.0.4",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:      "gamma",
 		HostIP:    "172.17.0.5",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.102"},
 	})
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
@@ -1179,6 +1222,7 @@ func TestEgressNodeRenumbering(t *testing.T) {
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:      "beta",
 		HostIP:    "172.17.0.6",
+		Subnet:    "10.128.0.0/23",
 		EgressIPs: []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
 	})
 	err = w.assertChanges(
@@ -1198,16 +1242,19 @@ func TestEgressCIDRAllocationOffline(t *testing.T) {
 	// Create nodes...
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24", "172.17.1.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.4",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
 	})
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.5",
+		Subnet:      "10.128.0.0/23",
 		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
 		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.1.0/24"},
 	})

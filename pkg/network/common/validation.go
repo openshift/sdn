@@ -154,6 +154,10 @@ func ValidateHostSubnet(hs *osdnv1.HostSubnet) error {
 
 // ValidateHostSubnetEgress checks if the user-maintained fields of hostsubnet are valid.
 func ValidateHostSubnetEgress(hs *osdnv1.HostSubnet) error {
+	if err := ValidateHostSubnet(hs); err != nil {
+		return err
+	}
+
 	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	for i, egressIP := range hs.EgressIPs {
