@@ -2,6 +2,7 @@ package master
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type egressIPManager struct {
 
 type egressNode struct {
 	ip      string
+	sdnIP   string
 	name    string
 	offline bool
 	retries int
@@ -103,7 +105,9 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 			if node := eim.monitorNodes[hs.HostIP]; node != nil {
 				monitorNodes[hs.HostIP] = node
 			} else {
-				monitorNodes[hs.HostIP] = &egressNode{ip: hs.HostIP, name: nodeName}
+				_, cidr, _ := net.ParseCIDR(hs.Subnet)
+				sdnIP := common.GenerateDefaultGateway(cidr).String()
+				monitorNodes[hs.HostIP] = &egressNode{ip: hs.HostIP, sdnIP: sdnIP, name: nodeName}
 			}
 
 			oldIPs := sets.NewString(common.HSEgressIPsToStrings(hs.EgressIPs)...)
@@ -201,7 +205,7 @@ func (eim *egressIPManager) check(retrying bool) (bool, error) {
 			return false, nil
 		}
 
-		online := eim.tracker.Ping(node.ip, timeout)
+		online := eim.tracker.Ping(node.sdnIP, timeout)
 		if node.offline && online {
 			klog.Infof("Node %s is back online", node.ip)
 			node.offline = false
