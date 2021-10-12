@@ -228,7 +228,7 @@ func (eim *egressIPManager) check(retrying bool) (bool, error) {
 func (eim *egressIPManager) Synced() {
 }
 
-func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
 }
 
 func (eim *egressIPManager) ReleaseEgressIP(egressIP, nodeIP string) {

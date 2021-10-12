@@ -283,6 +283,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "valid egress ip",
 			hs: networkapi.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.0.0.5",
 				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -292,6 +295,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "valid egress cidr",
 			hs: networkapi.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.0.0.5",
 				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -301,6 +307,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "invalid CIDR address",
 			hs: networkapi.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.139.125.68",
 				EgressIPs:   []networkapi.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.80/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -310,6 +319,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "invalid egress ip",
 			hs: networkapi.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.139.125.68",
 				EgressIPs:   []networkapi.HostSubnetEgressIP{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
 				EgressCIDRs: []networkapi.HostSubnetEgressCIDR{"10.139.125.64/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
