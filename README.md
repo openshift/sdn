@@ -70,4 +70,4 @@ as part of the cluster. This includes:
     "unidling" mode.
 
 ## Development 
-See [Development workflow](./docs/source/openshift_sdn/workflow.rst)
+See [Development workflow](./docs/workflow.md)
