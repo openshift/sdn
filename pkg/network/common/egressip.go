@@ -59,7 +59,7 @@ type egressIPInfo struct {
 type EgressIPWatcher interface {
 	Synced()
 
-	ClaimEgressIP(vnid uint32, egressIP, nodeIP string)
+	ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string)
 	ReleaseEgressIP(egressIP, nodeIP string)
 
 	SetNamespaceEgressNormal(vnid uint32)
@@ -188,6 +188,10 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 		klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
 		return
 	}
+	if hs.Subnet == "" {
+		klog.V(5).Infof("Ignoring HostSubnet %s with an empty subnet", HostSubnetToString(hs))
+		return
+	}
 
 	eit.UpdateHostSubnetEgress(hs)
 }
@@ -199,6 +203,16 @@ func (eit *EgressIPTracker) handleDeleteHostSubnet(obj interface{}) {
 	hs = hs.DeepCopy()
 	hs.EgressCIDRs = nil
 	hs.EgressIPs = nil
+
+	if err := ValidateHostSubnetEgress(hs); err != nil {
+		klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
+		return
+	}
+	if hs.Subnet == "" {
+		klog.V(5).Infof("Ignoring HostSubnet %s with an empty subnet", HostSubnetToString(hs))
+		return
+	}
+
 	eit.UpdateHostSubnetEgress(hs)
 }
 
@@ -206,14 +220,8 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	eit.Lock()
 	defer eit.Unlock()
 
-	sdnIP := ""
-	if hs.Subnet != "" {
-		_, cidr, err := net.ParseCIDR(hs.Subnet)
-		if err != nil {
-			klog.Errorf("Could not parse HostSubnet %q CIDR: %v", hs.Name, err)
-		}
-		sdnIP = GenerateDefaultGateway(cidr).String()
-	}
+	_, cidr, _ := net.ParseCIDR(hs.Subnet)
+	sdnIP := GenerateDefaultGateway(cidr).String()
 
 	node := eit.nodes[hs.UID]
 	if node == nil {
@@ -411,7 +419,7 @@ func (eit *EgressIPTracker) syncEgressNodeState(eg *egressIPInfo, active bool) {
 	if active && eg.assignedNodeIP != eg.nodes[0].nodeIP {
 		klog.V(4).Infof("Assigning egress IP %s to node %s", eg.ip, eg.nodes[0].nodeIP)
 		eg.assignedNodeIP = eg.nodes[0].nodeIP
-		eit.watcher.ClaimEgressIP(eg.namespaces[0].vnid, eg.ip, eg.assignedNodeIP)
+		eit.watcher.ClaimEgressIP(eg.namespaces[0].vnid, eg.ip, eg.assignedNodeIP, eg.nodes[0].sdnIP)
 	} else if !active && eg.assignedNodeIP != "" {
 		klog.V(4).Infof("Removing egress IP %s from node %s", eg.ip, eg.assignedNodeIP)
 		eit.watcher.ReleaseEgressIP(eg.ip, eg.assignedNodeIP)
@@ -493,27 +501,15 @@ func (eit *EgressIPTracker) SetNodeOffline(nodeIP string, offline bool) {
 	eit.syncEgressIPs()
 }
 
-func (eit *EgressIPTracker) lookupNodeIP(ip string) string {
-	eit.Lock()
-	defer eit.Unlock()
-
-	if node := eit.nodesByNodeIP[ip]; node != nil {
-		return node.sdnIP
-	}
-	return ip
-}
-
-// Ping a node and return whether or not we think it is online. We do this by trying to
+// Ping a node on its SDN IP and return whether we think it is online. We do this by trying to
 // open a TCP connection to the "discard" service (port 9); if the node is offline, the
 // attempt will either time out with no response, or else return "no route to host" (and
 // we will return false). If the node is online then we presumably will get a "connection
 // refused" error; but the code below assumes that anything other than timeout or "no
 // route" indicates that the node is online.
-func (eit *EgressIPTracker) Ping(ip string, timeout time.Duration) bool {
-	// If the caller used a public node IP, replace it with the SDN IP
-	ip = eit.lookupNodeIP(ip)
-
-	conn, err := net.DialTimeout("tcp", ip+":9", timeout)
+// It is required that the IP provided is from SDN, nodes primary IP might drop traffic destined to port 9
+func (eit *EgressIPTracker) Ping(sdnIP string, timeout time.Duration) bool {
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(sdnIP, "9"), timeout)
 	if conn != nil {
 		conn.Close()
 	}
