@@ -26,6 +26,7 @@ const (
 
 type egressNode struct {
 	nodeIP  string
+	sdnIP   string
 	offline bool
 
 	egressIPs sets.String
@@ -130,7 +131,7 @@ func getMarkForVNID(vnid, masqueradeBit uint32) string {
 	return fmt.Sprintf("0x%08x", vnid)
 }
 
-func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) {
+func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
@@ -138,7 +139,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP string) 
 			utilruntime.HandleError(fmt.Errorf("Error assigning Egress IP %q: %v", egressIP, err))
 		}
 	} else {
-		eip.addEgressIP(nodeIP, egressIP)
+		eip.addEgressIP(nodeIP, egressIP, sdnIP)
 	}
 }
 
@@ -154,7 +155,7 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 	}
 }
 
-func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP string) {
+func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
 	eip.monitorNodesLock.Lock()
 	defer eip.monitorNodesLock.Unlock()
 
@@ -166,6 +167,7 @@ func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP string) {
 
 	eip.monitorNodes[nodeIP] = &egressNode{
 		nodeIP:    nodeIP,
+		sdnIP:     sdnIP,
 		egressIPs: sets.NewString(egressIP),
 	}
 	if len(eip.monitorNodes) == 1 {
@@ -227,7 +229,7 @@ func (eip *egressIPWatcher) getOfflineResult(retrying bool) (map[string]bool, bo
 			continue
 		}
 
-		online := eip.tracker.Ping(node.nodeIP, timeout)
+		online := eip.tracker.Ping(node.sdnIP, timeout)
 		if node.offline && online {
 			klog.Infof("Node %s is back online", node.nodeIP)
 			node.offline = false

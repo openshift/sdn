@@ -283,6 +283,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "valid egress ip",
 			hs: osdnv1.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.0.0.5",
 				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -292,6 +295,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "valid egress cidr",
 			hs: osdnv1.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.0.0.5",
 				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.0.0.0/16"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -299,8 +305,23 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 			err: "",
 		},
 		{
-			name: "invalid CIDR address",
+			name: "invalid sdn CIDR address",
 			hs: osdnv1.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.5/23",
+				HostIP:      "10.139.125.68",
+				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
+				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.139.125.80/27"},
+				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
+			},
+			err: "Invalid",
+		},
+		{
+			name: "invalid egress CIDR address",
+			hs: osdnv1.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.139.125.68",
 				EgressIPs:   []osdnv1.HostSubnetEgressIP{"10.0.0.10", "10.0.0.11"},
 				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.139.125.80/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
@@ -310,6 +331,9 @@ func TestValidateHostSubnetEgress(t *testing.T) {
 		{
 			name: "invalid egress ip",
 			hs: osdnv1.HostSubnet{
+				Host:        "any",
+				Subnet:      "10.128.0.0/23",
+				HostIP:      "10.139.125.68",
 				EgressIPs:   []osdnv1.HostSubnetEgressIP{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
 				EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"10.139.125.64/27"},
 				ObjectMeta:  metav1.ObjectMeta{Name: "any"},
