@@ -1,33 +1,26 @@
-====================
-Development Workflow
-====================
+# Development Workflow
 
-Get the code
-------------
+## Get the code
 
-.. code-block:: shell-session
-
+```
   $ git clone https://github.com/openshift/openshift-sdn.git
   $ git clone https://github.com/openshift/cluster-network-operator.git
+```
 
-Do your changes
----------------
+## Do your changes
 
-Create the image
-----------------
+## Create the image
 
-.. code-block:: shell-session
-
+```
   $ make build-image-sdn-test
+```
 
 This will call podman under the hood and it'll create an image with your
 changes for openshift/sdn
 
-Push your image to quay.io
---------------------------
+## Push your image to quay.io
 
-.. code-block:: shell-session
-
+```
   $ podman push sdn-test quay.io/<your_quay_user>/sdn-test:latest
   Getting image source signatures
   Copying blob 5d372c8d2def done
@@ -47,19 +40,17 @@ Push your image to quay.io
   Writing manifest to image destination
   Writing manifest to image destination
   Storing signatures
+```
 
-Deploy a cluster with your changes
-----------------------------------
+## Deploy a cluster with your changes
 
-Using Cluster Network Operator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Using Cluster Network Operator
 
  1. Create a directory for your deployment
 
-  .. code-block:: shell-session
-
+```
     $ mkdir /tmp/deployment
-
+```
 
  2. Get your openshift-install binary and your pull-secrets
 
@@ -67,25 +58,26 @@ Using Cluster Network Operator
 
  4. Run hack/run-locally
 
-  .. code-block:: shell-session
+```
+    $ hack/run-locally.sh -i <your_openshift_install_path> \
+          -c <your_install_directory> -n <sdn|ovn> \
+	  -m <your_quay_image_path>
+```
 
-    $ hack/run-locally.sh -i <your_openshift_install_path> -c <your_install_directory> -n <sdn|ovn> -m <your_quay_image_path>
-
-Using Cluster-Bot
-~~~~~~~~~~~~~~~~~
+### Using Cluster-Bot
 
 This assumes you already have a PR around, and access to cluster-bot under the
 CoreOS Slack channel.
 
-Just query cluster-bot and send him a message with the following::
+Just query cluster-bot and send him a message with the following:
 
+```
   launch openshift/sdn#<PR_NUMBER> aws
+```
 
-Update your CNO image without deleting your cluster
----------------------------------------------------
+## Update your CNO image without deleting your cluster
 
-.. code-block:: shell-session
-
+```
   update_cno ()
   {
       oc patch clusterversion version --type json -p '[{"op":"add","path":"/spec/overrides","value":[{"kind":"Deployment","group":"apps","name":"network-operator","namespace":"openshift-network-operator","unmanaged":true}]}]'
@@ -97,19 +89,18 @@ Update your CNO image without deleting your cluster
       oc -n openshift-network-operator delete deployment network-operator;
       oc -n openshift-sdn set image ds/sdn sdn=quay.io/<your_quay_user>/sdn-test
   }
+```
 
-Destroying your cluster once you're done
-----------------------------------------
+## Destroying your cluster once you're done
 
-Using Openshift Installer
-~~~~~~~~~~~~~~~~~~~~~~~~~
+### Using Openshift Installer
 
-.. code-block:: shell-session
-
+```
   $ openshift-install destroy cluster --dir <your_install_directory>
+```
 
-Using Cluster-Bot
-~~~~~~~~~~~~~~~~~
-::
+### Using Cluster-Bot
 
+```
   done
+```
