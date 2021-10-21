@@ -419,8 +419,9 @@ func (node *OsdnNode) Start() error {
 	}
 
 	go kwait.Forever(node.policy.SyncVNIDRules, time.Hour)
+	vxlanIfaceName := fmt.Sprintf("vxlan_sys_%d", node.networkInfo.VXLANPort)
 	go kwait.Forever(func() {
-		metrics.GatherPeriodicMetrics()
+		metrics.GatherPeriodicMetrics(vxlanIfaceName)
 		node.oc.ovs.UpdateOVSMetrics()
 	}, time.Minute*2)
 

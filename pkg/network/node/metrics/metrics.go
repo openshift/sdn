@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vishvananda/netlink"
+
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
@@ -101,15 +103,79 @@ var (
 		},
 	)
 
+	vxlanRxPackets = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_rx_packets",
+		Help:      "Number of packets received by interface",
+	},
+		[]string{"interface"})
+
+	vxlanRxDropped = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_rx_dropped",
+		Help:      "Number of packets dropped received by interface",
+	},
+		[]string{"interface"})
+
+	vxlanRxErrors = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_rx_errors",
+		Help:      "Number of packets with errors received by interface",
+	},
+		[]string{"interface"})
+
+	vxlanRxBytes = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_rx_bytes",
+		Help:      "Number of bytes received by interface",
+	},
+		[]string{"interface"})
+
+	vxlanTxPackets = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_tx_packets",
+		Help:      "Number of packets transmitted by interface",
+	},
+		[]string{"interface"})
+
+	vxlanTxDropped = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_tx_dropped",
+		Help:      "Number of packets dropped transmitted by interface",
+	},
+		[]string{"interface"})
+
+	vxlanTxErrors = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_tx_errors",
+		Help:      "Number of packets with errors transmitted by interface",
+	},
+		[]string{"interface"})
+
+	vxlanTxBytes = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Namespace: SDNNamespace,
+		Subsystem: SDNSubsystem,
+		Name:      "interface_tx_bytes",
+		Help:      "Number of bytes transmitted by interface",
+	},
+		[]string{"interface"})
+
 	// num stale OVS flows (flows that reference non-existent ports)
 	// num vnids (in the master)
 	// num netnamespaces (in the master)
 	// iptables call time (in upstream kube)
 	// iptables call failures (in upstream kube)
 	// iptables num rules (in upstream kube)
-)
 
-var registerMetrics sync.Once
+	registerMetrics sync.Once
+)
 
 // Register all node metrics.
 func RegisterMetrics() {
@@ -121,6 +187,14 @@ func RegisterMetrics() {
 		legacyregistry.MustRegister(PodOperationsErrors)
 		legacyregistry.MustRegister(PodOperationsLatency)
 		legacyregistry.MustRegister(VnidNotFoundErrors)
+		legacyregistry.MustRegister(vxlanRxPackets)
+		legacyregistry.MustRegister(vxlanRxDropped)
+		legacyregistry.MustRegister(vxlanRxErrors)
+		legacyregistry.MustRegister(vxlanRxBytes)
+		legacyregistry.MustRegister(vxlanTxPackets)
+		legacyregistry.MustRegister(vxlanTxDropped)
+		legacyregistry.MustRegister(vxlanTxErrors)
+		legacyregistry.MustRegister(vxlanTxBytes)
 	})
 }
 
@@ -130,9 +204,10 @@ func SinceInMicroseconds(start time.Time) float64 {
 }
 
 // GatherPeriodicMetrics is used to periodically gather metrics.
-func GatherPeriodicMetrics() {
+func GatherPeriodicMetrics(ifaceName string) {
 	updateARPMetrics()
 	updatePodIPMetrics()
+	updateInterfaceStatistics(ifaceName)
 }
 
 func updateARPMetrics() {
@@ -185,4 +260,21 @@ func updatePodIPMetrics() {
 		}
 	}
 	PodIPs.Set(float64(numAddrs))
+}
+
+func updateInterfaceStatistics(ifaceName string) {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		klog.Errorf("Failed to gather interface statistics. Unable to retrieve link %s: %v",
+			ifaceName, err)
+		return
+	}
+	vxlanRxPackets.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.RxPackets))
+	vxlanRxDropped.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.RxDropped))
+	vxlanRxErrors.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.RxErrors))
+	vxlanRxBytes.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.RxBytes))
+	vxlanTxPackets.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.TxPackets))
+	vxlanTxDropped.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.TxDropped))
+	vxlanTxErrors.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.TxErrors))
+	vxlanTxBytes.WithLabelValues(ifaceName).Set(float64(link.Attrs().Statistics.TxBytes))
 }
