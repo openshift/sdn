@@ -18,6 +18,7 @@ import (
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
+	"github.com/openshift/sdn/pkg/network/master/metrics"
 )
 
 type nodeEgress struct {
@@ -295,6 +296,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	}
 
 	eit.syncEgressIPs()
+	eit.recordMetrics()
 }
 
 func (eit *EgressIPTracker) watchNetNamespaces(netNamespaceInformer osdninformers.NetNamespaceInformer) {
@@ -689,6 +691,16 @@ func (eit *EgressIPTracker) ReallocateEgressIPs() map[string][]string {
 	}
 
 	return allocation
+}
+
+func (eit *EgressIPTracker) recordMetrics() {
+	activeEgressIPCount := 0.0
+	for _, eipInfo := range eit.egressIPs {
+		if eipInfo.assignedNodeIP != "" {
+			activeEgressIPCount += 1
+		}
+	}
+	metrics.RecordEgressIPCount(activeEgressIPCount)
 }
 
 func activeEgressIPsTheSame(oldEIPs, newEIPs []EgressIPAssignment) bool {
