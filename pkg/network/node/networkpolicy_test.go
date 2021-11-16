@@ -20,14 +20,22 @@ import (
 	"k8s.io/kubernetes/pkg/util/async"
 
 	osdnv1 "github.com/openshift/api/network/v1"
+	"github.com/openshift/sdn/pkg/util/ovs"
 )
 
-func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
+func newTestNPP() (*networkPolicyPlugin, ovs.Interface, *atomic.Value, chan struct{}) {
 	kubeClient := fake.NewSimpleClientset()
+	ovsif := ovs.NewFake("br0")
+	ovsif.AddBridge()
+
 	np := &networkPolicyPlugin{
 		node: &OsdnNode{
 			kClient:       kubeClient,
 			kubeInformers: informers.NewSharedInformerFactory(kubeClient, time.Hour),
+
+			oc: &ovsController{
+				ovs: ovsif,
+			},
 		},
 
 		namespaces:       make(map[uint32]*npNamespace),
@@ -39,14 +47,7 @@ func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
 	synced := new(atomic.Value)
 	stopCh := make(chan struct{})
 	np.runner = async.NewBoundedFrequencyRunner("networkpolicy_test", func() {
-		np.lock.Lock()
-		defer np.lock.Unlock()
-
-		np.recalculate()
-		for _, npns := range np.namespaces {
-			npns.mustSync = false
-		}
-
+		np.syncFlows()
 		synced.Store(true)
 	}, 10*time.Millisecond, time.Hour, 10)
 	go np.runner.Loop(stopCh)
@@ -58,7 +59,7 @@ func newTestNPP() (*networkPolicyPlugin, *atomic.Value, chan struct{}) {
 
 	np.node.kubeInformers.Start(stopCh)
 
-	return np, synced, stopCh
+	return np, ovsif, synced, stopCh
 }
 
 func waitForEvent(np *networkPolicyPlugin, f func() bool) error {
@@ -298,7 +299,7 @@ func addBadPods(np *networkPolicyPlugin, npns *npNamespace) {
 }
 
 func TestNetworkPolicy(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	// Create some Namespaces
@@ -425,7 +426,7 @@ func TestNetworkPolicy(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 		})
@@ -516,8 +517,8 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
 			},
 		},
 	})
@@ -560,11 +561,11 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[4])),
-				fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[5])),
 			},
 		},
 	})
@@ -641,7 +642,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 				"allow-from-even": {
@@ -660,10 +661,10 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=7, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
-						// but NOT from reg0=9
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
+						// but NOT from namespace 9
 					},
 				},
 			})
@@ -694,7 +695,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 				"allow-from-all-clients": {
@@ -702,15 +703,15 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=1, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=2, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=3, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=4, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[4])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=5, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=6, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[6])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=7, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=8, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[8])),
-						fmt.Sprintf("ip, nw_dst=%s, reg0=9, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[9])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[4])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[6])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[8])),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[9])),
 					},
 				},
 			})
@@ -741,7 +742,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
 					flows: []string{
-						fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), vnid, clientIP(npns)),
+						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
 			})
@@ -839,7 +840,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
 			flows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns4), npns4.vnid, clientIP(npns4)),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns4), clientIP(npns4)),
 			},
 		},
 	})
@@ -905,6 +906,370 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 }
 
+func TestNetworkPolicy_ipBlock(t *testing.T) {
+	np, _, synced, stopCh := newTestNPP()
+	defer close(stopCh)
+
+	// Create a default Namespace
+	addNamespace(np, "default", 0, map[string]string{"default": "true"})
+	npns := np.namespaces[0]
+	addPods(np, npns)
+
+	// Add a simple ipBlock policy
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-cidr",
+			UID:       uid(npns, "allow-from-cidr"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "192.168.0.0/16",
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "simple ipBlock policy")
+
+	err := assertPolicies(np, npns, 1, map[string]*npPolicy{
+		"allow-from-cidr": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a mixed ipBlock/podSelector policy
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-cidr-and-pods",
+			UID:       uid(npns, "allow-from-cidr-and-pods"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{
+					{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"kind": "client",
+							},
+						},
+					},
+					{
+						IPBlock: &networkingv1.IPBlock{
+							CIDR: "192.168.0.0/16",
+						},
+					},
+				},
+			}},
+		},
+	})
+	waitForSync(np, synced, "mixed ipBlock/podSelector policy")
+
+	err = assertPolicies(np, npns, 2, map[string]*npPolicy{
+		"allow-from-cidr-and-pods": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Add a policy with multiple ipBlocks, one of which will be ignored because
+	// of an "except" clause.
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-multiple-cidrs",
+			UID:       uid(npns, "allow-from-multiple-cidrs"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.0.0/24",
+							},
+						},
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.1.0/24",
+								Except: []string{
+									"192.168.1.1",
+								},
+							},
+						},
+					},
+				},
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.10.0/24",
+							},
+						},
+						{
+							IPBlock: &networkingv1.IPBlock{
+								CIDR: "192.168.20.0/24",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	waitForSync(np, synced, "multiple ipBlock policy")
+
+	err = assertPolicies(np, npns, 3, map[string]*npPolicy{
+		"allow-from-multiple-cidrs": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=192.168.0.0/24"),
+				// There is no rule allowing 192.168.1.0/24 because we can't
+				// implement the exception.
+				fmt.Sprintf("ip, nw_src=192.168.10.0/24"),
+				fmt.Sprintf("ip, nw_src=192.168.20.0/24"),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestNetworkPolicy_egress(t *testing.T) {
+	np, ovsif, synced, stopCh := newTestNPP()
+	defer close(stopCh)
+
+	// We'll be checking the output OVS flows in this test, so get the initial state...
+	prevFlows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+
+	// Create Namespaces
+	synced.Store(false)
+	addNamespace(np, "default", 0, map[string]string{"default": "true"})
+	npns := np.namespaces[0]
+	addPods(np, npns)
+	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
+	npns1 := np.namespaces[1]
+	addPods(np, npns1)
+	waitForSync(np, synced, "initial namespaces")
+
+	// Both namespaces should get a "default allow" rule to override the
+	// "priority=0, actions=drop" rule at the end of table 80
+	flows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=1", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
+
+	// Add ingress/egress default-deny
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-deny",
+			UID:       uid(npns, "default-deny"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{},
+			Egress:  []networkingv1.NetworkPolicyEgressRule{},
+		},
+	})
+	waitForSync(np, synced, "default-deny")
+
+	err = assertPolicies(np, npns, 1, map[string]*npPolicy{
+		"default-deny": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			flows:             []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// NS 0 now has default-deny, so its allow rule will be deleted
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
+
+	// Add a just-egress policy, which should have no effect
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress",
+			UID:       uid(npns, "egress"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "client",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "server",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "egress-only policy")
+
+	err = assertPolicies(np, npns, 2, map[string]*npPolicy{
+		"egress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false, // Spec.PodSelector is ignored for egress-only
+			flows:             []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows) // no changes
+
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
+
+	// Add a mixed-ingress-egress policy, which should affect ingress but not egress
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ingress-egress",
+			UID:       uid(npns, "ingress-egress"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"parity": "odd",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "mixed-ingress-egress policy")
+
+	err = assertPolicies(np, npns, 3, map[string]*npPolicy{
+		"ingress-egress": {
+			watchesNamespaces: false, // egress NamespaceSelector is ignored
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			flows: []string{
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+}
+
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
 func _TestNetworkPolicyCache(t *testing.T) {
 	const (
@@ -912,7 +1277,7 @@ func _TestNetworkPolicyCache(t *testing.T) {
 		extraNamespaces   uint32 = 500
 	)
 
-	np, _, stopCh := newTestNPP()
+	np, _, _, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	start := time.Now()
@@ -1060,7 +1425,7 @@ func _TestNetworkPolicyCache(t *testing.T) {
 }
 
 func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
-	np, synced, stopCh := newTestNPP()
+	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
 	// Create some Namespaces
@@ -1128,7 +1493,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 			"allow-client-to-server-2": {
@@ -1136,7 +1501,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
 				flows: []string{
-					fmt.Sprintf("ip, nw_dst=%s, reg0=%d, ip, nw_src=%s", serverIP(npns), npns.vnid, clientIP(npns)),
+					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
 		})

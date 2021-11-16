@@ -116,8 +116,7 @@ func assertOVSChanges(eip *egressIPWatcher, flows *[]string, changes ...egressOV
 	}
 	err = assertFlowChanges(oldFlows, newFlows, flowChanges...)
 	if err != nil {
-		return fmt.Errorf("unexpected flow changes: %v\nOrig:\n%s\nNew:\n%s", err,
-			strings.Join(oldFlows, "\n"), strings.Join(newFlows, "\n"))
+		return fmt.Errorf("unexpected flow changes: %v", err)
 	}
 
 	*flows = newFlows

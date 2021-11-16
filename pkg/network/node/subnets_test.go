@@ -2,7 +2,6 @@ package node
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,8 +20,7 @@ func assertHostSubnetFlowChanges(hsw *hostSubnetWatcher, flows *[]string, change
 
 	err = assertFlowChanges(oldFlows, newFlows, changes...)
 	if err != nil {
-		return fmt.Errorf("unexpected flow changes: %v\nOrig:\n%s\nNew:\n%s", err,
-			strings.Join(oldFlows, "\n"), strings.Join(newFlows, "\n"))
+		return fmt.Errorf("unexpected flow changes: %v", err)
 	}
 
 	*flows = newFlows

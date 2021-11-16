@@ -19,6 +19,154 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
+// openshift-sdn OVS controller (which is badly named because it's not actually a
+// "controller" in the OVS sense (or in the K8s sense for that matter) but whatever...)
+
+// ovsController.SetupOVS() creates the bridge and default ports and sets up the overall
+// framework of flows. Flows are added or deleted later as pods/nodes/etc are
+// added/deleted/updated. No other file modifies the OVS flows EXCEPT for the three
+// osdnPolicy implementations (networkpolicy.go, multitenant.go, singletenant.go),
+// which create/delete flows related to traffic policy.
+
+// Traffic starts at table 0 and proceeds until it reaches an "actions=drop" or
+// "actions=output:PORT". The bridge has no default behavior, so traffic cannot be
+// delivered anywhere unless there is an explicit rule to deliver it. OVS allows packets
+// to be implicitly dropped, but we use explicit drop rules at the end of each table
+// instead, so that the dropped traffic can be seen in the n_packets counters of the
+// "actions=drop" flows.
+
+// Originally all of the table numbers were multiples of 10, but various changes and new
+// features have resulted in additional tables being added in between some tables.
+// (OpenFlow's "goto_table" can only go to a higher-numbered table, so newly-added tables
+// generally need to be inserted into a particular spot. It may eventually be necessary to
+// do a mass renumbering again.)
+
+// Tables 0-25 handle packets coming in to br0. For traffic that originates from vxlan0,
+// the tun_id (VXLAN VNID) is copied to reg0. For traffic that originates from a pod,
+// per-pod rules in table 20 will load the NetID of that pod's NetNamespace into reg0. If
+// traffic comes in from tun0, but with a pod IP as its source IP, then it must be traffic
+// that was previously sent to iptables for service IP resolution, which has now been
+// redirected to a pod IP, so it gets sent to table 25 to have its NetID reloaded into
+// reg0.
+
+// All accepted ingress traffic eventually ends up at table 30, where it then gets routed
+// to the appropriate egress table based on its destination.
+
+// Tables 40-120 handle packets leaving br0 for various destinations. For traffic that is
+// destined for vxlan0, reg0 gets copied into tun_id (the VXLAN VNID) so it will be
+// available to the remote node. For traffic that is destined for a pod, table 70 will
+// load the NetID of that pod's NetNamespace into reg1, and the pod's bridge port into
+// reg2. Then table 80 examines reg0 (the source namespace NetID) and reg1 (the
+// destination namespace NetID), and the source and destination pod IPs, to determine
+// whether to accept the traffic (based on rules programmed by multitenant.go or
+// networkpolicy.go). Accepted traffic is output to the port indicated by reg2.
+
+// (Currently no OpenFlow registers beyond reg2 are used for anything.)
+
+// Table 253 is a special table containing a single "note" rule, which is examined when
+// openshift-sdn starts up if it finds that br0 already exists. If the "note" rule is
+// missing, that indicates that br0 is in a half-set-up state, and should be destroyed and
+// recreated. Otherwise, if the "note" rule exists, it indicates the plugin mode
+// (singletenant/multitenant/networkpolicy) and "rule version" that the current rules in
+// the table correspond to. If this does not match the new openshift-sdn's plugin mode and
+// rule version, then the bridge is destroyed and recreated. (Thus, the rule version
+// should get incremented any time an incompatible change to the rules in this file is
+// made; TestRuleVersion() in ovscontroller_test.go tries to catch this.)
+
+// Overall organization:
+
+// Table 0: preliminaries, and initial dispatch based on in_port
+//   acceptable incoming VXLAN traffic (in_port=1) goes to table 10 for validation
+//   outbound service traffic returning from iptables goes to table 25
+//   acceptable incoming tun0 traffic (in_port=2) goes to table 30 (general routing)
+//   traffic from any other port is assumed to be from a container and goes to table 20
+
+// Table 10: VXLAN ingress filtering
+//   per-remote-node rules are filled in by AddHostSubnetRules()
+//   any VXLAN traffic from a non-node IP is dropped
+
+// Table 20: from OpenShift container
+//   mostly filled in by setupPodFlows
+//   validates IP/MAC, assigns VNID to reg0
+//   accepted traffic goes to table 21
+//   also has special "drop outbound VXLAN traffic" security rule
+
+// Table 21: from OpenShift container, part 2
+//   NetworkPolicy mode uses this for connection tracking
+//   all traffic then goes to table 30
+
+// Table 25: IP from OpenShift container via Service IP
+//   filled in by setupPodFlows
+//   catches traffic which was originally sent from a local container to a service IP which
+//     has been sent through iptables and now returned into the pod network with a rewritten
+//     destination IP. Reloads the VNID to reg0 then passes to table 30
+
+// Table 30: general routing
+//   ARP/IP to local subnet gateway IP is output on tun0
+//   ARP to local containers goes to table 40
+//   ARP to remote containers goes to table 50
+//   IP to service IPs goes to table 60
+//   IP to local containers goes to table 70
+//   multicast from local pods goes to table 110
+//   multicast from the VXLAN goes to table 120
+//   remaining IP (to external) goes to table 99
+//   remaining ARP is dropped
+
+// Table 40: ARP to local container
+//   filled in by setupPodFlows
+//   traffic is output to container port
+
+// Table 50: ARP to remote container
+//   filled in by AddHostSubnetRules()
+//   traffic is output to vxlan0 with correct tun_dst
+
+// Table 60: Multitenant IP to service from pod
+//   filled in by AddServiceRules()
+//   not used by NetworkPolicy or most Multitenant clusters
+//   for legacy Multitenant clusters, this loads VNIDs for service IPs and then
+//     goes to table 80, so that pod-to-service traffic can be validated before
+//     being passed to iptables.
+
+// Table 70: IP to local container
+//   filled in by setupPodFlows
+//   loads the VNID and port number of the destination pod into reg1 and reg2 then
+//     goes to table 80
+
+// Table 80: IP policy enforcement
+//   rules implementing NetworkPolicy and Multitenant isolation
+//   accepted traffic is output to the port in reg2
+
+// Table 90: IP to remote container
+//   filled in by AddHostSubnetRules()
+//   traffic is output to vxlan0 with correct tun_dst
+
+// Table 99: cluster egress preliminaries
+//   legacy DNS exception on cluster egress traffic
+//   other traffic goes to table 100
+
+// Table 100: egress network policy dispatch
+//   edited by UpdateEgressNetworkPolicy()
+//   rules implementing EgressNetworkPolicies
+//   unmatched/allowed traffic is goes to table 101
+
+// Table 101: egress routing
+//   edited by SetNamespaceEgress*()
+//   traffic destined for an egress IP is forwarded to the correct node
+//   other traffic is output to tun0
+
+// Table 110: outbound multicast filtering
+//   updated by UpdateLocalMulticastFlows()
+//   per-Namespace rules for namespaces that accept multicast, forwarding to table 111
+//   unmatched traffic is dropped
+
+// Table 111: multicast delivery from local pods to the VXLAN
+//   only one rule, updated by UpdateVXLANMulticastRule
+//   send to every other node then goes to table 120
+
+// Table 120: multicast delivery to local pods
+//   updated by UpdateLocalMulticastFlows()
+//   per-Namespace rules to output multicast packets to each pod port in that namespace
+
 type ovsController struct {
 	ovs          ovs.Interface
 	pluginId     int
