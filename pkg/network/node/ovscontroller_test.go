@@ -1185,14 +1185,14 @@ var expectedFlows = []string{
 	" cookie=0, table=100, priority=1, reg0=42, ip, nw_dst=192.168.1.1/32, actions=goto_table:101",
 	" cookie=0, table=100, priority=0, actions=goto_table:101",
 	" cookie=0, table=101, priority=150, ct_state=+rpl, actions=output:2",
-	" cookie=0, table=101, priority=100, ip, reg0=37, actions=group:37",
+	" cookie=0, table=101, priority=100, ip, reg0=37, actions=ct(commit),group:37",
 	" cookie=0, table=101, priority=0, actions=output:2",
 	" cookie=0, table=110, reg0=99, actions=goto_table:111",
 	" cookie=0, table=110, priority=0, actions=drop",
 	" cookie=0, table=111, priority=100, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1,set_field:10.0.45.123->tun_dst,output:1,goto_table:120",
 	" cookie=0, table=120, priority=100, reg0=99, actions=output:4,output:5,output:6",
 	" cookie=0, table=120, priority=0, actions=drop",
-	" cookie=0, table=253, actions=note:00.0B",
+	" cookie=0, table=253, actions=note:00.0C",
 }
 
 // Ensure that we do not change the OVS flows without bumping ruleVersion
