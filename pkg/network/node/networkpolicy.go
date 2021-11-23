@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/util/async"
+	utilnet "k8s.io/utils/net"
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
@@ -719,6 +720,11 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 			npp.watchesAllPods = true
 			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector, dir)...)
 		} else if peer.IPBlock != nil {
+			if !utilnet.IsIPv4CIDRString(peer.IPBlock.CIDR) {
+				// We don't support IPv6, so we don't need to do anything
+				// to allow IPv6 CIDRs.
+				continue
+			}
 			if peer.IPBlock.Except != nil {
 				// Currently IPBlocks with except rules are skipped.
 				klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", npp.policy.Name, npp.policy.Namespace)
