@@ -39,6 +39,10 @@ func (sp *singleTenantPlugin) UpdateNetNamespace(netns *osdnv1.NetNamespace, old
 func (sp *singleTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 }
 
+func (sp *singleTenantPlugin) SetUpPod(podIP string) error {
+	return nil
+}
+
 func (sp *singleTenantPlugin) GetVNID(namespace string) (uint32, error) {
 	return 0, nil
 }

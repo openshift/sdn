@@ -268,6 +268,18 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	np.updateMatchCache(npns)
 }
 
+func (np *networkPolicyPlugin) SetUpPod(podIP string) error {
+	otx := np.node.oc.NewTransaction()
+	// when a pod is created isolate the pod until the current network policy rules can be
+	// evaluated
+	otx.AddFlow("table=27, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
+	otx.AddFlow("table=80, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
+	if err := otx.Commit(); err != nil {
+		return fmt.Errorf("Error syncing OVS flows to isolate pods %v", err)
+	}
+	return nil
+}
+
 func (np *networkPolicyPlugin) GetVNID(namespace string) (uint32, error) {
 	return np.vnids.WaitAndGetVNID(namespace)
 }
@@ -849,7 +861,14 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 	}
 
 	np.lock.Lock()
-	defer np.lock.Unlock()
+	defer func() {
+		otx := np.node.oc.NewTransaction()
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.Commit()
+
+		np.lock.Unlock()
+	}()
 
 	np.refreshPodNetworkPolicies(pod)
 }

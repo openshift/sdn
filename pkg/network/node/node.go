@@ -54,6 +54,8 @@ type osdnPolicy interface {
 	UpdateNetNamespace(netns *osdnv1.NetNamespace, oldNetID uint32)
 	DeleteNetNamespace(netns *osdnv1.NetNamespace)
 
+	SetUpPod(podIP string) error
+
 	GetVNID(namespace string) (uint32, error)
 	GetNamespaces(vnid uint32) []string
 	GetMulticastEnabled(vnid uint32) bool

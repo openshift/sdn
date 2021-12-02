@@ -492,6 +492,9 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 		return nil, nil, err
 	}
 
+	if err := m.policy.SetUpPod(podIP.String()); err != nil {
+		klog.Errorf("there may be issues with pod isolation: %v", err)
+	}
 	ofport, err := m.ovs.SetUpPod(req.SandboxID, req.HostVeth, podIP, vnid)
 	if err != nil {
 		return nil, nil, err

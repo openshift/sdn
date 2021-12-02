@@ -118,6 +118,10 @@ func (mp *multiTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, netns.NetID, 0)
 }
 
+func (mp *multiTenantPlugin) SetUpPod(podIP string) error {
+	return nil
+}
+
 func (mp *multiTenantPlugin) GetVNID(namespace string) (uint32, error) {
 	return mp.vnids.WaitAndGetVNID(namespace)
 }
