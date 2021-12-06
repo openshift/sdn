@@ -127,6 +127,11 @@ var iptablesCommands = [][]string{
 	{"-A", "OUTPUT", "-p", "udp", "-m", "udp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
 	{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
 	{"-A", "FORWARD", "-p", "udp", "-m", "udp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
+	// Block cloud provider metadata IP for Alibaba Cloud
+	{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "-d", "100.100.100.200", "-j", "REJECT"},
+	{"-A", "OUTPUT", "-p", "udp", "-m", "udp", "-d", "100.100.100.200", "-j", "REJECT"},
+	{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "-d", "100.100.100.200", "-j", "REJECT"},
+	{"-A", "FORWARD", "-p", "udp", "-m", "udp", "-d", "100.100.100.200", "-j", "REJECT"},
 }
 
 func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
