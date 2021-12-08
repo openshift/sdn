@@ -185,16 +185,28 @@ func assertPolicies(np *networkPolicyPlugin, npns *npNamespace, nPolicies int, m
 			return fmt.Errorf("policy %q in %q has incorrect watchesOwnPods %t", npp.policy.Name, npns.name, npp.watchesOwnPods)
 		}
 
-		nppFlows := sets.NewString(npp.flows...)
+		nppFlows := sets.NewString(npp.ingressFlows...)
 		matchFlows := sets.NewString()
-		for _, flow := range match.flows {
+		for _, flow := range match.ingressFlows {
 			if !strings.HasSuffix(flow, ", ") {
 				flow = flow + ", "
 			}
 			matchFlows.Insert(flow)
 		}
 		if !nppFlows.Equal(matchFlows) {
-			return fmt.Errorf("policy %q in %q has incorrect flows; expected %#v, got %#v", npp.policy.Name, npns.name, match.flows, npp.flows)
+			return fmt.Errorf("policy %q in %q has incorrect ingress flows; expected %#v, got %#v", npp.policy.Name, npns.name, match.ingressFlows, npp.ingressFlows)
+		}
+
+		nppFlows = sets.NewString(npp.egressFlows...)
+		matchFlows = sets.NewString()
+		for _, flow := range match.egressFlows {
+			if !strings.HasSuffix(flow, ", ") {
+				flow = flow + ", "
+			}
+			matchFlows.Insert(flow)
+		}
+		if !nppFlows.Equal(matchFlows) {
+			return fmt.Errorf("policy %q in %q has incorrect egress flows; expected %#v, got %#v", npp.policy.Name, npns.name, match.egressFlows, npp.egressFlows)
 		}
 	}
 
@@ -361,7 +373,7 @@ func TestNetworkPolicy(t *testing.T) {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
 				watchesOwnPods:    false,
-				flows: []string{
+				ingressFlows: []string{
 					fmt.Sprintf("reg0=%d", npns.vnid),
 				},
 			},
@@ -369,7 +381,7 @@ func TestNetworkPolicy(t *testing.T) {
 				watchesNamespaces: true,
 				watchesAllPods:    false,
 				watchesOwnPods:    false,
-				flows: []string{
+				ingressFlows: []string{
 					"reg0=0",
 				},
 			},
@@ -425,7 +437,7 @@ func TestNetworkPolicy(t *testing.T) {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
-				flows: []string{
+				ingressFlows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
@@ -467,7 +479,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				"reg0=2",
 				"reg0=4",
 			},
@@ -516,7 +528,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[3])),
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
 			},
@@ -560,7 +572,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    true,
 			watchesOwnPods:    true,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[1])),
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[2])),
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(np.namespaces[3])),
@@ -602,7 +614,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
@@ -610,7 +622,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=0",
 					},
 				},
@@ -625,7 +637,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=1",
 					},
 				},
@@ -633,7 +645,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=0",
 					},
 				},
@@ -641,7 +653,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
@@ -649,7 +661,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=2",
 						"reg0=4",
 						"reg0=6",
@@ -660,7 +672,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[5])),
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[7])),
@@ -678,7 +690,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
@@ -686,7 +698,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=0",
 					},
 				},
@@ -694,7 +706,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
@@ -702,7 +714,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    true,
 					watchesOwnPods:    true,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[1])),
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[2])),
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(np.namespaces[3])),
@@ -725,7 +737,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
@@ -733,7 +745,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: true,
 					watchesAllPods:    false,
 					watchesOwnPods:    false,
-					flows: []string{
+					ingressFlows: []string{
 						"reg0=0",
 					},
 				},
@@ -741,7 +753,7 @@ func TestNetworkPolicy(t *testing.T) {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
 					watchesOwnPods:    true,
-					flows: []string{
+					ingressFlows: []string{
 						fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 					},
 				},
@@ -769,7 +781,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				"reg0=2",
 				"reg0=4",
 				"reg0=6",
@@ -790,7 +802,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				"reg0=4",
 				"reg0=6",
 				"reg0=8",
@@ -831,7 +843,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("reg0=%d", npns4.vnid),
 			},
 		},
@@ -839,7 +851,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns4), clientIP(npns4)),
 			},
 		},
@@ -853,7 +865,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				"reg0=0",
 			},
 		},
@@ -896,7 +908,7 @@ func TestNetworkPolicy(t *testing.T) {
 			watchesNamespaces: true,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				"reg0=0", //make sure host network namespace is classified into vnid 0
 			},
 		},
@@ -942,7 +954,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
 			},
 		},
@@ -987,7 +999,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    true,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
 				fmt.Sprintf("ip, nw_src=192.168.0.0/16"),
 			},
@@ -1051,7 +1063,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=192.168.0.0/24"),
 				// There is no rule allowing 192.168.1.0/24 because we can't
 				// implement the exception.
@@ -1085,8 +1097,8 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	addPods(np, npns1)
 	waitForSync(np, synced, "initial namespaces")
 
-	// Both namespaces should get a "default allow" rule to override the
-	// "priority=0, actions=drop" rule at the end of table 80
+	// Both namespaces should get "default allow" rules to override the
+	// "priority=0, actions=drop" rules at the end of tables 27 and 80
 	flows, err := ovsif.DumpFlows("")
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
@@ -1094,7 +1106,15 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	err = assertFlowChanges(prevFlows, flows,
 		flowChange{
 			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
 			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=1", "actions=goto_table:30"},
 		},
 		flowChange{
 			kind:  flowAdded,
@@ -1131,19 +1151,24 @@ func TestNetworkPolicy_egress(t *testing.T) {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
 			watchesOwnPods:    false,
-			flows:             []string{},
+			ingressFlows:      []string{},
+			egressFlows:       []string{},
 		},
 	})
 	if err != nil {
 		t.Error(err.Error())
 	}
 
-	// NS 0 now has default-deny, so its allow rule will be deleted
+	// NS 0 now has default-deny, so its allow rules will be deleted
 	flows, err = ovsif.DumpFlows("")
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
 	}
 	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=27", "reg0=0", "actions=goto_table:30"},
+		},
 		flowChange{
 			kind:  flowRemoved,
 			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
@@ -1154,7 +1179,7 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	}
 	prevFlows = flows
 
-	// Add a just-egress policy, which should have no effect
+	// Add a just-egress policy
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1186,8 +1211,11 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		"egress": {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
-			watchesOwnPods:    false, // Spec.PodSelector is ignored for egress-only
-			flows:             []string{},
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+			egressFlows: []string{
+				fmt.Sprintf("ip, nw_src=%s, ip, nw_dst=%s", clientIP(npns), serverIP(npns)),
+			},
 		},
 	})
 	if err != nil {
@@ -1198,14 +1226,18 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error dumping flows: %v", err)
 	}
-	err = assertFlowChanges(prevFlows, flows) // no changes
-
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_src=10.0.0.2", "nw_dst=10.0.0.3", "actions=goto_table:30"},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Unexpected flow changes: %v", err)
 	}
 	prevFlows = flows
 
-	// Add a mixed-ingress-egress policy, which should affect ingress but not egress
+	// Add a mixed-ingress-egress policy
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1243,11 +1275,16 @@ func TestNetworkPolicy_egress(t *testing.T) {
 
 	err = assertPolicies(np, npns, 3, map[string]*npPolicy{
 		"ingress-egress": {
-			watchesNamespaces: false, // egress NamespaceSelector is ignored
-			watchesAllPods:    false,
+			watchesNamespaces: true,
+			watchesAllPods:    true,
 			watchesOwnPods:    true,
-			flows: []string{
+			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+			},
+			egressFlows: []string{
+				// egress namespaceSelector rule does per-IP, not reg match
+				fmt.Sprintf("ip, nw_dst=%s", clientIP(npns1)),
+				fmt.Sprintf("ip, nw_dst=%s", serverIP(npns1)),
 			},
 		},
 	})
@@ -1263,6 +1300,14 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=0", "nw_src=10.0.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_dst=10.1.0.2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=0", "nw_dst=10.1.0.3", "actions=goto_table:30"},
 		},
 	)
 	if err != nil {
@@ -1492,7 +1537,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
-				flows: []string{
+				ingressFlows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},
@@ -1500,7 +1545,7 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
 				watchesOwnPods:    true,
-				flows: []string{
+				ingressFlows: []string{
 					fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns), clientIP(npns)),
 				},
 			},

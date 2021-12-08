@@ -47,11 +47,13 @@ type networkPolicyPlugin struct {
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
 type npNamespace struct {
-	name  string
-	vnid  uint32
+	name string
+	vnid uint32
+
+	// inUse tracks whether the namespace is in use by any pods on this node
 	inUse bool
 
-	// mustRecalculate is true if we need to recalculate policy .flows/.selectedIPs
+	// mustRecalculate is true if we need to recalculate policy flows/selectedIPs
 	mustRecalculate bool
 	// mustSync is true if we need to push updated flows to OVS
 	mustSync bool
@@ -70,9 +72,14 @@ type npPolicy struct {
 	watchesAllPods    bool
 	watchesOwnPods    bool
 
-	flows         []string
 	selectedIPs   []string
 	selectsAllIPs bool
+
+	affectsIngress bool
+	ingressFlows   []string
+
+	affectsEgress bool
+	egressFlows   []string
 }
 
 // npCacheEntry caches information about matches for a LabelSelector
@@ -80,6 +87,13 @@ type npCacheEntry struct {
 	selector labels.Selector
 	matches  map[string]uint32
 }
+
+type flowDirection bool
+
+const (
+	ingressFlow flowDirection = true
+	egressFlow  flowDirection = false
+)
 
 func NewNetworkPolicyPlugin() osdnPolicy {
 	return &networkPolicyPlugin{
@@ -113,13 +127,29 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 	}
 
 	otx := node.oc.NewTransaction()
-	for _, cn := range np.node.networkInfo.ClusterNetworks {
-		// Must pass packets through CT NAT to ensure NAT state is handled
-		// correctly by OVS when NAT-ed packets have tuple collisions.
-		// https://bugzilla.redhat.com/show_bug.cgi?id=1910378
-		otx.AddFlow("table=21, priority=200, ip, nw_dst=%s, ct_state=-rpl, actions=ct(commit,nat(src=0.0.0.0),table=30)", cn.ClusterCIDR.String())
-	}
+
+	// Egress enforcement for pod-to-Service IP will happen after the packets are rewritten
+	// by iptables and come back via table 25.
+	otx.AddFlow("table=27, priority=300, ip, nw_dst=%s , actions=goto_table:30", node.networkInfo.ServiceNetwork.String())
+
+	// Skip policy enforcement for replies
 	otx.AddFlow("table=80, priority=200, ip, ct_state=+rpl, actions=output:NXM_NX_REG2[]")
+	otx.AddFlow("table=27, priority=200, ip, ct_state=+rpl, actions=goto_table:30")
+
+	// Register all pod-network-internal connections with conntrack, so we can later
+	// allow replies to them to skip policy enforcement. (We don't do this for traffic
+	// leaving the pod network, because those packets usually need to get processed by
+	// iptables, but the kernel won't do that if we have already called ct(commit) on
+	// them.)
+	//
+	// The dummy nat(src=0.0.0.0) ensures we handle tuple collisions; see
+	// https://bugzilla.redhat.com/show_bug.cgi?id=1910378
+	for _, scn := range np.node.networkInfo.ClusterNetworks {
+		for _, dcn := range np.node.networkInfo.ClusterNetworks {
+			otx.AddFlow("table=30, priority=100, ip, nw_src=%s, nw_dst=%s, ct_state=-rpl, actions=ct(commit,table=31)", scn.ClusterCIDR.String(), dcn.ClusterCIDR.String())
+		}
+	}
+
 	if err := otx.Commit(); err != nil {
 		return err
 	}
@@ -238,6 +268,18 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	np.updateMatchCache(npns)
 }
 
+func (np *networkPolicyPlugin) SetUpPod(podIP string) error {
+	otx := np.node.oc.NewTransaction()
+	// when a pod is created isolate the pod until the current network policy rules can be
+	// evaluated
+	otx.AddFlow("table=27, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
+	otx.AddFlow("table=80, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
+	if err := otx.Commit(); err != nil {
+		return fmt.Errorf("Error syncing OVS flows to isolate pods %v", err)
+	}
+	return nil
+}
+
 func (np *networkPolicyPlugin) GetVNID(namespace string) (uint32, error) {
 	return np.vnids.WaitAndGetVNID(namespace)
 }
@@ -302,41 +344,64 @@ func (np *networkPolicyPlugin) recalculate() {
 func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns *npNamespace) {
 	klog.V(5).Infof("syncNamespace %d", npns.vnid)
 	otx.DeleteFlows("table=80, reg1=%d", npns.vnid)
-	if npns.inUse {
-		allPodsSelected := false
+	otx.DeleteFlows("table=27, reg0=%d", npns.vnid)
+	if !npns.inUse {
+		return
+	}
 
-		// Add "allow" rules for all traffic allowed by a NetworkPolicy
-		for _, npp := range npns.policies {
-			for _, flow := range npp.flows {
-				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
-			}
-			if npp.selectsAllIPs {
-				allPodsSelected = true
-			}
+	var allPodsSelected, affectsIngress, affectsEgress bool
+
+	// Add "allow" rules for all traffic allowed by a NetworkPolicy
+	for _, npp := range npns.policies {
+		if npp.selectsAllIPs {
+			allPodsSelected = true
 		}
 
-		if allPodsSelected {
-			// Some policy selects all pods, so all pods are "isolated" and no
-			// traffic is allowed beyond what we explicitly allowed above. (And
-			// the "priority=0, actions=drop" rule will filter out all remaining
-			// traffic in this Namespace).
-		} else {
-			// No policy selects all pods, so we need an "else accept" rule to
-			// allow traffic to pod IPs that aren't selected by a policy. But
-			// before that we need rules to drop any remaining traffic for any pod
-			// IP that *is* selected by a policy.
-			selectedIPs := sets.NewString()
-			for _, npp := range npns.policies {
-				for _, ip := range npp.selectedIPs {
-					if !selectedIPs.Has(ip) {
-						selectedIPs.Insert(ip)
+		if npp.affectsIngress {
+			affectsIngress = true
+			for _, flow := range npp.ingressFlows {
+				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
+			}
+		}
+		if npp.affectsEgress {
+			affectsEgress = true
+			for _, flow := range npp.egressFlows {
+				otx.AddFlow("table=27, priority=150, reg0=%d, %s actions=goto_table:30", npns.vnid, flow)
+			}
+		}
+	}
+
+	if allPodsSelected {
+		// Some policy selects all pods, so all pods are "isolated" and no
+		// traffic is allowed beyond what we explicitly allowed above. (And
+		// the "priority=0, actions=drop" rule will filter out all remaining
+		// traffic in this Namespace).
+	} else {
+		// No policy selects all pods, so we need an "else accept" rule to
+		// allow traffic to pod IPs that aren't selected by a policy. But
+		// before that we need rules to drop any remaining traffic for any pod
+		// IP that *is* selected by a policy.
+		selectedIPs := sets.NewString()
+		for _, npp := range npns.policies {
+			for _, ip := range npp.selectedIPs {
+				if !selectedIPs.Has(ip) {
+					selectedIPs.Insert(ip)
+					if affectsIngress {
 						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
+					}
+					if affectsEgress {
+						otx.AddFlow("table=27, priority=100, reg0=%d, ip, nw_src=%s, actions=drop", npns.vnid, ip)
 					}
 				}
 			}
-
-			otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 		}
+	}
+
+	if !allPodsSelected || !affectsIngress {
+		otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
+	}
+	if !allPodsSelected || !affectsEgress {
+		otx.AddFlow("table=27, priority=50, reg0=%d, actions=goto_table:30", npns.vnid)
 	}
 }
 
@@ -419,7 +484,7 @@ func (np *networkPolicyPlugin) flushMatchCache(lsel *metav1.LabelSelector) {
 	delete(np.nsMatchCache, selector.String())
 }
 
-func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel *metav1.LabelSelector) []string {
+func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel *metav1.LabelSelector, dir flowDirection) []string {
 	var peerFlows []string
 
 	nsSel, err := metav1.LabelSelectorAsSelector(nsLabelSel)
@@ -446,7 +511,11 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 		}
 		for _, pod := range pods {
 			if isOnPodNetwork(pod) {
-				peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", pod.Status.PodIP))
+				if dir == ingressFlow {
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", pod.Status.PodIP))
+				} else {
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", pod.Status.PodIP))
+				}
 			}
 		}
 	}
@@ -454,7 +523,7 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 	return peerFlows
 }
 
-func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector) []string {
+func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector, dir flowDirection) []string {
 	var peerFlows []string
 	sel, err := metav1.LabelSelectorAsSelector(lsel)
 	if err != nil {
@@ -465,7 +534,11 @@ func (np *networkPolicyPlugin) selectNamespaces(lsel *metav1.LabelSelector) []st
 
 	namespaces := np.selectNamespacesInternal(sel)
 	for _, vnid := range namespaces {
-		peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", vnid))
+		if dir == ingressFlow {
+			peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", vnid))
+		} else {
+			peerFlows = append(peerFlows, fmt.Sprintf("reg1=%d, ", vnid))
+		}
 	}
 	return peerFlows
 }
@@ -493,7 +566,7 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 	return ips
 }
 
-// parsePortFlows parses the Ports of a NetworkPolicyIngressRule, returning a list of
+// parsePortFlows parses the Ports of a NetworkPolicy, returning a list of
 // distinct restrictions consisting of OpenFlow match rules, each one ending with a
 // trailing "," (eg, "tcp, tp_dst=80, "). Every flow which is to be matched by the rule
 // must match at least one of the returned restrictions. (If there are no ports specified,
@@ -532,12 +605,12 @@ func (np *networkPolicyPlugin) parsePortFlows(policy *networkingv1.NetworkPolicy
 	return portFlows
 }
 
-// parsePeerFlows parses the From values of a NetworkPolicyIngressRule, returning a list
+// parsePeerFlows parses the From/To values of a NetworkPolicyRule, returning a list
 // of distinct restrictions consisting of OpenFlow match rules, each one ending with a
 // trailing "," (eg, "ip, nw_src=10.128.2.4, "). Every flow which is to be
 // matched by the rule must match at least one of the returned restrictions. (If there are
 // no peers specified, it returns the no-op restriction "".)
-func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, peers []networkingv1.NetworkPolicyPeer) []string {
+func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, peers []networkingv1.NetworkPolicyPeer, dir flowDirection) []string {
 	if len(peers) == 0 {
 		// no restrictions based on peers
 		return []string{""}
@@ -548,32 +621,55 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 		if peer.PodSelector != nil && peer.NamespaceSelector == nil {
 			if len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0 {
 				// The PodSelector is empty, meaning it selects all pods in this namespace
-				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
+				if dir == ingressFlow {
+					peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
+				} else {
+					peerFlows = append(peerFlows, fmt.Sprintf("reg1=%d, ", npns.vnid))
+				}
 			} else {
 				npp.watchesOwnPods = true
 				for _, ip := range np.selectPods(npns, peer.PodSelector) {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", ip))
+					if dir == ingressFlow {
+						peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", ip))
+					} else {
+						peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", ip))
+					}
 				}
 			}
 		} else if peer.NamespaceSelector != nil && peer.PodSelector == nil {
 			if len(peer.NamespaceSelector.MatchLabels) == 0 && len(peer.NamespaceSelector.MatchExpressions) == 0 {
 				// The NamespaceSelector is empty, meaning it selects all namespaces
 				peerFlows = append(peerFlows, "")
-			} else {
+			} else if dir == ingressFlow {
+				// We can implement namespaceSelectors on ingress by just
+				// checking the source VNID...
 				npp.watchesNamespaces = true
-				peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector)...)
+				peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector, dir)...)
+			} else {
+				// ... but for namespaceSelectors on egress, we can't just
+				// check the destination VNID because we don't know that
+				// yet. So instead we pretend the rule was a combined
+				// namespaceSelector+podSelector rule with a match-all
+				// podSelector, and generate per-pod-IP match rules.
+				npp.watchesNamespaces = true
+				npp.watchesAllPods = true
+				peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, &metav1.LabelSelector{}, dir)...)
 			}
 		} else if peer.NamespaceSelector != nil && peer.PodSelector != nil {
 			npp.watchesNamespaces = true
 			npp.watchesAllPods = true
-			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector)...)
+			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector, dir)...)
 		} else if peer.IPBlock != nil {
 			if peer.IPBlock.Except != nil {
 				// Currently IPBlocks with except rules are skipped.
 				klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", npp.policy.Name, npp.policy.Namespace)
 			} else {
 				// Network Policy has ipBlocks, allow traffic from/to those ips.
-				peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+				if dir == ingressFlow {
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+				} else {
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", peer.IPBlock.CIDR))
+				}
 			}
 		}
 	}
@@ -585,53 +681,69 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *networkingv1.NetworkPolicy) *npPolicy {
 	npp := &npPolicy{policy: *policy}
 
-	var affectsIngress, affectsEgress bool
 	for _, ptype := range policy.Spec.PolicyTypes {
 		if ptype == networkingv1.PolicyTypeIngress {
-			affectsIngress = true
+			npp.affectsIngress = true
 		} else if ptype == networkingv1.PolicyTypeEgress {
-			if !affectsEgress {
-				klog.Warningf("Ignoring egress rules in NetworkPolicy %s/%s", policy.Namespace, policy.Name)
-			}
-			affectsEgress = true
+			npp.affectsEgress = true
 		}
 	}
-	if !affectsIngress {
-		// The rest of this function assumes that all policies affect ingress: a
-		// policy that only affects egress is, for our purposes, equivalent to one
-		// that affects ingress but does not select any pods.
-		npp.selectedIPs = nil
-		npp.selectsAllIPs = false
-		return npp
-	}
 
-	var destFlows []string
+	var ingressTargetFlows, egressTargetFlows []string
 	if len(policy.Spec.PodSelector.MatchLabels) > 0 || len(policy.Spec.PodSelector.MatchExpressions) > 0 {
 		npp.watchesOwnPods = true
 		npp.selectedIPs = np.selectPods(npns, &policy.Spec.PodSelector)
 		for _, ip := range npp.selectedIPs {
-			destFlows = append(destFlows, fmt.Sprintf("ip, nw_dst=%s, ", ip))
+			if npp.affectsIngress {
+				ingressTargetFlows = append(ingressTargetFlows, fmt.Sprintf("ip, nw_dst=%s, ", ip))
+			}
+			if npp.affectsEgress {
+				egressTargetFlows = append(egressTargetFlows, fmt.Sprintf("ip, nw_src=%s, ", ip))
+			}
 		}
 	} else {
 		npp.selectedIPs = nil
 		npp.selectsAllIPs = true
-		destFlows = []string{""}
-	}
-
-	for _, rule := range policy.Spec.Ingress {
-		portFlows := np.parsePortFlows(policy, rule.Ports)
-		peerFlows := np.parsePeerFlows(npns, npp, rule.From)
-
-		for _, destFlow := range destFlows {
-			for _, peerFlow := range peerFlows {
-				for _, portFlow := range portFlows {
-					npp.flows = append(npp.flows, fmt.Sprintf("%s%s%s", destFlow, peerFlow, portFlow))
-				}
-			}
+		if npp.affectsIngress {
+			ingressTargetFlows = []string{""}
+		}
+		if npp.affectsEgress {
+			egressTargetFlows = []string{""}
 		}
 	}
 
-	sort.Strings(npp.flows)
+	if npp.affectsIngress {
+		for _, rule := range policy.Spec.Ingress {
+			portFlows := np.parsePortFlows(policy, rule.Ports)
+			peerFlows := np.parsePeerFlows(npns, npp, rule.From, ingressFlow)
+
+			for _, destFlow := range ingressTargetFlows {
+				for _, peerFlow := range peerFlows {
+					for _, portFlow := range portFlows {
+						npp.ingressFlows = append(npp.ingressFlows, fmt.Sprintf("%s%s%s", destFlow, peerFlow, portFlow))
+					}
+				}
+			}
+		}
+		sort.Strings(npp.ingressFlows)
+	}
+
+	if npp.affectsEgress {
+		for _, rule := range policy.Spec.Egress {
+			portFlows := np.parsePortFlows(policy, rule.Ports)
+			peerFlows := np.parsePeerFlows(npns, npp, rule.To, egressFlow)
+
+			for _, srcFlow := range egressTargetFlows {
+				for _, peerFlow := range peerFlows {
+					for _, portFlow := range portFlows {
+						npp.egressFlows = append(npp.egressFlows, fmt.Sprintf("%s%s%s", srcFlow, peerFlow, portFlow))
+					}
+				}
+			}
+		}
+		sort.Strings(npp.egressFlows)
+	}
+
 	klog.V(5).Infof("Parsed NetworkPolicy: %#v", npp)
 	return npp
 }
@@ -640,6 +752,11 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 func (np *networkPolicyPlugin) cleanupNetworkPolicy(policy *networkingv1.NetworkPolicy) {
 	for _, rule := range policy.Spec.Ingress {
 		for _, peer := range rule.From {
+			np.cleanupPeer(peer)
+		}
+	}
+	for _, rule := range policy.Spec.Egress {
+		for _, peer := range rule.To {
 			np.cleanupPeer(peer)
 		}
 	}
@@ -660,7 +777,7 @@ func (np *networkPolicyPlugin) updateNetworkPolicy(npns *npNamespace, policy *ne
 	oldNPP, existed := npns.policies[policy.UID]
 	npns.policies[policy.UID] = npp
 
-	changed := !existed || !reflect.DeepEqual(oldNPP.flows, npp.flows) || !reflect.DeepEqual(oldNPP.selectedIPs, npp.selectedIPs) || oldNPP.selectsAllIPs != npp.selectsAllIPs
+	changed := !existed || !reflect.DeepEqual(oldNPP.ingressFlows, npp.ingressFlows) || !reflect.DeepEqual(oldNPP.egressFlows, npp.egressFlows) || !reflect.DeepEqual(oldNPP.selectedIPs, npp.selectedIPs) || oldNPP.selectsAllIPs != npp.selectsAllIPs
 	if !changed {
 		klog.V(5).Infof("NetworkPolicy %s/%s is unchanged", policy.Namespace, policy.Name)
 	}
@@ -744,7 +861,14 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 	}
 
 	np.lock.Lock()
-	defer np.lock.Unlock()
+	defer func() {
+		otx := np.node.oc.NewTransaction()
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.Commit()
+
+		np.lock.Unlock()
+	}()
 
 	np.refreshPodNetworkPolicies(pod)
 }

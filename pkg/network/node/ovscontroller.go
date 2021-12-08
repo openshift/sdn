@@ -49,8 +49,8 @@ import (
 // redirected to a pod IP, so it gets sent to table 25 to have its NetID reloaded into
 // reg0.
 
-// All accepted ingress traffic eventually ends up at table 30, where it then gets routed
-// to the appropriate egress table based on its destination.
+// All accepted ingress traffic and valid egress traffic eventually ends up at table 30,
+// where it then gets routed to the appropriate egress table based on its destination.
 
 // Tables 40-120 handle packets leaving br0 for various destinations. For traffic that is
 // destined for vxlan0, reg0 gets copied into tun_id (the VXLAN VNID) so it will be
@@ -88,20 +88,24 @@ import (
 // Table 20: from OpenShift container
 //   mostly filled in by setupPodFlows
 //   validates IP/MAC, assigns VNID to reg0
-//   accepted traffic goes to table 21
+//   accepted traffic goes to table 27
 //   also has special "drop outbound VXLAN traffic" security rule
-
-// Table 21: from OpenShift container, part 2
-//   NetworkPolicy mode uses this for connection tracking
-//   all traffic then goes to table 30
 
 // Table 25: IP from OpenShift container via Service IP
 //   filled in by setupPodFlows
 //   catches traffic which was originally sent from a local container to a service IP which
 //     has been sent through iptables and now returned into the pod network with a rewritten
-//     destination IP. Reloads the VNID to reg0 then passes to table 30
+//     destination IP. Reloads the VNID to reg0 then passes to table 27
 
-// Table 30: general routing
+// Table 27: NetworkPolicy egress rule enforcement
+//   flows implementing NetworkPolicy egress rules (other plugins bypass this table)
+//   accepted traffic goes to table 30
+
+// Table 30: general routing; conntrack setup
+//   When using NetworkPolicy plugin, pod-network-internal traffic gets conntracked here.
+//   All traffic goes to table 31
+
+// Table 31: general routing
 //   ARP/IP to local subnet gateway IP is output on tun0
 //   ARP to local containers goes to table 40
 //   ARP to remote containers goes to table 50
@@ -132,7 +136,7 @@ import (
 //   loads the VNID and port number of the destination pod into reg1 and reg2 then
 //     goes to table 80
 
-// Table 80: IP policy enforcement
+// Table 80: NetworkPolicy ingress rule enforcement
 //   rules implementing NetworkPolicy and Multitenant isolation
 //   accepted traffic is output to the port in reg2
 
@@ -181,7 +185,7 @@ const (
 	Vxlan0 = "vxlan0"
 
 	// rule versioning; increment each time flow rules change
-	ruleVersion = 12
+	ruleVersion = 13
 
 	ruleVersionTable = 253
 )
@@ -275,44 +279,47 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	otx.AddFlow("table=10, priority=0, actions=drop")
 
 	// Table 20: from OpenShift container; validate IP/MAC, assign tenant-id; filled in by setupPodFlows
-	// eg, "table=20, priority=100, in_port=${ovs_port}, arp, nw_src=${ipaddr}, arp_sha=${macaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
-	//     "table=20, priority=100, in_port=${ovs_port}, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
+	// eg, "table=20, priority=100, in_port=${ovs_port}, arp, nw_src=${ipaddr}, arp_sha=${macaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:30"
+	//     "table=20, priority=100, in_port=${ovs_port}, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:27"
 	// (${tenant_id} is always 0 for single-tenant)
 	otx.AddFlow("table=20, priority=300, udp, udp_dst=%d, actions=drop", vxlanPort)
 	otx.AddFlow("table=20, priority=0, actions=drop")
 
-	// Table 21: from OpenShift container; NetworkPolicy plugin uses this for connection tracking
-	otx.AddFlow("table=21, priority=0, actions=goto_table:30")
-
 	if oc.useConnTrack {
 		// Table 25: IP from OpenShift container via Service IP; reload tenant-id; filled in by setupPodFlows
-		// eg, "table=25, priority=100, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:30"
+		// eg, "table=25, priority=100, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:27"
 		otx.AddFlow("table=25, priority=0, actions=drop")
 	}
 
-	// Table 30: general routing
-	otx.AddFlow("table=30, priority=300, arp, nw_dst=%s, actions=output:2", localSubnetGateway)
-	otx.AddFlow("table=30, priority=200, arp, nw_dst=%s, actions=goto_table:40", localSubnetCIDR)
+	// Table 27: egress NetworkPolicy enforcement (NetworkPolicy plugin only)
+	otx.AddFlow("table=27, priority=0, actions=drop")
+
+	// Table 30: general routing; conntrack setup (NetworkPolicy plugin only)
+	otx.AddFlow("table=30, priority=0, actions=goto_table:31")
+
+	// Table 31: general routing
+	otx.AddFlow("table=31, priority=300, arp, nw_dst=%s, actions=output:2", localSubnetGateway)
+	otx.AddFlow("table=31, priority=200, arp, nw_dst=%s, actions=goto_table:40", localSubnetCIDR)
 	for _, clusterCIDR := range clusterNetworkCIDR {
-		otx.AddFlow("table=30, priority=100, arp, nw_dst=%s, actions=goto_table:50", clusterCIDR)
+		otx.AddFlow("table=31, priority=100, arp, nw_dst=%s, actions=goto_table:50", clusterCIDR)
 	}
-	otx.AddFlow("table=30, priority=300, ip, nw_dst=%s, actions=output:2", localSubnetGateway)
-	otx.AddFlow("table=30, priority=100, ip, nw_dst=%s, actions=goto_table:60", serviceNetworkCIDR)
+	otx.AddFlow("table=31, priority=300, ip, nw_dst=%s, actions=output:2", localSubnetGateway)
+	otx.AddFlow("table=31, priority=100, ip, nw_dst=%s, actions=goto_table:60", serviceNetworkCIDR)
 	if oc.useConnTrack {
-		otx.AddFlow("table=30, priority=250, ip, nw_dst=%s, ct_state=+rpl, actions=ct(nat,table=70)", localSubnetCIDR)
+		otx.AddFlow("table=31, priority=250, ip, nw_dst=%s, ct_state=+rpl, actions=ct(nat,table=70)", localSubnetCIDR)
 	}
-	otx.AddFlow("table=30, priority=200, ip, nw_dst=%s, actions=goto_table:70", localSubnetCIDR)
+	otx.AddFlow("table=31, priority=200, ip, nw_dst=%s, actions=goto_table:70", localSubnetCIDR)
 	for _, clusterCIDR := range clusterNetworkCIDR {
-		otx.AddFlow("table=30, priority=100, ip, nw_dst=%s, actions=goto_table:90", clusterCIDR)
+		otx.AddFlow("table=31, priority=100, ip, nw_dst=%s, actions=goto_table:90", clusterCIDR)
 	}
 
 	// Multicast coming from the VXLAN
-	otx.AddFlow("table=30, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120")
+	otx.AddFlow("table=31, priority=50, in_port=1, ip, nw_dst=224.0.0.0/4, actions=goto_table:120")
 	// Multicast coming from local pods
-	otx.AddFlow("table=30, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110")
+	otx.AddFlow("table=31, priority=25, ip, nw_dst=224.0.0.0/4, actions=goto_table:110")
 
-	otx.AddFlow("table=30, priority=0, ip, actions=goto_table:99")
-	otx.AddFlow("table=30, priority=0, arp, actions=drop")
+	otx.AddFlow("table=31, priority=0, ip, actions=goto_table:99")
+	otx.AddFlow("table=31, priority=0, arp, actions=drop")
 
 	// Table 40: ARP to local container, filled in by setupPodFlows
 	// eg, "table=40, priority=100, arp, nw_dst=${container_ip}, actions=output:${ovs_port}"
@@ -336,7 +343,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// eg, "table=70, priority=100, ip, nw_dst=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG1[], load:${ovs_port}->NXM_NX_REG2[], goto_table:80"
 	otx.AddFlow("table=70, priority=0, actions=drop")
 
-	// Table 80: IP policy enforcement; mostly managed by the osdnPolicy
+	// Table 80: ingress NetworkPolicy/Multitenant enforcement
 	otx.AddFlow("table=80, priority=300, ip, nw_src=%s/32, actions=output:NXM_NX_REG2[]", localSubnetGateway)
 	// eg, "table=80, priority=100, reg0=${tenant_id}, reg1=${tenant_id}, actions=output:NXM_NX_REG2[]"
 	otx.AddFlow("table=80, priority=0, actions=drop")
@@ -463,10 +470,10 @@ func (oc *ovsController) setupPodFlows(ofport int, podIP net.IP, vnid uint32) er
 	ipmac := fmt.Sprintf("00:00:%02x:%02x:%02x:%02x/00:00:ff:ff:ff:ff", podIP[0], podIP[1], podIP[2], podIP[3])
 
 	// ARP/IP traffic from container
-	otx.AddFlow("table=20, priority=100, in_port=%d, arp, nw_src=%s, arp_sha=%s, actions=load:%d->NXM_NX_REG0[], goto_table:21", ofport, ipstr, ipmac, vnid)
-	otx.AddFlow("table=20, priority=100, in_port=%d, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:21", ofport, ipstr, vnid)
+	otx.AddFlow("table=20, priority=100, in_port=%d, arp, nw_src=%s, arp_sha=%s, actions=load:%d->NXM_NX_REG0[], goto_table:30", ofport, ipstr, ipmac, vnid)
+	otx.AddFlow("table=20, priority=100, in_port=%d, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:27", ofport, ipstr, vnid)
 	if oc.useConnTrack {
-		otx.AddFlow("table=25, priority=100, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:30", ipstr, vnid)
+		otx.AddFlow("table=25, priority=100, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:27", ipstr, vnid)
 	}
 
 	// ARP request/response to container (not isolated)
@@ -831,7 +838,7 @@ func (oc *ovsController) FindPolicyVNIDs() sets.Int {
 	return inUseVNIDs.Union(policyVNIDs)
 }
 
-// FindUnusedVNIDs returns a list of VNIDs for which there are table 80 "policy" rules,
+// FindUnusedVNIDs returns a list of VNIDs for which there are table 27/80 "policy" rules,
 // but no table 60/70 "load" rules (meaning that there are no longer any pods or services
 // on this node with that VNID). There is no locking with respect to other ovsController
 // actions, but as long the "add a pod" and "add a service" codepaths add the
@@ -886,7 +893,19 @@ func (oc *ovsController) findInUseAndPolicyVNIDs() (sets.Int, sets.Int) {
 			}
 		}
 
-		// A VNID is checked by policy if there is a table 80 rule comparing reg1 to it.
+		// A VNID is checked by policy if there is a table 27 (egress NetworkPolicy)
+		// rule comparing reg0 to it, or a table 80 (ingress NetworkPolicy /
+		// multitenant) rule comparing reg1 to it.
+		if parsed.Table == 27 {
+			if field, exists := parsed.FindField("reg0"); exists {
+				vnid, err := strconv.ParseInt(field.Value, 0, 32)
+				if err != nil {
+					klog.Warningf("findInUseAndPolicyVNIDs: could not parse VNID in 'reg0=%s': %v", field.Value, err)
+					continue
+				}
+				policyVNIDs.Insert(int(vnid))
+			}
+		}
 		if parsed.Table == 80 {
 			if field, exists := parsed.FindField("reg1"); exists {
 				vnid, err := strconv.ParseInt(field.Value, 0, 32)
