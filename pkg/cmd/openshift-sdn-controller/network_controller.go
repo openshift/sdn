@@ -49,6 +49,8 @@ func RunOpenShiftNetworkController(platformType string) error {
 			controllerContext.kubernetesInformers,
 			controllerContext.osdnClient,
 			controllerContext.osdnInformers,
+			controllerContext.cloudNetworkClient,
+			controllerContext.cloudNetworkInformer,
 		); err != nil {
 			klog.Fatalf("Error starting OpenShift Network Controller: %v", err)
 		}

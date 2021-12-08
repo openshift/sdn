@@ -268,3 +268,14 @@ func StringsToHSEgressIPs(ips []string) []osdnv1.HostSubnetEgressIP {
 	}
 	return out
 }
+
+func GetNodeInternalIP(node *corev1.Node) string {
+	var nodeIP string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			nodeIP = addr.Address
+			break
+		}
+	}
+	return nodeIP
+}

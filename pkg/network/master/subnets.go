@@ -52,7 +52,7 @@ func (master *OsdnMaster) watchNodes() {
 func (master *OsdnMaster) handleAddOrUpdateNode(obj, _ interface{}, eventType watch.EventType) {
 	node := obj.(*corev1.Node)
 
-	nodeIP := getNodeInternalIP(node)
+	nodeIP := common.GetNodeInternalIP(node)
 	if len(nodeIP) == 0 {
 		klog.Errorf("Node IP is not set for node %s, skipping %s event, node: %v", node.Name, eventType, node)
 		return
@@ -208,17 +208,6 @@ func (master *OsdnMaster) clearInitialNodeNetworkUnavailableCondition(origNode *
 	} else if cleared {
 		klog.Infof("Cleared node NetworkUnavailable/NoRouteCreated condition for %s", node.Name)
 	}
-}
-
-func getNodeInternalIP(node *corev1.Node) string {
-	var nodeIP string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
-			nodeIP = addr.Address
-			break
-		}
-	}
-	return nodeIP
 }
 
 func (master *OsdnMaster) watchSubnets() {

@@ -1,15 +1,20 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	configv1 "github.com/openshift/api/config/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
@@ -19,7 +24,32 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/sdn/pkg/network/master/metrics"
+	kcoreinformers "k8s.io/client-go/informers/core/v1"
 )
+
+const (
+	nodeEgressIPConfigAnnotationKey = "cloud.network.openshift.io/egress-ipconfig"
+	// unlimitedNodeCapacity indicates a discarded capacity - useful on
+	// bare-metal where this is ignored.
+	unlimitedNodeCapacity = math.MaxInt32
+)
+
+type ifAddr struct {
+	IPv4 string `json:"ipv4,omitempty"`
+	IPv6 string `json:"ipv6,omitempty"`
+}
+
+type capacity struct {
+	IPv4 int `json:"ipv4,omitempty"`
+	IPv6 int `json:"ipv6,omitempty"`
+	IP   int `json:"ip,omitempty"`
+}
+
+type nodeCloudEgressIPConfiguration struct {
+	Interface string   `json:"interface"`
+	IFAddr    ifAddr   `json:"ifaddr"`
+	Capacity  capacity `json:"capacity"`
+}
 
 type nodeEgress struct {
 	nodeName string
@@ -31,6 +61,8 @@ type nodeEgress struct {
 	parsedCIDRs    map[string]*net.IPNet
 
 	offline bool
+
+	capacity int
 }
 
 type namespaceEgress struct {
@@ -73,7 +105,11 @@ type EgressIPWatcher interface {
 type EgressIPTracker struct {
 	sync.Mutex
 
+	CloudEgressIP bool
+
 	watcher EgressIPWatcher
+
+	nodeInformer kcoreinformers.NodeInformer
 
 	nodes            map[ktypes.UID]*nodeEgress
 	nodesByNodeIP    map[string]*nodeEgress
@@ -86,9 +122,11 @@ type EgressIPTracker struct {
 	updateEgressCIDRs bool
 }
 
-func NewEgressIPTracker(watcher EgressIPWatcher) *EgressIPTracker {
+func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTracker {
 	return &EgressIPTracker{
 		watcher: watcher,
+
+		CloudEgressIP: cloudEgressIP,
 
 		nodes:            make(map[ktypes.UID]*nodeEgress),
 		nodesByNodeIP:    make(map[string]*nodeEgress),
@@ -100,14 +138,22 @@ func NewEgressIPTracker(watcher EgressIPWatcher) *EgressIPTracker {
 	}
 }
 
-func (eit *EgressIPTracker) Start(hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer) {
+func (eit *EgressIPTracker) Start(hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
 	eit.watchHostSubnets(hostSubnetInformer)
 	eit.watchNetNamespaces(netNamespaceInformer)
+
+	if nodeInformer != nil {
+		eit.nodeInformer = nodeInformer
+		eit.watchNodes(nodeInformer)
+	}
 
 	go func() {
 		cache.WaitForCacheSync(utilwait.NeverStop,
 			hostSubnetInformer.Informer().HasSynced,
 			netNamespaceInformer.Informer().HasSynced)
+		if nodeInformer != nil {
+			cache.WaitForCacheSync(utilwait.NeverStop, nodeInformer.Informer().HasSynced)
+		}
 
 		eit.Lock()
 		defer eit.Unlock()
@@ -193,7 +239,18 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 		klog.V(5).Infof("Ignoring HostSubnet %s with an empty subnet", HostSubnetToString(hs))
 		return
 	}
-
+	if len(hs.EgressCIDRs) > 0 && eit.CloudEgressIP {
+		if err := eit.validateEgressCIDRsAreSubnetOfCloudNetwork(hs); err != nil {
+			klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
+			return
+		}
+	}
+	if len(hs.EgressIPs) > 0 && len(hs.EgressCIDRs) == 0 && eit.CloudEgressIP {
+		if err := eit.validateEgressIPs(hs); err != nil {
+			klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
+			return
+		}
+	}
 	eit.UpdateHostSubnetEgress(hs)
 }
 
@@ -234,12 +291,30 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 			nodeIP:       hs.HostIP,
 			sdnIP:        sdnIP,
 			requestedIPs: sets.NewString(),
+			capacity:     unlimitedNodeCapacity,
 		}
 		eit.nodes[hs.UID] = node
 		eit.nodesByNodeIP[hs.HostIP] = node
 	} else if len(hs.EgressIPs) == 0 && len(hs.EgressCIDRs) == 0 {
 		delete(eit.nodes, hs.UID)
 		delete(eit.nodesByNodeIP, node.nodeIP)
+	}
+
+	// We need to handle the case where the SDN pods restart, upon which both
+	// the Node will have the annotation set and all resources will already be
+	// existing, meaning: we might receive the HostSubnet event after the Node
+	// event, which means we need to lookup the Node annotation as to sync our
+	// data correctly.
+	if eit.CloudEgressIP && node.capacity == unlimitedNodeCapacity {
+		v1Node, err := eit.nodeInformer.Lister().Get(hs.Name)
+		if err != nil {
+			klog.Errorf("Unable to list HostSubnet %q as to set its IP capacity, err: %v", hs.Name, err)
+			return
+		}
+		if err := eit.initNodeCapacity(v1Node, node); err != nil {
+			klog.Errorf("Error initializing capacity for Node %q, err: %v", hs.Name, err)
+			return
+		}
 	}
 
 	// Process EgressCIDRs
@@ -297,6 +372,132 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 
 	eit.syncEgressIPs()
 	eit.recordMetrics()
+}
+
+func (eit *EgressIPTracker) GetNodeNameByNodeIP(nodeIP string) string {
+	if node, exists := eit.nodesByNodeIP[nodeIP]; exists {
+		return node.nodeName
+	}
+	return ""
+}
+
+func (eit *EgressIPTracker) watchNodes(nodeInformer kcoreinformers.NodeInformer) {
+	funcs := InformerFuncs(&corev1.Node{}, eit.handleAddOrUpdateNode, nil)
+	eit.nodeInformer.Informer().AddEventHandler(funcs)
+}
+
+func (eit *EgressIPTracker) handleAddOrUpdateNode(obj, _ interface{}, eventType watch.EventType) {
+	eit.Lock()
+	defer eit.Unlock()
+
+	node := obj.(*corev1.Node)
+	klog.V(5).Infof("Watch %s event for Node %q", eventType, node.Name)
+
+	nodeIP := GetNodeInternalIP(node)
+	if nodeIP == "" {
+		klog.Errorf("node does not have an IPv4 InternalIP address")
+		return
+	}
+	if nodeEgress, exists := eit.nodesByNodeIP[nodeIP]; exists {
+		if err := eit.initNodeCapacity(node, nodeEgress); err != nil {
+			klog.Errorf("Error initializing capacity for Node %q, err: %v", node.Name, err)
+		}
+	}
+}
+
+// validateEgressCIDRsAreSubnetOfCloudNetwork checks that whatever egress CIDRs are specified
+// on the HostSubnet also are a subnet of the cloud network. A failure to
+// specify this correctly might lead to egress IP assignments by the SDN which
+// are not allowed by the cloud provider.
+func (eit *EgressIPTracker) validateEgressCIDRsAreSubnetOfCloudNetwork(hs *osdnv1.HostSubnet) error {
+	cloudEgressIPConfig, err := eit.validateEgressIPConfigExists(hs)
+	if err != nil {
+		return err
+	}
+	_, cloudNetwork, _ := net.ParseCIDR(cloudEgressIPConfig.IFAddr.IPv4)
+	for _, egressCIDR := range hs.EgressCIDRs {
+		_, egressSubnet, _ := net.ParseCIDR(string(egressCIDR))
+		if !isSubnet(cloudNetwork, egressSubnet) {
+			return fmt.Errorf("EgressCIDR: %v is not a subnet of the cloud network: %v", egressSubnet, cloudNetwork)
+		}
+	}
+	return nil
+}
+
+// validateEgressIPCapacity checks that whatever egressIPs are specified
+// on the HostSubnet do not exceed the capacity of the node.
+func (eit *EgressIPTracker) validateEgressIPs(hs *osdnv1.HostSubnet) error {
+	cloudEgressIPConfig, err := eit.validateEgressIPConfigExists(hs)
+	if err != nil {
+		return err
+	}
+	capacity := cloudEgressIPConfig.Capacity.IP
+	if capacity == 0 {
+		capacity = cloudEgressIPConfig.Capacity.IPv4
+	}
+	if len(hs.EgressIPs) > capacity {
+		return fmt.Errorf("the amount of requested EgressIPs (%v) on hostSubnet: %q exceeds the node's capacity (%v)", len(hs.EgressIPs), hs.Name, capacity)
+	}
+	_, cloudNetwork, _ := net.ParseCIDR(cloudEgressIPConfig.IFAddr.IPv4)
+	for _, egressIP := range hs.EgressIPs {
+		ip := net.ParseIP(string(egressIP))
+		if !cloudNetwork.Contains(ip) {
+			return fmt.Errorf("the defined egress IP %v is not on the cloud network: %v", ip, cloudNetwork)
+		}
+	}
+	return nil
+}
+
+func (eit *EgressIPTracker) validateEgressIPConfigExists(hs *osdnv1.HostSubnet) (*nodeCloudEgressIPConfiguration, error) {
+	node, err := eit.nodeInformer.Lister().Get(hs.Host)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving related node object, err: %v", err)
+	}
+	cloudEgressIPConfig, err := eit.getNodeCloudEgressIPConfig(node)
+	if err != nil {
+		return nil, err
+	}
+	if cloudEgressIPConfig == nil {
+		return nil, fmt.Errorf("related node object %q has an incomplete annotation %q, CloudEgressIPConfig: %+v", node.Name, nodeEgressIPConfigAnnotationKey, cloudEgressIPConfig)
+	}
+	return cloudEgressIPConfig, nil
+}
+
+func (eit *EgressIPTracker) getNodeCloudEgressIPConfig(node *corev1.Node) (*nodeCloudEgressIPConfiguration, error) {
+	nodeCloudEgressIPAnnotation, exists := node.Annotations[nodeEgressIPConfigAnnotationKey]
+	if !exists {
+		return nil, nil
+	}
+	cloudEgressIPConfig := []nodeCloudEgressIPConfiguration{}
+	if err := json.Unmarshal([]byte(nodeCloudEgressIPAnnotation), &cloudEgressIPConfig); err != nil {
+		return nil, fmt.Errorf("error de-serializing annotation: %q, err: %v", nodeCloudEgressIPAnnotation, err)
+	}
+	if len(cloudEgressIPConfig) > 0 {
+		return &cloudEgressIPConfig[0], nil
+	}
+	return nil, nil
+}
+
+func (eit *EgressIPTracker) initNodeCapacity(node *corev1.Node, nodeEgress *nodeEgress) error {
+	if nodeEgress.capacity != unlimitedNodeCapacity {
+		return nil
+	}
+	cloudEgressIPConfig, err := eit.getNodeCloudEgressIPConfig(node)
+	if err != nil {
+		return err
+	}
+	if cloudEgressIPConfig == nil {
+		return nil
+	}
+	// IP and IPv4 are mutually exclusive, so either one or the other is
+	// guaranteed to be set if this annotation exists.
+	if cloudEgressIPConfig.Capacity.IP != 0 {
+		nodeEgress.capacity = cloudEgressIPConfig.Capacity.IP
+	} else {
+		nodeEgress.capacity = cloudEgressIPConfig.Capacity.IPv4
+	}
+	klog.Infof("Initialized egress IP capacity: %v for Node: %q", nodeEgress.capacity, node.Name)
+	return nil
 }
 
 func (eit *EgressIPTracker) watchNetNamespaces(netNamespaceInformer osdninformers.NetNamespaceInformer) {
@@ -541,13 +742,20 @@ func (eit *EgressIPTracker) findEgressIPAllocation(eip *egressIPInfo, allocation
 	bestNode := ""
 	otherNodes := false
 
-	for _, node := range eit.nodes {
-		if node.offline {
-			continue
-		}
-		if eit.nodeHasEgressIPForNamespace(node, eip, allocation) {
-			continue
-		}
+	// Given a capacity constraint allocation problem: we need to assign IPs to
+	// `bestNode` with the highest availability (capacity - current assignment).
+	// This is needed as to avoid sub-optimal allocations, meaning: avoiding
+	// assigning IPs to nodes with low availability first only to realize later
+	// that the remaining IPs can't be allocated to the nodes with higher
+	// availability because they violate other constraints, such as: already
+	// having another IP in that namespace allocated to it. Hence we need to
+	// sort nodes in increasing order of availability as to make sure the
+	// `bestNode` gets chosen as the node with the highest availability out of
+	// the set of nodes that are tied for having the fewest current egress IPs,
+	// out of the set of nodes that don't currently have an assignment for this
+	// namespace.
+	sortedNodes := eit.getSortedNodes(eip, allocation)
+	for _, node := range sortedNodes {
 		egressIPs := allocation[node.nodeName]
 		for _, parsed := range node.parsedCIDRs {
 			if parsed.Contains(eip.parsed) {
@@ -607,7 +815,7 @@ func (eit *EgressIPTracker) allocateExistingEgressIPs(allocation map[string][]st
 				break
 			}
 		}
-		if found && !node.offline {
+		if found && !node.offline && node.capacity-len(allocation[node.nodeName]) > 0 {
 			allocation[node.nodeName] = append(allocation[node.nodeName], egressIP)
 		} else {
 			removedEgressIPs = true
@@ -621,26 +829,130 @@ func (eit *EgressIPTracker) allocateExistingEgressIPs(allocation map[string][]st
 	return removedEgressIPs
 }
 
+// getSortedEgressIPs will generate a sorted list of egress IPs following a
+// round-robin procedure with an ascending order based on the amount of
+// allocations to each namespace, i.e: according to the following strategy:
+// namespace1 [1,2,3]
+// namespace2 [4,5]
+// namespace3 [6]
+// will return [6,4,1,5,2,3]
+func (eit *EgressIPTracker) getSortedEgressIPs() []*egressIPInfo {
+	largestRequestedEgressIPIdx := 0
+	sortedNamespaces := make([]*namespaceEgress, 0, len(eit.namespacesByVNID))
+	for _, namespace := range eit.namespacesByVNID {
+		sortedNamespaces = append(sortedNamespaces, namespace)
+		if len(namespace.requestedIPs) > largestRequestedEgressIPIdx {
+			largestRequestedEgressIPIdx = len(namespace.requestedIPs)
+		}
+	}
+	sort.Slice(sortedNamespaces, func(i, j int) bool {
+		return len(sortedNamespaces[i].requestedIPs) < len(sortedNamespaces[j].requestedIPs)
+	})
+	sortedEgressIPs := make([]*egressIPInfo, 0, len(eit.egressIPs))
+	for i := 0; i < largestRequestedEgressIPIdx; i++ {
+		for _, namespace := range sortedNamespaces {
+			if len(namespace.requestedIPs)-1 >= i {
+				requestedEgressIP := namespace.requestedIPs[i]
+				sortedEgressIPs = append(sortedEgressIPs, eit.egressIPs[requestedEgressIP])
+			}
+		}
+	}
+	return sortedEgressIPs
+}
+
+// getSortedNodes will return a sorted slice of *nodeEgress in ascending order of
+// availability (capacity - current assignment)
+func (eit *EgressIPTracker) getSortedNodes(eip *egressIPInfo, allocation map[string][]string) []*nodeEgress {
+	sNodes := make([]*nodeEgress, 0, len(eit.nodes))
+	for _, node := range eit.nodes {
+		if node.offline {
+			continue
+		}
+		if eit.nodeHasEgressIPForNamespace(node, eip, allocation) {
+			continue
+		}
+		egressIPs := allocation[node.nodeName]
+		if node.capacity-len(egressIPs) <= 0 {
+			continue
+		}
+		sNodes = append(sNodes, node)
+	}
+	sort.Slice(sNodes, func(i, j int) bool {
+		// We can't use nodeEgress.requestedIPs.Len() here because if a
+		// netnamespace change triggers the re-allocation:
+		// nodeEgress.requestedIPs won't be updated until after the
+		// recomputation has been made, and we start updating the HostSubnet.
+		iNode := sNodes[i]
+		iEgressIPs := allocation[iNode.nodeName]
+		jNode := sNodes[j]
+		jEgressIPs := allocation[jNode.nodeName]
+		return iNode.capacity-len(iEgressIPs) < jNode.capacity-len(jEgressIPs)
+	})
+	return sNodes
+}
+
 func (eit *EgressIPTracker) allocateNewEgressIPs(allocation map[string][]string, alreadyAllocated map[string]bool) {
-	// Allocate pending egress IPs that can only go to a single node
-	for egressIP, eip := range eit.egressIPs {
-		if alreadyAllocated[egressIP] {
+	// Allocate pending egress IPs that can only go to a single node. Given a
+	// capacity constraint allocation problem: we need to round-robin assign IPs
+	// from every namespace, where the IPs have been sorted in ascending order
+	// from the namespace with the lowest amount of requested egress IPs. Given
+	// that these egress IP will be assigned to the nodes with the highest
+	// capacity; we begin by solving the  most constrained allocation problem
+	// first, leaving the IPs with more options for later. Consider the
+	// following example:
+
+	// node1, capacity = 2
+	// node2, capacity = 1
+
+	// namespace1, egressIPs = [1,2]
+	// namespace2, egressIPs = [3]
+
+	// the optimal assignment would be:
+
+	// node1 [3,1]
+	// node2 [2]
+
+	// For that to occur we need a sortedEgressIPs slice following the order:
+	// [3,1,2]. [1,3,2] would result in the following assignment:
+
+	// node1 [1]
+	// node2 [3]
+
+	// which is sub-optimal. If we however have the following scenario:
+
+	// node1, capacity = 1
+	// node2, capacity = 1
+	// node2, capacity = 1
+
+	// namespace1, egressIPs = [1,2,3]
+	// namespace2, egressIPs = [4,5]
+	// namespace3, egressIPs = [6]
+
+	// The optimal allocation is performed by sorting sortedEgressIPs following:
+	// [6,4,1] and assigning:
+
+	// node1 [6]
+	// node2 [4]
+	// node3 [1]
+	sortedEgressIPs := eit.getSortedEgressIPs()
+	for _, eip := range sortedEgressIPs {
+		if alreadyAllocated[eip.ip] {
 			continue
 		}
 		nodeName, otherNodes := eit.findEgressIPAllocation(eip, allocation)
 		if nodeName != "" && !otherNodes {
-			allocation[nodeName] = append(allocation[nodeName], egressIP)
-			alreadyAllocated[egressIP] = true
+			allocation[nodeName] = append(allocation[nodeName], eip.ip)
+			alreadyAllocated[eip.ip] = true
 		}
 	}
 	// Allocate any other pending egress IPs that we can
-	for egressIP, eip := range eit.egressIPs {
-		if alreadyAllocated[egressIP] {
+	for _, eip := range sortedEgressIPs {
+		if alreadyAllocated[eip.ip] {
 			continue
 		}
 		nodeName, _ := eit.findEgressIPAllocation(eip, allocation)
 		if nodeName != "" {
-			allocation[nodeName] = append(allocation[nodeName], egressIP)
+			allocation[nodeName] = append(allocation[nodeName], eip.ip)
 		}
 	}
 }
@@ -659,13 +971,15 @@ func (eit *EgressIPTracker) ReallocateEgressIPs() map[string][]string {
 		return allocation
 	}
 
-	// Compare the allocation to what we would have gotten if we started from scratch,
-	// to see if things have gotten too unbalanced. (In particular, if a node goes
-	// offline, gets emptied, and then comes back online, we want to move a bunch of
-	// egress IPs back onto that node.)
+	// Compare the allocation to what we would have gotten if we started from
+	// scratch, to see if things have gotten too unbalanced or if we can assign
+	// more egress IPs globally across the cluster.
 	fullReallocation, alreadyAllocated := eit.makeEmptyAllocation()
 	eit.allocateNewEgressIPs(fullReallocation, alreadyAllocated)
 
+	// The following checks balance, in particular, if a node goes offline, gets
+	// emptied, and then comes back online, we want to move a bunch of egress
+	// IPs back onto that node.
 	emptyNodes := []string{}
 	for nodeName, fullEgressIPs := range fullReallocation {
 		incrementalEgressIPs := allocation[nodeName]
@@ -723,4 +1037,10 @@ func activeEgressIPsTheSame(oldEIPs, newEIPs []EgressIPAssignment) bool {
 
 	return true
 
+}
+
+func PlatformUsesCloudEgressIP(platformType string) bool {
+	return platformType == string(configv1.AWSPlatformType) ||
+		platformType == string(configv1.AzurePlatformType) ||
+		platformType == string(configv1.GCPPlatformType)
 }

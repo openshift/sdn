@@ -14,6 +14,9 @@ import (
 	"k8s.io/klog/v2"
 
 	osdnv1 "github.com/openshift/api/network/v1"
+	cloudnetworkclient "github.com/openshift/client-go/cloudnetwork/clientset/versioned"
+	cloudnetworkinformer "github.com/openshift/client-go/cloudnetwork/informers/externalversions"
+	cloudnetworkinformerv1 "github.com/openshift/client-go/cloudnetwork/informers/externalversions/cloudnetwork/v1"
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions"
 	osdninformersv1 "github.com/openshift/client-go/network/informers/externalversions/network/v1"
@@ -27,16 +30,18 @@ const (
 )
 
 type OsdnMaster struct {
-	kClient     kclientset.Interface
-	osdnClient  osdnclient.Interface
-	networkInfo *common.ParsedClusterNetwork
-	vnids       *masterVNIDMap
+	kClient            kclientset.Interface
+	osdnClient         osdnclient.Interface
+	cloudNetworkClient cloudnetworkclient.Interface
+	networkInfo        *common.ParsedClusterNetwork
+	vnids              *masterVNIDMap
 
-	nodeInformer         kcoreinformers.NodeInformer
-	namespaceInformer    kcoreinformers.NamespaceInformer
-	hostSubnetInformer   osdninformersv1.HostSubnetInformer
-	netNamespaceInformer osdninformersv1.NetNamespaceInformer
-	egressNetPolInformer osdninformersv1.EgressNetworkPolicyInformer
+	nodeInformer                 kcoreinformers.NodeInformer
+	namespaceInformer            kcoreinformers.NamespaceInformer
+	hostSubnetInformer           osdninformersv1.HostSubnetInformer
+	netNamespaceInformer         osdninformersv1.NetNamespaceInformer
+	cloudPrivateIPConfigInformer cloudnetworkinformerv1.CloudPrivateIPConfigInformer
+	egressNetPolInformer         osdninformersv1.EgressNetworkPolicyInformer
 
 	// Used for allocating subnets in order
 	subnetAllocator *masterutil.SubnetAllocator
@@ -48,7 +53,9 @@ type OsdnMaster struct {
 func Start(kClient kclientset.Interface,
 	kubeInformers informers.SharedInformerFactory,
 	osdnClient osdnclient.Interface,
-	osdnInformers osdninformers.SharedInformerFactory) error {
+	osdnInformers osdninformers.SharedInformerFactory,
+	cloudNetworkClient cloudnetworkclient.Interface,
+	cloudNetworkInformer cloudnetworkinformer.SharedInformerFactory) error {
 	klog.Infof("Initializing SDN master")
 
 	networkInfo, err := common.GetParsedClusterNetwork(osdnClient)
@@ -68,6 +75,12 @@ func Start(kClient kclientset.Interface,
 		egressNetPolInformer: osdnInformers.Network().V1().EgressNetworkPolicies(),
 
 		hostSubnetNodeIPs: map[ktypes.UID]string{},
+	}
+
+	if cloudNetworkClient != nil {
+		master.cloudNetworkClient = cloudNetworkClient
+		master.cloudPrivateIPConfigInformer = cloudNetworkInformer.Cloud().V1().CloudPrivateIPConfigs()
+		master.cloudPrivateIPConfigInformer.Informer().GetController()
 	}
 
 	if err = master.checkClusterNetworkAgainstLocalNetworks(); err != nil {
@@ -100,6 +113,9 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 		master.egressNetPolInformer.Informer().GetController().HasSynced) {
 		klog.Fatalf("failed to sync SDN master informers")
 	}
+	if master.cloudNetworkClient != nil && !cache.WaitForCacheSync(wait.NeverStop, master.cloudPrivateIPConfigInformer.Informer().HasSynced) {
+		klog.Fatalf("failed to sync CloudPrivateIPConfig informer")
+	}
 
 	if err := master.startSubnetMaster(); err != nil {
 		klog.Fatalf("failed to start subnet master: %v", err)
@@ -117,8 +133,8 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 		}
 	}
 
-	eim := newEgressIPManager()
-	eim.Start(master.osdnClient, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
+	eim := newEgressIPManager(master.cloudNetworkClient != nil)
+	eim.Start(master.osdnClient, master.cloudNetworkClient, master.cloudPrivateIPConfigInformer, master.hostSubnetInformer, master.netNamespaceInformer, master.nodeInformer)
 	enp := newEgressNetworkPolicyManager()
 	enp.start(master.egressNetPolInformer)
 }
