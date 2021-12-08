@@ -63,8 +63,9 @@ type osdnPolicy interface {
 }
 
 type OsdnNodeConfig struct {
-	NodeName string
-	NodeIP   string
+	NodeName     string
+	NodeIP       string
+	PlatformType string
 
 	OSDNClient osdnclient.Interface
 	KClient    kubernetes.Interface

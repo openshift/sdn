@@ -26,7 +26,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/version"
 )
 
-func RunOpenShiftNetworkController() error {
+func RunOpenShiftNetworkController(platformType string) error {
 	serviceability.InitLogrusFromKlog()
 
 	clientConfig, err := rest.InClusterConfig()
@@ -40,7 +40,7 @@ func RunOpenShiftNetworkController() error {
 	}
 
 	originControllerManager := func(ctx context.Context) {
-		controllerContext, err := newControllerContext(clientConfig)
+		controllerContext, err := newControllerContext(platformType, clientConfig)
 		if err != nil {
 			klog.Fatal(err)
 		}

@@ -20,7 +20,7 @@ type controllerContext struct {
 	osdnInformers       osdninformer.SharedInformerFactory
 }
 
-func newControllerContext(clientConfig *rest.Config) (*controllerContext, error) {
+func newControllerContext(platformType string, clientConfig *rest.Config) (*controllerContext, error) {
 	kubeClient, err := kubernetes.NewForConfig(clientConfig)
 	if err != nil {
 		return nil, err
