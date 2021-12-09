@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/util/async"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -28,19 +29,14 @@ func newTestNPP() (*networkPolicyPlugin, ovs.Interface, *atomic.Value, chan stru
 	ovsif := ovs.NewFake("br0")
 	ovsif.AddBridge()
 
-	np := &networkPolicyPlugin{
-		node: &OsdnNode{
-			kClient:       kubeClient,
-			kubeInformers: informers.NewSharedInformerFactory(kubeClient, time.Hour),
+	np := NewNetworkPolicyPlugin().(*networkPolicyPlugin)
+	np.node = &OsdnNode{
+		kClient:       kubeClient,
+		kubeInformers: informers.NewSharedInformerFactory(kubeClient, time.Hour),
 
-			oc: &ovsController{
-				ovs: ovsif,
-			},
+		oc: &ovsController{
+			ovs: ovsif,
 		},
-
-		namespaces:       make(map[uint32]*npNamespace),
-		namespacesByName: make(map[string]*npNamespace),
-		nsMatchCache:     make(map[string]*npCacheEntry),
 	}
 	np.vnids = newNodeVNIDMap(np, nil)
 
@@ -134,11 +130,29 @@ func delNamespace(np *networkPolicyPlugin, name string, vnid uint32) {
 }
 
 func addNetworkPolicy(np *networkPolicyPlugin, policy *networkingv1.NetworkPolicy) {
+	policy.ResourceVersion = "0"
 	_, err := np.node.kClient.NetworkingV1().NetworkPolicies(policy.Namespace).Create(context.TODO(), policy, metav1.CreateOptions{})
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error creating policy %q: %v", policy.Name, err))
 	}
 	err = waitForEvent(np, func() bool { return np.namespacesByName[policy.Namespace].policies[policy.UID] != nil })
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error waiting for policy %q: %v", policy.Name, err))
+	}
+}
+
+var resourceVersion = 1
+
+func updateNetworkPolicy(np *networkPolicyPlugin, policy *networkingv1.NetworkPolicy) {
+	policy.ResourceVersion = fmt.Sprintf("%d", resourceVersion)
+	resourceVersion++
+	_, err := np.node.kClient.NetworkingV1().NetworkPolicies(policy.Namespace).Update(context.TODO(), policy, metav1.UpdateOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error updating policy %q: %v", policy.Name, err))
+	}
+	err = waitForEvent(np, func() bool {
+		return np.namespacesByName[policy.Namespace].policies[policy.UID].policy.ResourceVersion == policy.ResourceVersion
+	})
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error waiting for policy %q: %v", policy.Name, err))
 	}
@@ -1009,8 +1023,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	// Add a policy with multiple ipBlocks, one of which will be ignored because
-	// of an "except" clause.
+	// Add a policy with multiple ipBlocks, including an "except" clause.
 	synced.Store(false)
 	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1033,7 +1046,7 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 							IPBlock: &networkingv1.IPBlock{
 								CIDR: "192.168.1.0/24",
 								Except: []string{
-									"192.168.1.1",
+									"192.168.1.1/32",
 								},
 							},
 						},
@@ -1065,8 +1078,17 @@ func TestNetworkPolicy_ipBlock(t *testing.T) {
 			watchesOwnPods:    false,
 			ingressFlows: []string{
 				fmt.Sprintf("ip, nw_src=192.168.0.0/24"),
-				// There is no rule allowing 192.168.1.0/24 because we can't
-				// implement the exception.
+
+				// rule with except gets exploded to multiple flows
+				fmt.Sprintf("ip, nw_src=192.168.1.128/25"),
+				fmt.Sprintf("ip, nw_src=192.168.1.64/26"),
+				fmt.Sprintf("ip, nw_src=192.168.1.32/27"),
+				fmt.Sprintf("ip, nw_src=192.168.1.16/28"),
+				fmt.Sprintf("ip, nw_src=192.168.1.8/29"),
+				fmt.Sprintf("ip, nw_src=192.168.1.4/30"),
+				fmt.Sprintf("ip, nw_src=192.168.1.2/31"),
+				fmt.Sprintf("ip, nw_src=192.168.1.0/32"),
+
 				fmt.Sprintf("ip, nw_src=192.168.10.0/24"),
 				fmt.Sprintf("ip, nw_src=192.168.20.0/24"),
 			},
@@ -1553,5 +1575,345 @@ func _TestNetworkPolicy_MultiplePoliciesOneNamespace(t *testing.T) {
 		if err != nil {
 			t.Error(err.Error())
 		}
+	}
+}
+
+func TestNetworkPolicyPathological(t *testing.T) {
+	np, ovsif, synced, stopCh := newTestNPP()
+	defer close(stopCh)
+
+	fakeRecorder := record.NewFakeRecorder(5)
+	np.node.recorder = fakeRecorder
+
+	origFlows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+
+	// create a namespace
+	synced.Store(false)
+	addNamespace(np, "default", 0, nil)
+	npns := np.namespaces[0]
+	waitForSync(np, synced, "initialization")
+
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "deny-all",
+			UID:       uid(npns, "deny-all"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{},
+		},
+	})
+	waitForSync(np, synced, "default-deny")
+
+	// Creating the namespace will have added "allow" flows, but the default-deny
+	// policy will remove them, so there should be no change from the initial state
+	flows, err := ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows) // no changes
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+
+	// add 200 pods
+	for i := 0; i < 200; i++ {
+		name := fmt.Sprintf("pod-%d", i)
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: npns.name,
+				Name:      name,
+				UID:       uid(npns, name),
+				Labels: map[string]string{
+					"friendly": "true",
+				},
+			},
+			Status: corev1.PodStatus{
+				PodIP: fmt.Sprintf("10.0.0.%d", i),
+			},
+		}
+		if i%2 == 0 {
+			pod.Labels["even"] = "true"
+		}
+		if i%10 == 0 {
+			pod.Labels["ten"] = "true"
+		}
+
+		_, err := np.node.kClient.CoreV1().Pods(npns.name).Create(context.TODO(), pod, metav1.CreateOptions{})
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected error creating pod: %v", err))
+		}
+	}
+	forceSync(np, synced)
+
+	// Still no changes, because they're all stuck behind the default-deny
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows) // no changes
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+
+	// Now create a pathological NetworkPolicy
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-friendly",
+			UID:       uid(npns, "allow-friendly"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"friendly": "true",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"friendly": "true",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "pathological NP")
+
+	// There should *still* be no changes, because the pathological policy should have
+	// been ignored
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows) // no changes
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+	}
+
+	// Check that a single event was emitted
+	var event string
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event == "" {
+		t.Fatalf("no Event emitted after adding pathological NetworkPolicy")
+	}
+	if !strings.HasPrefix(event, "Warning NetworkPolicySize") || !strings.Contains(event, "ignored") {
+		t.Fatalf("incorrect Event emitted after adding pathological NetworkPolicy: %s", event)
+	}
+
+	event = ""
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event != "" {
+		t.Fatalf("too many Events emitted after adding pathological NetworkPolicy: %s", event)
+	}
+
+	// Changing pods (in a way that does not cause the policy to stop being
+	// pathological) should not result in the policy being accepted, or another event
+	// being emitted.
+	synced.Store(false)
+	err = np.node.kClient.CoreV1().Pods(npns.name).Delete(context.TODO(), "pod-1", metav1.DeleteOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error deleting pod: %v", err))
+	}
+	waitForSync(np, synced, "delete pod")
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows) // no changes
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+	}
+
+	event = ""
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event != "" {
+		t.Fatalf("unexpected Event emitted after deleting pod: %s", event)
+	}
+
+	// Changing the policy in a way that doesn't make it stop being pathological
+	// should not result in the policy being accepted, but will result in another
+	// event being emitted.
+	synced.Store(false)
+	updateNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-friendly",
+			UID:       uid(npns, "allow-friendly"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"friendly": "true",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"friendly": "true",
+							"even":     "true",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "updated pathological NP")
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows) // no changes
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+	}
+
+	event = ""
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event == "" {
+		t.Fatalf("no Event emitted after modifying pathological NetworkPolicy")
+	}
+	if !strings.HasPrefix(event, "Warning NetworkPolicySize") || !strings.Contains(event, "ignored") {
+		t.Fatalf("incorrect Event emitted after modifying pathological NetworkPolicy: %s", event)
+	}
+
+	// Changing the NP to be bad-but-not-quite-pathological should result in another
+	// event, but it will be accepted now
+	synced.Store(false)
+	updateNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-friendly",
+			UID:       uid(npns, "allow-friendly"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"friendly": "true",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"friendly": "true",
+							"ten":      "true",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "updated pathological NP to less pathological")
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	// The target podSelector "friendly=true" matches all 199 remaining pods. The
+	// source podSelector "ten=true" matches 20 pods.
+	if len(flows) != 199*20 {
+		t.Fatalf("Expected %d flows, got %d", 199*20, len(flows))
+	}
+
+	event = ""
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event == "" {
+		t.Fatalf("no Event emitted after simplifying pathological NetworkPolicy")
+	}
+	if !strings.HasPrefix(event, "Warning NetworkPolicySize") || strings.Contains(event, "ignored") {
+		t.Fatalf("incorrect Event emitted after simplifying pathological NetworkPolicy: %s", event)
+	}
+
+	// Changing the NP to something non-pathological should emit a non-warning event
+	// and result in flow changes
+	synced.Store(false)
+	updateNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-friendly",
+			UID:       uid(npns, "allow-friendly"),
+			Namespace: npns.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "updated non-pathological NP")
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(origFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=0", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v\nOrig: %#v\nNew: %#v", err, origFlows, flows)
+	}
+
+	event = ""
+	select {
+	case event = <-fakeRecorder.Events:
+		break
+	default:
+		break
+	}
+	if event == "" {
+		t.Fatalf("no Event emitted after adding non-pathological NetworkPolicy")
+	}
+	if !strings.HasPrefix(event, "Normal NetworkPolicySize") {
+		t.Fatalf("incorrect Event emitted after adding pathological NetworkPolicy: %s", event)
 	}
 }

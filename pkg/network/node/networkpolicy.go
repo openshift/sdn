@@ -20,11 +20,13 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/util/async"
+	utilnet "k8s.io/utils/net"
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/util/ovs"
+	"github.com/openshift/sdn/pkg/util/ranges"
 )
 
 const HostNetworkNamespace = "openshift-host-network"
@@ -43,6 +45,9 @@ type networkPolicyPlugin struct {
 	namespaces map[uint32]*npNamespace
 	// nsMatchCache caches matches for namespaceSelectors; see selectNamespacesInternal
 	nsMatchCache map[string]*npCacheEntry
+
+	warnedPolicies  map[ktypes.UID]string
+	skippedPolicies map[ktypes.UID]string
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -101,6 +106,9 @@ func NewNetworkPolicyPlugin() osdnPolicy {
 		namespacesByName: make(map[string]*npNamespace),
 
 		nsMatchCache: make(map[string]*npCacheEntry),
+
+		warnedPolicies:  make(map[ktypes.UID]string),
+		skippedPolicies: make(map[ktypes.UID]string),
 	}
 }
 
@@ -356,15 +364,23 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 		if npp.selectsAllIPs {
 			allPodsSelected = true
 		}
-
 		if npp.affectsIngress {
 			affectsIngress = true
+		}
+		if npp.affectsEgress {
+			affectsEgress = true
+		}
+
+		if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
+			continue
+		}
+
+		if npp.affectsIngress {
 			for _, flow := range npp.ingressFlows {
 				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
 			}
 		}
 		if npp.affectsEgress {
-			affectsEgress = true
 			for _, flow := range npp.egressFlows {
 				otx.AddFlow("table=27, priority=150, reg0=%d, %s actions=goto_table:30", npns.vnid, flow)
 			}
@@ -403,6 +419,51 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 	if !allPodsSelected || !affectsEgress {
 		otx.AddFlow("table=27, priority=50, reg0=%d, actions=goto_table:30", npns.vnid)
 	}
+}
+
+func (np *networkPolicyPlugin) skipIfTooManyFlows(policy *networkingv1.NetworkPolicy, numFlows int) bool {
+	skip := numFlows >= 10000
+	skippedVersion := np.skippedPolicies[policy.UID]
+
+	warn := !skip && numFlows >= 1000
+	warnedVersion := np.warnedPolicies[policy.UID]
+
+	npRef := &corev1.ObjectReference{
+		APIVersion: "networking.k8s.io/v1",
+		Kind:       "NetworkPolicy",
+		Namespace:  policy.Namespace,
+		Name:       policy.Name,
+		UID:        policy.UID,
+	}
+
+	switch {
+	case skip && skippedVersion != policy.ResourceVersion:
+		np.node.recorder.Eventf(npRef, corev1.EventTypeWarning,
+			"NetworkPolicySize", "TooManyFlows",
+			"This NetworkPolicy generates an extremely large number of OVS flows (%d) and so it will be ignored to prevent network degradation.", numFlows)
+		np.skippedPolicies[policy.UID] = policy.ResourceVersion
+		delete(np.warnedPolicies, policy.UID)
+		klog.Warningf("Ignoring NetworkPolicy %s/%s because it generates an unreasonable number of flows (%d)",
+			policy.Namespace, policy.Name, numFlows)
+
+	case warn && warnedVersion != policy.ResourceVersion:
+		np.node.recorder.Eventf(npRef, corev1.EventTypeWarning,
+			"NetworkPolicySize", "TooManyFlows",
+			"This NetworkPolicy generates a very large number of OVS flows (%d) and may degrade network performance.", numFlows)
+		np.warnedPolicies[policy.UID] = policy.ResourceVersion
+		delete(np.skippedPolicies, policy.UID)
+		klog.Warningf("NetworkPolicy %s/%s generates a very large number of flows (%d)",
+			policy.Namespace, policy.Name, numFlows)
+
+	case !skip && !warn && (skippedVersion != "" || warnedVersion != ""):
+		np.node.recorder.Eventf(npRef, corev1.EventTypeNormal,
+			"NetworkPolicySize", "OK",
+			"This NetworkPolicy now generates an acceptable number of OVS flows.")
+		delete(np.skippedPolicies, policy.UID)
+		delete(np.warnedPolicies, policy.UID)
+	}
+
+	return skip
 }
 
 func (np *networkPolicyPlugin) EnsureVNIDRules(vnid uint32) {
@@ -596,6 +657,12 @@ func (np *networkPolicyPlugin) parsePortFlows(policy *networkingv1.NetworkPolicy
 		} else if port.Port.Type != intstr.Int {
 			klog.Warningf("Ignoring rule in NetworkPolicy %s/%s with unsupported named port %q", policy.Namespace, policy.Name, port.Port.StrVal)
 			continue
+		} else if port.EndPort != nil {
+			start := int(port.Port.IntVal)
+			end := int(*port.EndPort)
+			for _, portMask := range ranges.PortRangeToPortMasks(start, end) {
+				portFlows = append(portFlows, fmt.Sprintf("%s, tp_dst=%s, ", protocol, portMask))
+			}
 		} else {
 			portNum = int(port.Port.IntVal)
 		}
@@ -660,15 +727,17 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 			npp.watchesAllPods = true
 			peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, peer.PodSelector, dir)...)
 		} else if peer.IPBlock != nil {
-			if peer.IPBlock.Except != nil {
-				// Currently IPBlocks with except rules are skipped.
-				klog.Warningf("IPBlocks with except rules are not supported (NetworkPolicy [%s], Namespace [%s])", npp.policy.Name, npp.policy.Namespace)
-			} else {
-				// Network Policy has ipBlocks, allow traffic from/to those ips.
+			// Network Policy has ipBlocks, allow traffic from/to those ips.
+			if !utilnet.IsIPv4CIDRString(peer.IPBlock.CIDR) {
+				// We don't support IPv6, so we don't need to do anything
+				// to allow IPv6 CIDRs.
+				continue
+			}
+			for _, cidr := range ranges.IPBlockToCIDRs(peer.IPBlock) {
 				if dir == ingressFlow {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", peer.IPBlock.CIDR))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", cidr))
 				} else {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", peer.IPBlock.CIDR))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", cidr))
 				}
 			}
 		}
@@ -824,6 +893,8 @@ func (np *networkPolicyPlugin) handleDeleteNetworkPolicy(obj interface{}) {
 	np.lock.Lock()
 	defer np.lock.Unlock()
 
+	delete(np.warnedPolicies, policy.UID)
+	delete(np.skippedPolicies, policy.UID)
 	if npns, exists := np.namespaces[vnid]; exists {
 		np.cleanupNetworkPolicy(policy)
 		delete(npns.policies, policy.UID)
