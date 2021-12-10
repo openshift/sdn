@@ -28,8 +28,9 @@ import (
 // openShiftSDN stores the variables needed to initialize the real networking
 // processess from the command line.
 type openShiftSDN struct {
-	nodeName string
-	nodeIP   string
+	nodeName     string
+	nodeIP       string
+	platformType string
 
 	proxyConfigFilePath string
 	proxyConfig         *kubeproxyconfig.KubeProxyConfiguration
@@ -72,6 +73,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 	cmd.MarkFlagRequired("node-ip")
 	flags.StringVar(&sdn.proxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
 	cmd.MarkFlagRequired("proxy-config")
+	flags.StringVar(&sdn.platformType, "platform-type", "", "The cloud provider platform type openshift-sdn is deployed on")
 
 	return cmd
 }
