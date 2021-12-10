@@ -9,7 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
-	github.com/openshift/api v0.0.0-20210726144523-6fcabc0010ca
+	github.com/openshift/api v0.0.0-20210907191108-c6615eb597c3
 	github.com/openshift/build-machinery-go v0.0.0-20210712174854-1bb7fd1518d3
 	github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142
 	github.com/openshift/library-go v0.0.0-20210729061737-1f51a749a2f3

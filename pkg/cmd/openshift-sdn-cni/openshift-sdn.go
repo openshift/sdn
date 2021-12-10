@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
 	"github.com/containernetworking/cni/pkg/skel"
@@ -115,18 +116,24 @@ func (p *cniPlugin) testCmdAdd(args *skel.CmdArgs) (types.Result, error) {
 	return convertToRequestedVersion(args.StdinData, result)
 }
 
-var iptablesCommands = [][]string{
-	// Block MCS
-	{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
-	{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
-	{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
-	{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
+func generateIPTablesCommands(platformType string) [][]string {
+	metadataServiceIP := "169.254.169.254"
+	if platformType == string(configv1.AlibabaCloudPlatformType) {
+		metadataServiceIP = "100.100.100.200"
+	}
+	return [][]string{
+		// Block MCS
+		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
+		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
+		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
+		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
 
-	// Block cloud provider metadata IP except DNS
-	{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
-	{"-A", "OUTPUT", "-p", "udp", "-m", "udp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
-	{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
-	{"-A", "FORWARD", "-p", "udp", "-m", "udp", "-d", "169.254.169.254", "!", "--dport", "53", "-j", "REJECT"},
+		// Block cloud provider metadata IP except DNS
+		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
+		{"-A", "OUTPUT", "-p", "udp", "-m", "udp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
+		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
+		{"-A", "FORWARD", "-p", "udp", "-m", "udp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
+	}
 }
 
 func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
@@ -242,7 +249,7 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		}
 
 		// Block access to certain things
-		for _, args := range iptablesCommands {
+		for _, args := range generateIPTablesCommands(config.PlatformType) {
 			out, err := exec.Command("iptables", append([]string{"-w"}, args...)...).CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("could not set up pod iptables rules: %s", string(out))

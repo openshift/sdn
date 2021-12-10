@@ -183,8 +183,8 @@ func (LeaderElection) SwaggerDoc() map[string]string {
 
 var map_MaxAgePolicy = map[string]string{
 	"":               "MaxAgePolicy contains a numeric range for specifying a compliant HSTS max-age for the enclosing RequiredHSTSPolicy",
-	"largestMaxAge":  "The largest allowed value (in seconds) of the RequiredHSTSPolicy max-age This value can be left unspecified, in which case no upper limit is enforced. kubebuilder:validation:minimum=0:maximum=2147483647",
-	"smallestMaxAge": "The smallest allowed value (in seconds) of the RequiredHSTSPolicy max-age Setting max-age=0 allows the deletion of an existing HSTS header from a host.  This is a necessary tool for administrators to quickly correct mistakes. This value can be left unspecified, in which case no lower limit is enforced. kubebuilder:validation:minimum=0:maximum=2147483647",
+	"largestMaxAge":  "The largest allowed value (in seconds) of the RequiredHSTSPolicy max-age This value can be left unspecified, in which case no upper limit is enforced.",
+	"smallestMaxAge": "The smallest allowed value (in seconds) of the RequiredHSTSPolicy max-age Setting max-age=0 allows the deletion of an existing HSTS header from a host.  This is a necessary tool for administrators to quickly correct mistakes. This value can be left unspecified, in which case no lower limit is enforced.",
 }
 
 func (MaxAgePolicy) SwaggerDoc() map[string]string {
@@ -212,7 +212,7 @@ func (RemoteConnectionInfo) SwaggerDoc() map[string]string {
 
 var map_RequiredHSTSPolicy = map[string]string{
 	"namespaceSelector":       "namespaceSelector specifies a label selector such that the policy applies only to those routes that are in namespaces with labels that match the selector, and are in one of the DomainPatterns. Defaults to the empty LabelSelector, which matches everything.",
-	"domainPatterns":          "domainPatterns is a list of domains for which the desired HSTS annotations are required. If domainPatterns is specified and a route is created with a spec.host matching one of the domains, the route must specify the HSTS Policy components described in the matching RequiredHSTSPolicy.\n\nThe use of wildcards is allowed like this: *.foo.com matches everything under foo.com. foo.com only matches foo.com, so to cover foo.com and everything under it, you must specify *both*. kubebuilder:validation:MinLength=1",
+	"domainPatterns":          "domainPatterns is a list of domains for which the desired HSTS annotations are required. If domainPatterns is specified and a route is created with a spec.host matching one of the domains, the route must specify the HSTS Policy components described in the matching RequiredHSTSPolicy.\n\nThe use of wildcards is allowed like this: *.foo.com matches everything under foo.com. foo.com only matches foo.com, so to cover foo.com and everything under it, you must specify *both*.",
 	"maxAge":                  "maxAge is the delta time range in seconds during which hosts are regarded as HSTS hosts. If set to 0, it negates the effect, and hosts are removed as HSTS hosts. If set to 0 and includeSubdomains is specified, all subdomains of the host are also removed as HSTS hosts. maxAge is a time-to-live value, and if this policy is not refreshed on a client, the HSTS policy will eventually expire on that client.",
 	"preloadPolicy":           "preloadPolicy directs the client to include hosts in its host preload list so that it never needs to do an initial load to get the HSTS header (note that this is not defined in RFC 6797 and is therefore client implementation-dependent).",
 	"includeSubDomainsPolicy": "includeSubDomainsPolicy means the HSTS Policy should apply to any subdomains of the host's domain name.  Thus, for the host bar.foo.com, if includeSubDomainsPolicy was set to RequireIncludeSubDomains: - the host app.bar.foo.com would inherit the HSTS Policy of bar.foo.com - the host bar.foo.com would inherit the HSTS Policy of bar.foo.com - the host foo.com would NOT inherit the HSTS Policy of bar.foo.com - the host def.foo.com would NOT inherit the HSTS Policy of bar.foo.com",
@@ -323,7 +323,7 @@ func (APIServerSpec) SwaggerDoc() map[string]string {
 }
 
 var map_Audit = map[string]string{
-	"profile":     "profile specifies the name of the desired top-level audit profile to be applied to all requests sent to any of the OpenShift-provided API servers in the cluster (kube-apiserver, openshift-apiserver and oauth-apiserver), with the exception of those requests that match one or more of the customRules.\n\nThe following profiles are provided: - Default: default policy which means MetaData level logging with the exception of events\n  (not logged at all), oauthaccesstokens and oauthauthorizetokens (both logged at RequestBody\n  level).\n- WriteRequestBodies: like 'Default', but logs request and response HTTP payloads for write requests (create, update, patch). - AllRequestBodies: like 'WriteRequestBodies', but also logs request and response HTTP payloads for read requests (get, list). - None: no requests are logged at all, not even oauthaccesstokens and oauthauthorizetokens.\n\nWarning: to raise a Red Hat support request, it is required to set this to Default, WriteRequestBodies, or AllRequestBodies to generate audit log events that can be analyzed by support.\n\nIf unset, the 'Default' profile is used as the default.",
+	"profile":     "profile specifies the name of the desired top-level audit profile to be applied to all requests sent to any of the OpenShift-provided API servers in the cluster (kube-apiserver, openshift-apiserver and oauth-apiserver), with the exception of those requests that match one or more of the customRules.\n\nThe following profiles are provided: - Default: default policy which means MetaData level logging with the exception of events\n  (not logged at all), oauthaccesstokens and oauthauthorizetokens (both logged at RequestBody\n  level).\n- WriteRequestBodies: like 'Default', but logs request and response HTTP payloads for write requests (create, update, patch). - AllRequestBodies: like 'WriteRequestBodies', but also logs request and response HTTP payloads for read requests (get, list). - None: no requests are logged at all, not even oauthaccesstokens and oauthauthorizetokens.\n\nWarning: It is not recommended to disable audit logging by using the `None` profile unless you are fully aware of the risks of not logging data that can be beneficial when troubleshooting issues. If you disable audit logging and a support situation arises, you might need to enable audit logging and reproduce the issue in order to troubleshoot properly.\n\nIf unset, the 'Default' profile is used as the default.",
 	"customRules": "customRules specify profiles per group. These profile take precedence over the top-level profile field if they apply. They are evaluation from top to bottom and the first one that matches, applies.",
 }
 
@@ -841,6 +841,35 @@ func (AWSServiceEndpoint) SwaggerDoc() map[string]string {
 	return map_AWSServiceEndpoint
 }
 
+var map_AlibabaCloudPlatformSpec = map[string]string{
+	"": "AlibabaCloudPlatformSpec holds the desired state of the Alibaba Cloud infrastructure provider. This only includes fields that can be modified in the cluster.",
+}
+
+func (AlibabaCloudPlatformSpec) SwaggerDoc() map[string]string {
+	return map_AlibabaCloudPlatformSpec
+}
+
+var map_AlibabaCloudPlatformStatus = map[string]string{
+	"":                "AlibabaCloudPlatformStatus holds the current status of the Alibaba Cloud infrastructure provider.",
+	"region":          "region specifies the region for Alibaba Cloud resources created for the cluster.",
+	"resourceGroupID": "resourceGroupID is the ID of the resource group for the cluster.",
+	"resourceTags":    "resourceTags is a list of additional tags to apply to Alibaba Cloud resources created for the cluster.",
+}
+
+func (AlibabaCloudPlatformStatus) SwaggerDoc() map[string]string {
+	return map_AlibabaCloudPlatformStatus
+}
+
+var map_AlibabaCloudResourceTag = map[string]string{
+	"":      "AlibabaCloudResourceTag is the set of tags to add to apply to resources.",
+	"key":   "key is the key of the tag.",
+	"value": "value is the value of the tag.",
+}
+
+func (AlibabaCloudResourceTag) SwaggerDoc() map[string]string {
+	return map_AlibabaCloudResourceTag
+}
+
 var map_AzurePlatformSpec = map[string]string{
 	"": "AzurePlatformSpec holds the desired state of the Azure infrastructure provider. This only includes fields that can be modified in the cluster.",
 }
@@ -1039,7 +1068,7 @@ func (OvirtPlatformStatus) SwaggerDoc() map[string]string {
 
 var map_PlatformSpec = map[string]string{
 	"":             "PlatformSpec holds the desired state specific to the underlying infrastructure provider of the current cluster. Since these are used at spec-level for the underlying cluster, it is supposed that only one of the spec structs is set.",
-	"type":         "type is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"BareMetal\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", \"oVirt\", \"KubeVirt\", \"EquinixMetal\", and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.",
+	"type":         "type is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"BareMetal\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", \"oVirt\", \"KubeVirt\", \"EquinixMetal\", \"PowerVS\", \"AlibabaCloud\" and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.",
 	"aws":          "AWS contains settings specific to the Amazon Web Services infrastructure provider.",
 	"azure":        "Azure contains settings specific to the Azure infrastructure provider.",
 	"gcp":          "GCP contains settings specific to the Google Cloud Platform infrastructure provider.",
@@ -1050,6 +1079,8 @@ var map_PlatformSpec = map[string]string{
 	"ibmcloud":     "IBMCloud contains settings specific to the IBMCloud infrastructure provider.",
 	"kubevirt":     "Kubevirt contains settings specific to the kubevirt infrastructure provider.",
 	"equinixMetal": "EquinixMetal contains settings specific to the Equinix Metal infrastructure provider.",
+	"powervs":      "PowerVS contains settings specific to the IBM Power Systems Virtual Servers infrastructure provider.",
+	"alibabaCloud": "AlibabaCloud contains settings specific to the Alibaba Cloud infrastructure provider.",
 }
 
 func (PlatformSpec) SwaggerDoc() map[string]string {
@@ -1058,7 +1089,7 @@ func (PlatformSpec) SwaggerDoc() map[string]string {
 
 var map_PlatformStatus = map[string]string{
 	"":             "PlatformStatus holds the current status specific to the underlying infrastructure provider of the current cluster. Since these are used at status-level for the underlying cluster, it is supposed that only one of the status structs is set.",
-	"type":         "type is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"BareMetal\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", \"oVirt\", \"EquinixMetal\", and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.\n\nThis value will be synced with to the `status.platform` and `status.platformStatus.type`. Currently this value cannot be changed once set.",
+	"type":         "type is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"BareMetal\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", \"oVirt\", \"EquinixMetal\", \"PowerVS\", \"AlibabaCloud\" and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.\n\nThis value will be synced with to the `status.platform` and `status.platformStatus.type`. Currently this value cannot be changed once set.",
 	"aws":          "AWS contains settings specific to the Amazon Web Services infrastructure provider.",
 	"azure":        "Azure contains settings specific to the Azure infrastructure provider.",
 	"gcp":          "GCP contains settings specific to the Google Cloud Platform infrastructure provider.",
@@ -1069,10 +1100,42 @@ var map_PlatformStatus = map[string]string{
 	"ibmcloud":     "IBMCloud contains settings specific to the IBMCloud infrastructure provider.",
 	"kubevirt":     "Kubevirt contains settings specific to the kubevirt infrastructure provider.",
 	"equinixMetal": "EquinixMetal contains settings specific to the Equinix Metal infrastructure provider.",
+	"powervs":      "PowerVS contains settings specific to the Power Systems Virtual Servers infrastructure provider.",
+	"alibabaCloud": "AlibabaCloud contains settings specific to the Alibaba Cloud infrastructure provider.",
 }
 
 func (PlatformStatus) SwaggerDoc() map[string]string {
 	return map_PlatformStatus
+}
+
+var map_PowerVSPlatformSpec = map[string]string{
+	"": "PowerVSPlatformSpec holds the desired state of the IBM Power Systems Virtual Servers infrastructure provider. This only includes fields that can be modified in the cluster.",
+}
+
+func (PowerVSPlatformSpec) SwaggerDoc() map[string]string {
+	return map_PowerVSPlatformSpec
+}
+
+var map_PowerVSPlatformStatus = map[string]string{
+	"":                 "PowerVSPlatformStatus holds the current status of the IBM Power Systems Virtual Servers infrastrucutre provider.",
+	"region":           "region holds the default Power VS region for new Power VS resources created by the cluster.",
+	"zone":             "zone holds the default zone for the new Power VS resources created by the cluster. Note: Currently only single-zone OCP clusters are supported",
+	"serviceEndpoints": "serviceEndpoints is a list of custom endpoints which will override the default service endpoints of a Power VS service.",
+	"cisInstanceCRN":   "CISInstanceCRN is the CRN of the Cloud Internet Services instance managing the DNS zone for the cluster's base domain",
+}
+
+func (PowerVSPlatformStatus) SwaggerDoc() map[string]string {
+	return map_PowerVSPlatformStatus
+}
+
+var map_PowerVSServiceEndpoint = map[string]string{
+	"":     "PowervsServiceEndpoint stores the configuration of a custom url to override existing defaults of PowerVS Services.",
+	"name": "name is the name of the Power VS service.",
+	"url":  "url is fully qualified URI with scheme https, that overrides the default generated endpoint for a client. This must be provided and cannot be empty.",
+}
+
+func (PowerVSServiceEndpoint) SwaggerDoc() map[string]string {
+	return map_PowerVSServiceEndpoint
 }
 
 var map_VSpherePlatformSpec = map[string]string{

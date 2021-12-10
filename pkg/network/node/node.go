@@ -98,6 +98,7 @@ type OsdnNode struct {
 	hostName         string
 	useConnTrack     bool
 	masqueradeBit    uint32
+	platformType     string
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
@@ -185,6 +186,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		egressDNS:      egressDNS,
 		kubeInformers:  c.KubeInformers,
 		osdnInformers:  c.OSDNInformers,
+		platformType:   c.PlatformType,
 		egressIP:       newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
 	}
 
@@ -402,7 +404,7 @@ func (node *OsdnNode) Start() error {
 
 	klog.V(2).Infof("Starting openshift-sdn pod manager")
 	if err := node.podManager.Start(cniserver.CNIServerRunDir, node.localSubnetCIDR,
-		node.networkInfo.ClusterNetworks, node.networkInfo.ServiceNetwork.String()); err != nil {
+		node.networkInfo.ClusterNetworks, node.networkInfo.ServiceNetwork.String(), node.platformType); err != nil {
 		return err
 	}
 
