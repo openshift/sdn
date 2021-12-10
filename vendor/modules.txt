@@ -189,7 +189,7 @@ github.com/opencontainers/runc/libcontainer/userns
 github.com/opencontainers/runc/libcontainer/utils
 # github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 => github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/openshift/api v0.0.0-20210726144523-6fcabc0010ca
+# github.com/openshift/api v0.0.0-20210907191108-c6615eb597c3
 ## explicit
 github.com/openshift/api/config/v1
 github.com/openshift/api/network/v1
