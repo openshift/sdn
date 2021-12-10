@@ -149,7 +149,7 @@ func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, localSubn
 }
 
 // Start the CNI server and start processing requests from it
-func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetworks []common.ParsedClusterNetworkEntry, serviceNetworkCIDR string) error {
+func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetworks []common.ParsedClusterNetworkEntry, serviceNetworkCIDR string, platformType string) error {
 	var err error
 	if m.ipamConfig, err = getIPAMConfig(clusterNetworks, localSubnetCIDR); err != nil {
 		return err
@@ -157,7 +157,7 @@ func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetwork
 
 	go m.processCNIRequests()
 
-	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, ServiceNetworkCIDR: serviceNetworkCIDR})
+	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, ServiceNetworkCIDR: serviceNetworkCIDR, PlatformType: platformType})
 	return m.cniServer.Start(m.handleCNIRequest)
 }
 
