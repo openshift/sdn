@@ -54,9 +54,8 @@ const CNIServerConfigFilePath string = CNIServerRunDir + "/" + CNIServerConfigFi
 
 // Server-to-plugin config data
 type Config struct {
-	MTU                uint32 `json:"mtu"`
-	PlatformType       string `json:"platformType"`
-	ServiceNetworkCIDR string `json:"serviceNetworkCIDR"`
+	MTU          uint32 `json:"mtu"`
+	PlatformType string `json:"platformType"`
 }
 
 // Explicit type for CNI commands the server handles

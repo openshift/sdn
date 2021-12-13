@@ -404,7 +404,7 @@ func (node *OsdnNode) Start() error {
 
 	klog.V(2).Infof("Starting openshift-sdn pod manager")
 	if err := node.podManager.Start(cniserver.CNIServerRunDir, node.localSubnetCIDR,
-		node.networkInfo.ClusterNetworks, node.networkInfo.ServiceNetwork.String(), node.platformType); err != nil {
+		node.networkInfo.ClusterNetworks, node.networkInfo.ServiceNetwork, node.platformType); err != nil {
 		return err
 	}
 
