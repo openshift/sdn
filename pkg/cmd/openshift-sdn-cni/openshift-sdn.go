@@ -165,7 +165,8 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 
 	// ipam.ConfigureIface handles the Routes "incorrectly" (if there is no gateway
 	// specified it uses the interface's default gateway as the next hop rather than
-	// passing nil as the next hop. So pull out the routes to handle on our own.
+	// passing nil as the next hop. Additionally, we may need to set the MTU on the
+	// routes. So pull out the routes to handle on our own.
 	defaultGW := result.IPs[0].Gateway
 	routes := result.Routes
 	result.Routes = nil
@@ -235,10 +236,16 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 			}
 		}
 
+		link, err = netlink.LinkByName(args.IfName)
+		if err != nil {
+			return fmt.Errorf("failed to configure network interface %q: %v", args.IfName, err)
+		}
 		for _, cniroute := range routes {
 			route := &netlink.Route{
-				Dst: &cniroute.Dst,
-				Gw:  cniroute.GW,
+				LinkIndex: link.Attrs().Index,
+				Dst:       &cniroute.Dst,
+				Gw:        cniroute.GW,
+				MTU:       int(config.RoutableMTU),
 			}
 			if err := netlink.RouteAdd(route); err != nil && !os.IsExist(err) {
 				return fmt.Errorf("failed to add route to %s via SDN: %v", route.Dst.String(), err)

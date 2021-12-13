@@ -79,6 +79,9 @@ type OsdnNodeConfig struct {
 	IPTables      iptables.Interface
 	ProxyMode     kubeproxyconfig.ProxyMode
 	MasqueradeBit *int32
+
+	OverrideMTU uint32
+	RoutableMTU uint32
 }
 
 type OsdnNode struct {
@@ -99,6 +102,8 @@ type OsdnNode struct {
 	useConnTrack     bool
 	masqueradeBit    uint32
 	platformType     string
+	mtu              uint32
+	routableMTU      uint32
 
 	// Synchronizes operations on egressPolicies
 	egressPoliciesLock sync.Mutex
@@ -169,6 +174,13 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		return nil, err
 	}
 
+	mtu := networkInfo.MTU
+	routableMTU := uint32(0)
+	if c.OverrideMTU != 0 {
+		mtu = c.OverrideMTU
+		routableMTU = c.RoutableMTU
+	}
+
 	plugin := &OsdnNode{
 		policy:         policy,
 		kClient:        c.KClient,
@@ -176,7 +188,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		recorder:       c.Recorder,
 		oc:             oc,
 		networkInfo:    networkInfo,
-		podManager:     newPodManager(c.KClient, policy, networkInfo.MTU, oc),
+		podManager:     newPodManager(c.KClient, policy, mtu, routableMTU, oc),
 		localIP:        c.NodeIP,
 		hostName:       c.NodeName,
 		useConnTrack:   useConnTrack,
@@ -187,6 +199,8 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		kubeInformers:  c.KubeInformers,
 		osdnInformers:  c.OSDNInformers,
 		platformType:   c.PlatformType,
+		mtu:            mtu,
+		routableMTU:    routableMTU,
 		egressIP:       newEgressIPWatcher(oc, common.PlatformUsesCloudEgressIP(c.PlatformType), c.NodeIP, c.MasqueradeBit),
 	}
 
@@ -293,7 +307,7 @@ func (node *OsdnNode) validateMTU() error {
 		return fmt.Errorf("unable to determine MTU while performing validation")
 	}
 
-	needsTaint := mtu < int(node.networkInfo.MTU)+50
+	needsTaint := mtu < int(node.mtu)+50
 	const MTUTaintKey string = "network.openshift.io/mtu-too-small"
 	mtuTooSmallTaint := &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"}
 	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
