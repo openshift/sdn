@@ -285,6 +285,7 @@ func (np *networkPolicyPlugin) SetUpPod(podIP string) error {
 	if err := otx.Commit(); err != nil {
 		return fmt.Errorf("Error syncing OVS flows to isolate pods %v", err)
 	}
+	klog.Errorf("KEYWORD: CREATED POD (%s) IN ISOLATION", podIP)
 	return nil
 }
 
@@ -936,6 +937,7 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 		otx := np.node.oc.NewTransaction()
 		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
 		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s", pod.Name)
 		otx.Commit()
 
 		np.lock.Unlock()
