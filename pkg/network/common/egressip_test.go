@@ -5,7 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/watch"
+	kubeinformers "k8s.io/client-go/informers"
+	fakekubeclient "k8s.io/client-go/kubernetes/fake"
 
 	osdnv1 "github.com/openshift/api/network/v1"
 )
@@ -93,9 +99,9 @@ func (w *testEIPWatcher) assertUpdateEgressCIDRsNotification() error {
 	return fmt.Errorf("expected change \"update egress CIDRs\", got %#v", w.changes)
 }
 
-func setupEgressIPTracker(t *testing.T) (*EgressIPTracker, *testEIPWatcher) {
+func setupEgressIPTracker(t *testing.T, cloudEgressIP bool) (*EgressIPTracker, *testEIPWatcher) {
 	watcher := &testEIPWatcher{}
-	return NewEgressIPTracker(watcher), watcher
+	return NewEgressIPTracker(watcher, cloudEgressIP), watcher
 }
 
 func updateHostSubnetEgress(eit *EgressIPTracker, hs *osdnv1.HostSubnet) {
@@ -117,7 +123,7 @@ func updateNetNamespaceEgress(eit *EgressIPTracker, ns *osdnv1.NetNamespace) {
 }
 
 func TestEgressIP(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Subnet: "10.128.0.0/23",
@@ -344,7 +350,7 @@ func TestEgressIP(t *testing.T) {
 }
 
 func TestMultipleNamespaceEgressIPs(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
 		NetID:     42,
@@ -503,7 +509,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 }
 
 func TestDuplicateNodeEgressIPs(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
 		NetID:     42,
@@ -635,7 +641,7 @@ func TestDuplicateNodeEgressIPs(t *testing.T) {
 }
 
 func TestDuplicateNamespaceEgressIPs(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
 		NetID:     42,
@@ -761,7 +767,7 @@ func TestDuplicateNamespaceEgressIPs(t *testing.T) {
 }
 
 func TestOfflineEgressIPs(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:    "172.17.0.3",
@@ -843,6 +849,7 @@ func updateAllocations(eit *EgressIPTracker, allocation map[string][]string) {
 					ec = append(ec, osdnv1.HostSubnetEgressCIDR(cidr))
 				}
 				updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+					Host:        nodeName,
 					HostIP:      node.nodeIP,
 					Subnet:      "10.128.0.0/23",
 					EgressIPs:   StringsToHSEgressIPs(egressIPs),
@@ -855,7 +862,7 @@ func updateAllocations(eit *EgressIPTracker, allocation map[string][]string) {
 }
 
 func TestEgressCIDRAllocationWithMultipleAssignmentOptions(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
@@ -904,7 +911,7 @@ func TestEgressCIDRAllocationWithMultipleAssignmentOptions(t *testing.T) {
 }
 
 func TestEgressCIDRAllocation(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		HostIP:      "172.17.0.3",
@@ -1179,7 +1186,7 @@ func TestEgressCIDRAllocation(t *testing.T) {
 }
 
 func TestEgressNodeRenumbering(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:      "alpha",
@@ -1237,7 +1244,7 @@ func TestEgressNodeRenumbering(t *testing.T) {
 }
 
 func TestEgressCIDRAllocationOffline(t *testing.T) {
-	eit, w := setupEgressIPTracker(t)
+	eit, w := setupEgressIPTracker(t, false)
 
 	// Create nodes...
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
@@ -1372,4 +1379,825 @@ func TestEgressCIDRAllocationOffline(t *testing.T) {
 		t.Fatalf("Bad IP allocation: %#v", allocation)
 	}
 	updateAllocations(eit, allocation)
+}
+
+func TestAutomaticEgressAllocationRespectingCapacityAndNamespaceBalancingWithFullAssignment(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
+	egressIP1, egressIP2, egressIP3 := "172.17.0.101", "172.17.0.102", "172.17.0.103"
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID:     101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{osdnv1.NetNamespaceEgressIP(egressIP1), osdnv1.NetNamespaceEgressIP(egressIP2)},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID:     103,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{osdnv1.NetNamespaceEgressIP(egressIP3)},
+	})
+
+	allocation := eit.ReallocateEgressIPs()
+	// In the above case (the global amount of egress IPs requested can be
+	// assigned given the cluster's overall capacity) there is only one optimal
+	// solution, namely: obtaining a full assignment. This forces the solution
+	// to be the following:
+	if sets.NewString(allocation[node2Name]...).Has(egressIP3) {
+		t.Fatalf("Unexpected sub-optimal solution, egress IP: %s, was assigned to node with smallest capacity", egressIP3)
+	}
+	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 1 {
+		t.Fatalf("Unexpected sub-optimal solution, unexpected amount of allocations on egress nodes")
+	}
+}
+
+func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignment(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 2
+	node3Name, node3IP, node3Capacity := "node3", "172.17.0.3", 1
+	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105", "172.17.0.106"
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node3Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node3Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node3IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node3Name,
+		HostIP:      node3IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP1),
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+			osdnv1.NetNamespaceEgressIP(egressIP3),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 102,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP4),
+			osdnv1.NetNamespaceEgressIP(egressIP5),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 103,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP6),
+		},
+	})
+
+	allocation := eit.ReallocateEgressIPs()
+	// In the case above (where the amount of requested egress IPs superseed the
+	// cluster's global capacity) there is again only one optimal solution,
+	// namely: assigning all but one egress IP, and making sure all namespaces
+	// get a fair assignment of its requested IPs, fair meaning: we assigning as
+	// many as we can from all namespaces and have the left-out egress IP being
+	// one from the namespace that requests the most multiple. That means that
+	// the solution must be:
+	if getAllAssignedEgressIPs(allocation).HasAll(egressIP1, egressIP2, egressIP3) {
+		t.Fatalf("Unexpected sub-optimal solution, namespace with the most requested IPs, got all assigned")
+	}
+	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 2 || len(allocation[node3Name]) != 1 {
+		t.Fatalf("Unexpected sub-optimal solution, unexpected amount of allocations on egress nodes")
+	}
+}
+
+func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignmentForAFullyConstraintProblem(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 1
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
+	node3Name, node3IP, node3Capacity := "node3", "172.17.0.3", 1
+	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105", "172.17.0.106"
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node3Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node3Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node3IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node3Name,
+		HostIP:      node3IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP1),
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+			osdnv1.NetNamespaceEgressIP(egressIP3),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 102,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP4),
+			osdnv1.NetNamespaceEgressIP(egressIP5),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 103,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP6),
+		},
+	})
+
+	allocation := eit.ReallocateEgressIPs()
+	// In the case above we need to make sure all namespaces get at least one IP
+	// assigned.
+	if !getAllAssignedEgressIPs(allocation).HasAll(egressIP1, egressIP4, egressIP6) {
+		t.Fatalf("Unexpected sub-optimal solution, one IP from every namespace was not assigned")
+	}
+	if len(allocation[node1Name]) != 1 || len(allocation[node2Name]) != 1 || len(allocation[node3Name]) != 1 {
+		t.Fatalf("Unexpected sub-optimal solution, unexpected amount of allocations on egress nodes")
+	}
+}
+
+func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssignment(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
+	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105"
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/24"},
+	})
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 100,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP1),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+		},
+	})
+
+	allocation := eit.ReallocateEgressIPs()
+	// Simple case: both IPs should be assigned to different nodes
+	if len(allocation[node1Name]) != 1 || len(allocation[node2Name]) != 1 {
+		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	}
+
+	updateAllocations(eit, allocation)
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+			osdnv1.NetNamespaceEgressIP(egressIP3),
+		},
+	})
+
+	allocation = eit.ReallocateEgressIPs()
+	// As in the other test cases above, we need to ensure a full capacity -
+	// since there is room for such
+	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 1 {
+		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	}
+
+	updateAllocations(eit, allocation)
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID:     100,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{},
+	})
+
+	allocation = eit.ReallocateEgressIPs()
+	// Simple case: both IPs of the remaining namespace should be assigned to
+	// different nodes
+	if len(allocation[node1Name]) != 1 || len(allocation[node2Name]) != 1 {
+		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	}
+
+	updateAllocations(eit, allocation)
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 100,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP1),
+			osdnv1.NetNamespaceEgressIP(egressIP4),
+			osdnv1.NetNamespaceEgressIP(egressIP5),
+		},
+	})
+
+	allocation = eit.ReallocateEgressIPs()
+	// Assigning everything we can, but moreover there is actually an optimal
+	// solution here: given that we already have IP2 and IP3 assigned, we should
+	// only add one IP from namespace 100 (as to reduce entropy). A worse
+	// solution (introducing more cluster entropy) would have been assigning two
+	// IPs from namespace 100, and removing one IP from namespace 101, so check
+	// this.
+	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 1 {
+		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	}
+	if !getAllAssignedEgressIPs(allocation).HasAll(egressIP2, egressIP3) {
+		t.Fatalf("Unexpected sub-optimal solution, existing allocations: %s and %s have been moved in favour of new ones, though that was not necessary", egressIP2, egressIP3)
+	}
+
+	updateAllocations(eit, allocation)
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+		},
+	})
+
+	allocation = eit.ReallocateEgressIPs()
+	// All IPs that can be assigned should be assigned, and egressIP2 needs to
+	// remain assigned
+	if !sets.NewString(allocation[node1Name]...).Has(egressIP2) && !sets.NewString(allocation[node2Name]...).Has(egressIP2) {
+		t.Fatalf("Unexpected removal of the only egress IP requested by one namespace")
+	}
+}
+
+func TestAutomaticEgressAllocationRespectingAvailability(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 3
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 6
+	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.55", "172.17.0.56", "172.17.0.57", "172.17.0.58", "172.17.0.59", "172.17.0.5"
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/29"},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/26"},
+	})
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 100,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP1),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP2),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 102,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP3),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 103,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP4),
+		},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 104,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP5),
+		},
+	})
+
+	allocation := eit.ReallocateEgressIPs()
+	// Since all IPs can only be assigned to node two, and node two has capacity
+	// to host them, they should go there.
+	if len(allocation[node2Name]) != 5 {
+		t.Fatalf("Unexpected amount of allocations on egress node two")
+	}
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID: 105,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{
+			osdnv1.NetNamespaceEgressIP(egressIP6),
+		},
+	})
+
+	allocation = eit.ReallocateEgressIPs()
+
+	// The last IP can be assigned to both nodes, but should be preferred on
+	// node one since it has less allocations and is more "available" (capacity
+	// - current assignments)
+	if len(allocation[node1Name]) != 1 && len(allocation[node2Name]) != 5 {
+		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	}
+}
+
+func TestManualEgressAllocationRespectingCapacity(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
+	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.0/23"}}]`, node2Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node2IP,
+				},
+			},
+		},
+	})
+
+	eit, w := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	})
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	})
+
+	// No namespaces use egress yet, hence no changes
+	err := w.assertNoChanges()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID:     100,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{"172.17.0.101", "172.17.0.103"},
+	})
+	updateNetNamespaceEgress(eit, &osdnv1.NetNamespace{
+		NetID:     101,
+		EgressIPs: []osdnv1.NetNamespaceEgressIP{"172.17.0.102", "172.17.0.104"},
+	})
+
+	// No namespaces use egress yet, hence no changes
+	err = w.assertChanges(
+		"namespace 100 dropped",
+		"namespace 101 dropped",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{"172.17.0.101"},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	})
+
+	// First namespace get assigned first IP
+	err = w.assertChanges(
+		"claim 172.17.0.101 on 172.17.0.2 for namespace 100",
+		"namespace 100 via 172.17.0.101 on 172.17.0.2",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{"172.17.0.102"},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	})
+
+	// Second namespace get assigned first IP
+	err = w.assertChanges(
+		"claim 172.17.0.102 on 172.17.0.1 for namespace 101",
+		"namespace 101 via 172.17.0.102 on 172.17.0.1",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Two egress IPs on node 2 superseeds its capacity, hence is illegal. But
+	// call handleAddOrUpdateHostSubnet since that will perform the validation
+	// of user input in manual assignment mode and is hence what should reject
+	// the change.
+	eit.handleAddOrUpdateHostSubnet(&osdnv1.HostSubnet{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node2Name,
+			UID:  ktypes.UID(node2Name),
+		},
+		Host:        node2Name,
+		HostIP:      node2IP,
+		Subnet:      "10.129.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{"172.17.0.101", "172.17.0.104"},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	}, nil, watch.Modified)
+
+	err = w.assertNoChanges()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{"172.17.0.102", "172.17.0.103"},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{},
+	})
+
+	// Second namespace gets assigned second IP, since node 1 still has space
+	// for it.
+	err = w.assertChanges(
+		"claim 172.17.0.103 on 172.17.0.1 for namespace 100",
+		"namespace 100 via 172.17.0.103 on 172.17.0.1",
+		"namespace 100 via 172.17.0.101 on 172.17.0.2",
+	)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestValidEgressCIDRsForCloudNodes(t *testing.T) {
+	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
+
+	fClient := fakekubeclient.NewSimpleClientset()
+	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
+	nodeInformer := kubeInformer.Core().V1().Nodes()
+
+	nodeStore := nodeInformer.Informer().GetStore()
+	nodeStore.Add(&corev1.Node{
+		ObjectMeta: v1.ObjectMeta{
+			Name: node1Name,
+			Annotations: map[string]string{
+				nodeEgressIPConfigAnnotationKey: fmt.Sprintf(`[{"capacity":{"ipv4":%v}, "ifaddr": {"ipv4": "172.17.0.2/23"}}]`, node1Capacity),
+			},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: node1IP,
+				},
+			},
+		},
+	})
+
+	eit, _ := setupEgressIPTracker(t, true)
+	eit.nodeInformer = nodeInformer
+
+	// Fully within the cloud network, no error
+	err := eit.validateEgressCIDRsAreSubnetOfCloudNetwork(&osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/26"},
+	})
+	if err != nil {
+		t.Fatalf("EgressCIDR is fully within cloud network, but failed, err: %v", err)
+	}
+
+	// Overlaps and is greater than the cloud network, error
+	err = eit.validateEgressCIDRsAreSubnetOfCloudNetwork(&osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.17.0.0/22"},
+	})
+	if err == nil {
+		t.Fatalf("EgressCIDR is greater than the cloud network, should fail")
+	}
+
+	// Does not overlap the cloud network at all, error
+	err = eit.validateEgressCIDRsAreSubnetOfCloudNetwork(&osdnv1.HostSubnet{
+		Host:        node1Name,
+		HostIP:      node1IP,
+		Subnet:      "10.128.0.0/23",
+		EgressIPs:   []osdnv1.HostSubnetEgressIP{},
+		EgressCIDRs: []osdnv1.HostSubnetEgressCIDR{"172.18.0.0/23"},
+	})
+	if err == nil {
+		t.Fatalf("EgressCIDR does not overlap the cloud network, should fail")
+	}
+}
+
+func getAllAssignedEgressIPs(allocation map[string][]string) sets.String {
+	assignedEgressIPs := sets.NewString()
+	for _, nodeAllocations := range allocation {
+		assignedEgressIPs.Insert(nodeAllocations...)
+	}
+	return assignedEgressIPs
 }

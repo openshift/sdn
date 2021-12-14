@@ -187,7 +187,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		kubeInformers:  c.KubeInformers,
 		osdnInformers:  c.OSDNInformers,
 		platformType:   c.PlatformType,
-		egressIP:       newEgressIPWatcher(oc, c.NodeIP, c.MasqueradeBit),
+		egressIP:       newEgressIPWatcher(oc, common.PlatformUsesCloudEgressIP(c.PlatformType), c.NodeIP, c.MasqueradeBit),
 	}
 
 	metrics.RegisterMetrics()
@@ -385,7 +385,7 @@ func (node *OsdnNode) Start() error {
 		if err := node.SetupEgressNetworkPolicy(); err != nil {
 			return err
 		}
-		if err := node.egressIP.Start(node.osdnInformers, node.nodeIPTables); err != nil {
+		if err := node.egressIP.Start(node.osdnInformers, node.kubeInformers, node.nodeIPTables); err != nil {
 			return err
 		}
 	}

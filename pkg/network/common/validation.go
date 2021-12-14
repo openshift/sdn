@@ -179,6 +179,14 @@ func ValidateHostSubnetEgress(hs *osdnv1.HostSubnet) error {
 	return nil
 }
 
+// cidrsOverlap verifies if cidr1 and cidr2 overlap (intersect).
 func cidrsOverlap(cidr1, cidr2 *net.IPNet) bool {
 	return cidr1.Contains(cidr2.IP) || cidr2.Contains(cidr1.IP)
+}
+
+// isSubnet verifies if cidr2 is a subnet of cidr1.
+func isSubnet(cidr1, cidr2 *net.IPNet) bool {
+	ones1, _ := cidr1.Mask.Size()
+	ones2, _ := cidr2.Mask.Size()
+	return ones1 <= ones2 && cidr1.Contains(cidr2.IP)
 }
