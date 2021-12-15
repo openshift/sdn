@@ -1795,10 +1795,15 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 	})
 
 	allocation = eit.ReallocateEgressIPs()
-	// As in the other test cases above, we need to ensure a full capacity -
-	// since there is room for such
-	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 1 {
-		t.Fatalf("Unexpected amount of allocations on egress nodes")
+	// We can't verify the amount of allocations on each node determinstically,
+	// because this depends on how things have been assigned in the previous
+	// round of assignment, so verify some basic conditions that **must** hold
+	// true
+	if !getAllAssignedEgressIPs(allocation).Has(egressIP1) {
+		t.Fatalf("Unexpected allocations on egress nodes, namespace 100 is missing its requested egress IP")
+	}
+	if !getAllAssignedEgressIPs(allocation).HasAny(egressIP2, egressIP3) {
+		t.Fatalf("Unexpected allocations on egress nodes, namespace 101 is missing both of its requested egress IPs")
 	}
 
 	updateAllocations(eit, allocation)
@@ -1808,8 +1813,10 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 	})
 
 	allocation = eit.ReallocateEgressIPs()
-	// Simple case: both IPs of the remaining namespace should be assigned to
-	// different nodes
+	// We can verify the amount of allocations deterministally because this is a
+	// simple case where all IPs can be assigned without any heuristics, i.e:
+	// there is place for both IPs everywhere and assignment strategy (the way
+	// you assign IPs) has no effect on the final outcome.
 	if len(allocation[node1Name]) != 1 || len(allocation[node2Name]) != 1 {
 		t.Fatalf("Unexpected amount of allocations on egress nodes")
 	}
@@ -1825,12 +1832,10 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 	})
 
 	allocation = eit.ReallocateEgressIPs()
-	// Assigning everything we can, but moreover there is actually an optimal
-	// solution here: given that we already have IP2 and IP3 assigned, we should
-	// only add one IP from namespace 100 (as to reduce entropy). A worse
-	// solution (introducing more cluster entropy) would have been assigning two
-	// IPs from namespace 100, and removing one IP from namespace 101, so check
-	// this.
+	// We can verify the amount of assignments deterministically because we know
+	// we had both IPs from namespace 101 assigned to both nodes in the previous
+	// round, hence: as there is only room for one more IP from namespace 100,
+	// we know where it will go.
 	if len(allocation[node1Name]) != 2 || len(allocation[node2Name]) != 1 {
 		t.Fatalf("Unexpected amount of allocations on egress nodes")
 	}
@@ -1847,8 +1852,9 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 	})
 
 	allocation = eit.ReallocateEgressIPs()
-	// All IPs that can be assigned should be assigned, and egressIP2 needs to
-	// remain assigned
+	// Again: we can't verify the amount of assignments deterministically
+	// because things depend on how things have been assigned up until this
+	// point. EgressIP2 needs to remain assigned though.
 	if !sets.NewString(allocation[node1Name]...).Has(egressIP2) && !sets.NewString(allocation[node2Name]...).Has(egressIP2) {
 		t.Fatalf("Unexpected removal of the only egress IP requested by one namespace")
 	}
