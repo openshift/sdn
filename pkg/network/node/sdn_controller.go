@@ -11,6 +11,7 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/sysctl"
 
@@ -40,21 +41,24 @@ func (plugin *OsdnNode) alreadySetUp() error {
 		return errors.New("local subnet gateway CIDR not found")
 	}
 
+	expectedRoutes := sets.NewString()
+	for _, clusterCIDR := range plugin.clusterCIDRs {
+		expectedRoutes.Insert(clusterCIDR)
+	}
+	expectedRoutes.Insert(plugin.networkInfo.ServiceNetwork.String())
+
 	routes, err := netlink.RouteList(l, netlink.FAMILY_V4)
 	if err != nil {
 		return err
 	}
-	for _, clusterCIDR := range plugin.clusterCIDRs {
-		found = false
-		for _, route := range routes {
-			if route.Dst != nil && route.Dst.String() == clusterCIDR {
-				found = true
-				break
-			}
+	for _, route := range routes {
+		if route.Dst != nil && route.MTU == int(plugin.routableMTU) {
+			expectedRoutes.Delete(route.Dst.String())
 		}
-		if !found {
-			return errors.New("cluster CIDR not found")
-		}
+	}
+
+	if len(expectedRoutes) != 0 {
+		return fmt.Errorf("one or more cluster routes not found or not correct: %v", expectedRoutes.List())
 	}
 
 	if !plugin.oc.AlreadySetUp(plugin.networkInfo.VXLANPort) {
@@ -154,7 +158,7 @@ func (plugin *OsdnNode) FinishSetupSDN() error {
 func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error {
 	serviceNetworkCIDR := plugin.networkInfo.ServiceNetwork.String()
 
-	if err := plugin.oc.SetupOVS(plugin.clusterCIDRs, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway, plugin.networkInfo.MTU, plugin.networkInfo.VXLANPort); err != nil {
+	if err := plugin.oc.SetupOVS(plugin.clusterCIDRs, serviceNetworkCIDR, localSubnetCIDR, localSubnetGateway, plugin.mtu, plugin.networkInfo.VXLANPort); err != nil {
 		return err
 	}
 
@@ -175,6 +179,7 @@ func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error 
 				LinkIndex: l.Attrs().Index,
 				Scope:     netlink.SCOPE_LINK,
 				Dst:       clusterNetwork.ClusterCIDR,
+				MTU:       int(plugin.routableMTU),
 			}
 			if err = netlink.RouteAdd(route); err != nil {
 				return err
@@ -185,6 +190,7 @@ func (plugin *OsdnNode) setup(localSubnetCIDR, localSubnetGateway string) error 
 		route := &netlink.Route{
 			LinkIndex: l.Attrs().Index,
 			Dst:       plugin.networkInfo.ServiceNetwork,
+			MTU:       int(plugin.routableMTU),
 		}
 		err = netlink.RouteAdd(route)
 	}

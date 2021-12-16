@@ -26,6 +26,7 @@ require (
 	k8s.io/klog/v2 v2.9.0
 	k8s.io/kubernetes v1.22.0-rc.0 // actually sdn-4.10-kubernetes-1.22.0-rc.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9 // same as sdn-4.10-kubernetes-1.22.0-rc.0
+	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (

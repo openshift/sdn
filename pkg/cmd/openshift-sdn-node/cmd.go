@@ -18,6 +18,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/interrupt"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	kexec "k8s.io/utils/exec"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/library-go/pkg/serviceability"
 	sdnnode "github.com/openshift/sdn/pkg/network/node"
@@ -34,6 +35,10 @@ type openShiftSDN struct {
 
 	proxyConfigFilePath string
 	proxyConfig         *kubeproxyconfig.KubeProxyConfiguration
+
+	mtuOverrideFilePath string
+	overrideMTU         uint32
+	routableMTU         uint32
 
 	informers   *sdnInformers
 	osdnNode    *sdnnode.OsdnNode
@@ -74,6 +79,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 	flags.StringVar(&sdn.proxyConfigFilePath, "proxy-config", "", "Location of the kube-proxy configuration file")
 	cmd.MarkFlagRequired("proxy-config")
 	flags.StringVar(&sdn.platformType, "platform-type", "", "The cloud provider platform type openshift-sdn is deployed on")
+	flags.StringVar(&sdn.mtuOverrideFilePath, "mtu-override", "", "Location of an MTU-override configuration file")
 
 	return cmd
 }
@@ -124,6 +130,14 @@ func (sdn *openShiftSDN) validateAndParse() error {
 	sdn.proxyConfig, err = readProxyConfig(sdn.proxyConfigFilePath)
 	if err != nil {
 		return err
+	}
+
+	if sdn.mtuOverrideFilePath != "" {
+		klog.V(2).Infof("Reading MTU override from %s", sdn.mtuOverrideFilePath)
+		sdn.overrideMTU, sdn.routableMTU, err = readMTUOverride(sdn.mtuOverrideFilePath)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -254,4 +268,23 @@ func watchForChanges(configPath string, stopCh chan struct{}) error {
 		}
 	}()
 	return nil
+}
+
+// readMTUOverride reads the --mtu-override file, if any
+func readMTUOverride(file string) (uint32, uint32, error) {
+	bytes, err := os.ReadFile(file)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	conf := struct {
+		MTU         uint32 `json:"mtu"`
+		RoutableMTU uint32 `json:"routable-mtu"`
+	}{}
+	err = yaml.Unmarshal(bytes, &conf)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return conf.MTU, conf.RoutableMTU, err
 }

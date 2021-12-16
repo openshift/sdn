@@ -59,10 +59,11 @@ type podManager struct {
 	runningPodsLock sync.Mutex
 
 	// Live pod setup/teardown stuff not used in testing code
-	kClient kubernetes.Interface
-	policy  osdnPolicy
-	mtu     uint32
-	ovs     *ovsController
+	kClient     kubernetes.Interface
+	policy      osdnPolicy
+	mtu         uint32
+	routableMTU uint32
+	ovs         *ovsController
 
 	// Things only accessed through the processCNIRequests() goroutine
 	// and thus can be set from Start()
@@ -70,11 +71,12 @@ type podManager struct {
 }
 
 // Creates a new live podManager; used by node code0
-func newPodManager(kClient kubernetes.Interface, policy osdnPolicy, mtu uint32, ovs *ovsController) *podManager {
+func newPodManager(kClient kubernetes.Interface, policy osdnPolicy, mtu uint32, routableMTU uint32, ovs *ovsController) *podManager {
 	pm := newDefaultPodManager()
 	pm.kClient = kClient
 	pm.policy = policy
 	pm.mtu = mtu
+	pm.routableMTU = routableMTU
 	pm.podHandler = pm
 	pm.ovs = ovs
 	return pm
@@ -91,7 +93,7 @@ func newDefaultPodManager() *podManager {
 // Generates a CNI IPAM config from a given node cluster and local subnet that
 // CNI 'host-local' IPAM plugin will use to create an IP address lease for the
 // container
-func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, localSubnet string) ([]byte, error) {
+func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, serviceNetworkCIDR *net.IPNet, localSubnet string) ([]byte, error) {
 	nodeNet, err := cnitypes.ParseCIDR(localSubnet)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing node network '%s': %v", localSubnet, err)
@@ -111,26 +113,33 @@ func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, localSubn
 		IPAM       *hostLocalIPAM `json:"ipam"`
 	}
 
-	_, mcnet, _ := net.ParseCIDR("224.0.0.0/4")
+	defaultGW := common.GenerateDefaultGateway(nodeNet)
+	routes := []cnitypes.Route{}
 
-	routes := []cnitypes.Route{
-		{
-			//Default route
-			Dst: net.IPNet{
-				IP:   net.IPv4zero,
-				Mask: net.IPMask(net.IPv4zero),
-			},
-			GW: common.GenerateDefaultGateway(nodeNet),
+	// Default route
+	routes = append(routes, cnitypes.Route{
+		Dst: net.IPNet{
+			IP:   net.IPv4zero,
+			Mask: net.IPMask(net.IPv4zero),
 		},
-		{
-			//Multicast
-			Dst: *mcnet,
-		},
-	}
+		GW: defaultGW,
+	})
 
+	// Add explicit routes to the cluster and service networks, in case the default
+	// route gets changed (eg for an egress router).
+	routes = append(routes, cnitypes.Route{
+		Dst: *serviceNetworkCIDR,
+		GW:  defaultGW,
+	})
 	for _, cn := range clusterNetworks {
 		routes = append(routes, cnitypes.Route{Dst: *cn.ClusterCIDR})
 	}
+
+	// Multicast
+	_, mcnet, _ := net.ParseCIDR("224.0.0.0/4")
+	routes = append(routes, cnitypes.Route{
+		Dst: *mcnet,
+	})
 
 	return json.Marshal(&cniNetworkConfig{
 		CNIVersion: "0.3.1",
@@ -149,15 +158,15 @@ func getIPAMConfig(clusterNetworks []common.ParsedClusterNetworkEntry, localSubn
 }
 
 // Start the CNI server and start processing requests from it
-func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetworks []common.ParsedClusterNetworkEntry, serviceNetworkCIDR string, platformType string) error {
+func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetworks []common.ParsedClusterNetworkEntry, serviceNetworkCIDR *net.IPNet, platformType string) error {
 	var err error
-	if m.ipamConfig, err = getIPAMConfig(clusterNetworks, localSubnetCIDR); err != nil {
+	if m.ipamConfig, err = getIPAMConfig(clusterNetworks, serviceNetworkCIDR, localSubnetCIDR); err != nil {
 		return err
 	}
 
 	go m.processCNIRequests()
 
-	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, ServiceNetworkCIDR: serviceNetworkCIDR, PlatformType: platformType})
+	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, RoutableMTU: m.routableMTU, PlatformType: platformType})
 	return m.cniServer.Start(m.handleCNIRequest)
 }
 

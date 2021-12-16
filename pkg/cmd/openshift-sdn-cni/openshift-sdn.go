@@ -142,10 +142,6 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	_, serviceIPNet, err := net.ParseCIDR(config.ServiceNetworkCIDR)
-	if err != nil {
-		return fmt.Errorf("failed to parse ServiceNetworkCIDR: %v", err)
-	}
 
 	var hostVeth, contVeth net.Interface
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
@@ -167,12 +163,13 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("Unexpected IPAM result: %v", err)
 	}
 
-	// ipam.ConfigureIface thinks that a route with no gateway specified
-	// means to pass the default gateway as the next hop to ip.AddRoute,
-	// but that's not what we want; we want to pass nil as the next hop.
-	// So we need to clear the default gateway.
+	// ipam.ConfigureIface handles the Routes "incorrectly" (if there is no gateway
+	// specified it uses the interface's default gateway as the next hop rather than
+	// passing nil as the next hop. Additionally, we may need to set the MTU on the
+	// routes. So pull out the routes to handle on our own.
 	defaultGW := result.IPs[0].Gateway
-	result.IPs[0].Gateway = nil
+	routes := result.Routes
+	result.Routes = nil
 
 	// Add a sandbox interface record which ConfigureInterface expects.
 	// The only interface we report is the pod interface.
@@ -203,7 +200,6 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 			return fmt.Errorf("failed to configure container loopback: %v", err)
 		}
 
-		var dsts []*net.IPNet
 		// Set up macvlan0 (if it exists)
 		link, err = netlink.LinkByName("macvlan0")
 		if err == nil {
@@ -233,18 +229,26 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 				return fmt.Errorf("failed to configure macvlan device: %v", err)
 			}
 			for _, addr := range addrs {
-				dsts = append(dsts, &net.IPNet{IP: addr.IP, Mask: net.CIDRMask(32, 32)})
+				routes = append(routes, &types.Route{
+					Dst: net.IPNet{IP: addr.IP, Mask: net.CIDRMask(32, 32)},
+					GW:  defaultGW,
+				})
 			}
 		}
 
-		dsts = append(dsts, serviceIPNet)
-		for _, dst := range dsts {
+		link, err = netlink.LinkByName(args.IfName)
+		if err != nil {
+			return fmt.Errorf("failed to configure network interface %q: %v", args.IfName, err)
+		}
+		for _, cniroute := range routes {
 			route := &netlink.Route{
-				Dst: dst,
-				Gw:  defaultGW,
+				LinkIndex: link.Attrs().Index,
+				Dst:       &cniroute.Dst,
+				Gw:        cniroute.GW,
+				MTU:       int(config.RoutableMTU),
 			}
 			if err := netlink.RouteAdd(route); err != nil && !os.IsExist(err) {
-				return fmt.Errorf("failed to add route to dst: %v via SDN: %v", dst, err)
+				return fmt.Errorf("failed to add route to %s via SDN: %v", route.Dst.String(), err)
 			}
 		}
 
