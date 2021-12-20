@@ -338,7 +338,7 @@ func (np *networkPolicyPlugin) syncFlows() {
 	for _, ip := range np.ips {
 		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", ip)
 		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", ip)
-		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s ON SYNC", pod.Name)
+		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s ON SYNC", ip)
 
 	}
 	np.ips = []string{}
