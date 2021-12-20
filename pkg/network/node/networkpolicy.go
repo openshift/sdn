@@ -48,6 +48,10 @@ type networkPolicyPlugin struct {
 
 	warnedPolicies  map[ktypes.UID]string
 	skippedPolicies map[ktypes.UID]string
+
+	// ips is a list of ip address for pods that have been added since the last time that
+	// the namespaces have been synced
+	ips []string
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -331,6 +335,14 @@ func (np *networkPolicyPlugin) syncFlows() {
 			npns.mustSync = false
 		}
 	}
+	for _, ip := range np.ips {
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", ip)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", ip)
+		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s ON SYNC", pod.Name)
+
+	}
+	np.ips = []string{}
+
 	if err := otx.Commit(); err != nil {
 		klog.Errorf("Error syncing OVS flows: %v", err)
 	}
@@ -934,12 +946,13 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 
 	np.lock.Lock()
 	defer func() {
-		otx := np.node.oc.NewTransaction()
-		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s", pod.Name)
-		otx.Commit()
-
+		/*
+			otx := np.node.oc.NewTransaction()
+			otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+			otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+			klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s", pod.Name)
+			otx.Commit()
+		*/
 		np.lock.Unlock()
 	}()
 
@@ -1021,6 +1034,7 @@ func (np *networkPolicyPlugin) refreshNamespaceNetworkPolicies() {
 }
 
 func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
+	keepPodIsolated := false
 	podNs := np.namespacesByName[pod.Namespace]
 	for _, npns := range np.namespaces {
 		for _, npp := range npns.policies {
@@ -1029,9 +1043,21 @@ func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
 			}
 		}
 		if npns.mustRecalculate && npns.inUse {
+			if !keepPodIsolated {
+				np.ips = append(np.ips, pod.Status.PodIP)
+			}
+			keepPodIsolated = true
 			np.syncNamespace(npns)
 		}
 	}
+	if !keepPodIsolated {
+		otx := np.node.oc.NewTransaction()
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		klog.Errorf("KEYWORD: SHOULD HAVE REMOVED THE ISOLATION FROM POD %s IMMEDIATLY", pod.Name)
+		otx.Commit()
+	}
+
 }
 
 func getPodFullName(pod *corev1.Pod) string {
