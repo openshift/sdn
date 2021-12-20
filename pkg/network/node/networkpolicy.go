@@ -379,10 +379,18 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			for _, flow := range npp.ingressFlows {
 				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
 			}
+			// the event that ingress is included in the policy type but there are no ingress rules
+			if len(npp.ingressFlows) == 0 {
+				otx.AddFlow("table=80, priority=150, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
+			}
 		}
 		if npp.affectsEgress {
 			for _, flow := range npp.egressFlows {
 				otx.AddFlow("table=27, priority=150, reg0=%d, %s actions=goto_table:30", npns.vnid, flow)
+			}
+			// the event that the egress is included in the policy type but there are no egress rules
+			if len(npp.egressFlows) == 0 {
+				otx.AddFlow("table=27, priority=150, reg0=%d, actions=goto_table:30", npns.vnid)
 			}
 		}
 	}
