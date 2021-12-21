@@ -48,6 +48,10 @@ type networkPolicyPlugin struct {
 
 	warnedPolicies  map[ktypes.UID]string
 	skippedPolicies map[ktypes.UID]string
+
+	// ips includes the ips of pods that have been created and are affected by an
+	// existing network policy
+	ips []string
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -109,6 +113,8 @@ func NewNetworkPolicyPlugin() osdnPolicy {
 
 		warnedPolicies:  make(map[ktypes.UID]string),
 		skippedPolicies: make(map[ktypes.UID]string),
+
+		ips: []string{},
 	}
 }
 
@@ -330,6 +336,15 @@ func (np *networkPolicyPlugin) syncFlows() {
 			npns.mustSync = false
 		}
 	}
+
+	for _, ip := range np.ips {
+		// remove network isolation from pods that have been added and
+		// caused a flow recalculation
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", ip)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", ip)
+	}
+	// reset the list of pods started since the last sync
+	np.ips = []string{}
 	if err := otx.Commit(); err != nil {
 		klog.Errorf("Error syncing OVS flows: %v", err)
 	}
@@ -932,14 +947,7 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 	}
 
 	np.lock.Lock()
-	defer func() {
-		otx := np.node.oc.NewTransaction()
-		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		otx.Commit()
-
-		np.lock.Unlock()
-	}()
+	defer np.lock.Unlock()
 
 	np.refreshPodNetworkPolicies(pod)
 }
@@ -1019,15 +1027,28 @@ func (np *networkPolicyPlugin) refreshNamespaceNetworkPolicies() {
 }
 
 func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
+	podNeedsSync := false
 	podNs := np.namespacesByName[pod.Namespace]
 	for _, npns := range np.namespaces {
 		for _, npp := range npns.policies {
 			if (npp.watchesOwnPods && npns == podNs) || npp.watchesAllPods {
+				if !podNeedsSync {
+					np.ips = append(np.ips, pod.Status.PodIP)
+					podNeedsSync = true
+				}
 				npns.mustRecalculate = true
 			}
 		}
 		if npns.mustRecalculate && npns.inUse {
 			np.syncNamespace(npns)
+		}
+	}
+	if !podNeedsSync && len(pod.Status.PodIP) > 0 {
+		otx := np.node.oc.NewTransaction()
+		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
+		if err := otx.Commit(); err != nil {
+			klog.Errorf("Error syncing OVS flows to remove isolation from pod %s with ip %s (%v)", pod.Name, pod.Status.PodIP, err)
 		}
 	}
 }
