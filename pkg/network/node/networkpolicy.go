@@ -340,6 +340,7 @@ func (np *networkPolicyPlugin) syncFlows() {
 	for _, ip := range np.ips {
 		// remove network isolation from pods that have been added and
 		// caused a flow recalculation
+		klog.Errorf("KEYWORD: why is maybe this invalid (%s)", ip)
 		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", ip)
 		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", ip)
 	}
