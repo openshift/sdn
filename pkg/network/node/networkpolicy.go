@@ -1033,7 +1033,7 @@ func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
 	for _, npns := range np.namespaces {
 		for _, npp := range npns.policies {
 			if (npp.watchesOwnPods && npns == podNs) || npp.watchesAllPods {
-				if !podNeedsSync {
+				if !podNeedsSync && len(pod.Status.PodIP) > 0 {
 					np.ips = append(np.ips, pod.Status.PodIP)
 					podNeedsSync = true
 				}
