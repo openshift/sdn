@@ -72,6 +72,7 @@ func (eim *egressIPManager) Start(osdnClient osdnclient.Interface,
 	if eim.tracker.CloudEgressIP {
 		eim.cloudNetworkClient = cloudNetworkClient
 		eim.cloudPrivateIPConfigInformer = cloudPrivateIPConfigInformer
+		eim.cloudPrivateIPConfigCreationQueue = make(map[string]osdcnv1.CloudPrivateIPConfig)
 		eim.watchCloudPrivateIPConfig(cloudPrivateIPConfigInformer)
 		eim.tracker.Start(hostSubnetInformer, netNamespaceInformer, nodeInformer)
 		return
@@ -311,8 +312,10 @@ func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP s
 		}
 		if _, err := eim.cloudNetworkClient.CloudV1().CloudPrivateIPConfigs().Create(context.TODO(), &cloudPrivateIPConfig, metav1.CreateOptions{}); err != nil {
 			if kerrors.IsAlreadyExists(err) {
-				klog.Infof("CloudPrivateIPConfig: %s is being moved and still exists, enqueuing its creation", egressIP)
-				eim.cloudPrivateIPConfigCreationQueue[egressIP] = cloudPrivateIPConfig
+				if cloudPrivateIPConfig.Spec.Node != nodeName {
+					klog.Infof("CloudPrivateIPConfig: %s is being moved and still exists, enqueuing its creation", egressIP)
+					eim.cloudPrivateIPConfigCreationQueue[egressIP] = cloudPrivateIPConfig
+				}
 			} else {
 				klog.Errorf("Error creating CloudPrivateIPConfig: %s, err: %v", egressIP, err)
 			}
