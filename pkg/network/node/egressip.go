@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -279,6 +280,29 @@ func (eip *egressIPWatcher) SetNamespaceEgressViaEgressIPs(vnid uint32, activeEg
 	}
 }
 
+func (eip *egressIPWatcher) getEgressLinkDetails() (netlink.Link, *net.IPNet, *net.IPNet, error) {
+	localEgressLink, localEgressNet, err := GetLinkDetails(eip.localIP)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to get egress link(%s) details: %v", eip.localIP, err)
+	}
+
+	if !eip.tracker.CloudEgressIP {
+		return localEgressLink, localEgressNet, nil, err
+	}
+
+	nodeName := eip.tracker.GetNodeNameByNodeIP(eip.localIP)
+	egressIPConfig, err := eip.tracker.GetNodeCloudEgressIPConfig(nodeName)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to get cloud egress ip config: %v", err)
+	}
+	_, cloudEgressNet, err := net.ParseCIDR(egressIPConfig.IFAddr.IPv4)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to parse cloud egress ip config: %v", err)
+	}
+
+	return localEgressLink, localEgressNet, cloudEgressNet, err
+}
+
 func (eip *egressIPWatcher) assignEgressIP(egressIP, mark string) error {
 	if egressIP == eip.localIP {
 		return fmt.Errorf("desired egress IP %q is the node IP", egressIP)
@@ -289,7 +313,7 @@ func (eip *egressIPWatcher) assignEgressIP(egressIP, mark string) error {
 		return nil
 	}
 
-	localEgressLink, localEgressNet, err := GetLinkDetails(eip.localIP)
+	localEgressLink, localEgressNet, cloudEgressNet, err := eip.getEgressLinkDetails()
 	if err != nil {
 		return fmt.Errorf("unable to get egress link details: %v", err)
 	}
@@ -300,9 +324,13 @@ func (eip *egressIPWatcher) assignEgressIP(egressIP, mark string) error {
 	if err != nil {
 		return fmt.Errorf("could not parse egress IP %q: %v", egressIPNet, err)
 	}
-	if !localEgressNet.Contains(addr.IP) {
+	if !eip.tracker.CloudEgressIP && !localEgressNet.Contains(addr.IP) {
 		return fmt.Errorf("egress IP %q is not in local network %s of interface %s", egressIP, localEgressNet.String(), localEgressLink.Attrs().Name)
 	}
+	if eip.tracker.CloudEgressIP && !cloudEgressNet.Contains(addr.IP) {
+		return fmt.Errorf("egress IP %q is not in cloud network %s", egressIP, cloudEgressNet.String())
+	}
+
 	addr.Label, _ = egressIPLabel(localEgressLink)
 	err = netlink.AddrAdd(localEgressLink, addr)
 	if err != nil {
@@ -341,7 +369,7 @@ func (eip *egressIPWatcher) releaseEgressIP(egressIP, mark string) error {
 		return nil
 	}
 
-	localEgressLink, localEgressNet, err := GetLinkDetails(eip.localIP)
+	localEgressLink, localEgressNet, _, err := eip.getEgressLinkDetails()
 	if err != nil {
 		return fmt.Errorf("unable to get egress link details: %v", err)
 	}

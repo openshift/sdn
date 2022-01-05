@@ -306,12 +306,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	// event, which means we need to lookup the Node annotation as to sync our
 	// data correctly.
 	if eit.CloudEgressIP && node.capacity == unlimitedNodeCapacity {
-		v1Node, err := eit.nodeInformer.Lister().Get(hs.Name)
-		if err != nil {
-			klog.Errorf("Unable to list HostSubnet %q as to set its IP capacity, err: %v", hs.Name, err)
-			return
-		}
-		if err := eit.initNodeCapacity(v1Node, node); err != nil {
+		if err := eit.initNodeCapacity(hs.Name, node); err != nil {
 			klog.Errorf("Error initializing capacity for Node %q, err: %v", hs.Name, err)
 			return
 		}
@@ -399,7 +394,7 @@ func (eit *EgressIPTracker) handleAddOrUpdateNode(obj, _ interface{}, eventType 
 		return
 	}
 	if nodeEgress, exists := eit.nodesByNodeIP[nodeIP]; exists {
-		if err := eit.initNodeCapacity(node, nodeEgress); err != nil {
+		if err := eit.initNodeCapacity(node.Name, nodeEgress); err != nil {
 			klog.Errorf("Error initializing capacity for Node %q, err: %v", node.Name, err)
 		}
 	}
@@ -449,21 +444,23 @@ func (eit *EgressIPTracker) validateEgressIPs(hs *osdnv1.HostSubnet) error {
 }
 
 func (eit *EgressIPTracker) validateEgressIPConfigExists(hs *osdnv1.HostSubnet) (*nodeCloudEgressIPConfiguration, error) {
-	node, err := eit.nodeInformer.Lister().Get(hs.Host)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving related node object, err: %v", err)
-	}
-	cloudEgressIPConfig, err := eit.getNodeCloudEgressIPConfig(node)
+	cloudEgressIPConfig, err := eit.GetNodeCloudEgressIPConfig(hs.Host)
 	if err != nil {
 		return nil, err
 	}
 	if cloudEgressIPConfig == nil {
-		return nil, fmt.Errorf("related node object %q has an incomplete annotation %q, CloudEgressIPConfig: %+v", node.Name, nodeEgressIPConfigAnnotationKey, cloudEgressIPConfig)
+		return nil, fmt.Errorf("related node object %q has an incomplete annotation %q, CloudEgressIPConfig: %+v", hs.Host, nodeEgressIPConfigAnnotationKey, cloudEgressIPConfig)
 	}
 	return cloudEgressIPConfig, nil
 }
 
-func (eit *EgressIPTracker) getNodeCloudEgressIPConfig(node *corev1.Node) (*nodeCloudEgressIPConfiguration, error) {
+// GetNodeCloudEgressIPConfig returns cloud egress IP config for the specified node
+func (eit *EgressIPTracker) GetNodeCloudEgressIPConfig(nodeName string) (*nodeCloudEgressIPConfiguration, error) {
+	node, err := eit.nodeInformer.Lister().Get(nodeName)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving node %q, err: %v", nodeName, err)
+	}
+
 	nodeCloudEgressIPAnnotation, exists := node.Annotations[nodeEgressIPConfigAnnotationKey]
 	if !exists {
 		return nil, nil
@@ -478,11 +475,11 @@ func (eit *EgressIPTracker) getNodeCloudEgressIPConfig(node *corev1.Node) (*node
 	return nil, nil
 }
 
-func (eit *EgressIPTracker) initNodeCapacity(node *corev1.Node, nodeEgress *nodeEgress) error {
+func (eit *EgressIPTracker) initNodeCapacity(nodeName string, nodeEgress *nodeEgress) error {
 	if nodeEgress.capacity != unlimitedNodeCapacity {
 		return nil
 	}
-	cloudEgressIPConfig, err := eit.getNodeCloudEgressIPConfig(node)
+	cloudEgressIPConfig, err := eit.GetNodeCloudEgressIPConfig(nodeName)
 	if err != nil {
 		return err
 	}
@@ -496,7 +493,7 @@ func (eit *EgressIPTracker) initNodeCapacity(node *corev1.Node, nodeEgress *node
 	} else {
 		nodeEgress.capacity = cloudEgressIPConfig.Capacity.IPv4
 	}
-	klog.Infof("Initialized egress IP capacity: %v for Node: %q", nodeEgress.capacity, node.Name)
+	klog.Infof("Initialized egress IP capacity: %v for Node: %q", nodeEgress.capacity, nodeName)
 	return nil
 }
 
