@@ -34,7 +34,7 @@ var metricEgressFirewallCount = prometheus.NewGauge(prometheus.GaugeOpts{
 
 var registry = prometheus.NewRegistry()
 
-func register() {
+func Register() {
 	registry.MustRegister(metricEgressIPCount)
 	registry.MustRegister(metricEgressFirewallRuleCount)
 	registry.MustRegister(metricEgressFirewallCount)

@@ -2,7 +2,6 @@ package openshift_sdn_controller
 
 import (
 	"context"
-	"net/http"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -81,7 +80,7 @@ func RunOpenShiftNetworkController(platformType string) error {
 	if err != nil {
 		return err
 	}
-	var metricsServer *http.Server
+	metricsServer := metrics.StartServer()
 	go leaderelection.RunOrDie(context.Background(),
 		leaderelection.LeaderElectionConfig{
 			Lock:          rl,
@@ -90,7 +89,7 @@ func RunOpenShiftNetworkController(platformType string) error {
 			RetryPeriod:   leaderConfig.RetryPeriod.Duration,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
-					metricsServer = metrics.StartServer()
+					metrics.Register()
 					originControllerManager(ctx)
 				},
 				OnStoppedLeading: func() {
