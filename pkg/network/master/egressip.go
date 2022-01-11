@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 
 	cloudnetworkclient "github.com/openshift/client-go/cloudnetwork/clientset/versioned"
@@ -58,7 +59,8 @@ func newEgressIPManager(cloudEgressIP bool) *egressIPManager {
 	return eim
 }
 
-func (eim *egressIPManager) Start(osdnClient osdnclient.Interface,
+func (eim *egressIPManager) Start(kubeClient kubernetes.Interface,
+	osdnClient osdnclient.Interface,
 	cloudNetworkClient cloudnetworkclient.Interface,
 	cloudPrivateIPConfigInformer cloudnetworkinformerv1.CloudPrivateIPConfigInformer,
 	hostSubnetInformer osdninformers.HostSubnetInformer,
@@ -74,11 +76,11 @@ func (eim *egressIPManager) Start(osdnClient osdnclient.Interface,
 		eim.cloudPrivateIPConfigInformer = cloudPrivateIPConfigInformer
 		eim.cloudPrivateIPConfigCreationQueue = make(map[string]osdcnv1.CloudPrivateIPConfig)
 		eim.watchCloudPrivateIPConfig(cloudPrivateIPConfigInformer)
-		eim.tracker.Start(hostSubnetInformer, netNamespaceInformer, nodeInformer)
+		eim.tracker.Start(kubeClient, hostSubnetInformer, netNamespaceInformer, nodeInformer)
 		return
 	}
 
-	eim.tracker.Start(hostSubnetInformer, netNamespaceInformer, nil)
+	eim.tracker.Start(nil, hostSubnetInformer, netNamespaceInformer, nil)
 }
 
 func (eim *egressIPManager) watchCloudPrivateIPConfig(cloudPrivateIPConfigInformer cloudnetworkinformerv1.CloudPrivateIPConfigInformer) {
