@@ -20,7 +20,6 @@ const (
 
 // StartServer registers prometheus metrics and starts HTTP server (non-blocking). Binding address maybe overridden by env variable.
 func StartServer() *http.Server {
-	register()
 	handler := promhttp.InstrumentMetricHandler(registry, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	mux := http.NewServeMux()
 	mux.Handle(endpoint, handler)
