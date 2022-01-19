@@ -10,7 +10,6 @@ import (
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
-	kubeinformers "k8s.io/client-go/informers"
 	fakekubeclient "k8s.io/client-go/kubernetes/fake"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -1386,12 +1385,7 @@ func TestAutomaticEgressAllocationRespectingCapacityAndNamespaceBalancingWithFul
 	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
 	egressIP1, egressIP2, egressIP3 := "172.17.0.101", "172.17.0.102", "172.17.0.103"
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -1406,8 +1400,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndNamespaceBalancingWithFul
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -1422,10 +1416,11 @@ func TestAutomaticEgressAllocationRespectingCapacityAndNamespaceBalancingWithFul
 				},
 			},
 		},
-	})
+	}
 
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2)
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -1470,12 +1465,7 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 	node3Name, node3IP, node3Capacity := "node3", "172.17.0.3", 1
 	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105", "172.17.0.106"
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -1490,8 +1480,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -1506,8 +1496,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node3 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node3Name,
 			Annotations: map[string]string{
@@ -1522,10 +1512,12 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
+	}
+
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2, node3)
 
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -1593,12 +1585,7 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 	node3Name, node3IP, node3Capacity := "node3", "172.17.0.3", 1
 	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105", "172.17.0.106"
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -1613,8 +1600,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -1629,8 +1616,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node3 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node3Name,
 			Annotations: map[string]string{
@@ -1645,10 +1632,12 @@ func TestAutomaticEgressAllocationRespectingCapacityAndBalancedNamespaceAssignme
 				},
 			},
 		},
-	})
+	}
+
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2, node3)
 
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -1710,12 +1699,7 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
 	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5 := "172.17.0.101", "172.17.0.102", "172.17.0.103", "172.17.0.104", "172.17.0.105"
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -1730,8 +1714,8 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -1746,10 +1730,11 @@ func TestAutomaticEgressAllocationRespectingCapacityAndConsistentFullGlobalAssig
 				},
 			},
 		},
-	})
+	}
 
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2)
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -1865,12 +1850,7 @@ func TestAutomaticEgressAllocationRespectingAvailability(t *testing.T) {
 	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 6
 	egressIP1, egressIP2, egressIP3, egressIP4, egressIP5, egressIP6 := "172.17.0.55", "172.17.0.56", "172.17.0.57", "172.17.0.58", "172.17.0.59", "172.17.0.5"
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -1885,8 +1865,8 @@ func TestAutomaticEgressAllocationRespectingAvailability(t *testing.T) {
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -1901,10 +1881,12 @@ func TestAutomaticEgressAllocationRespectingAvailability(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2)
 
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -1980,12 +1962,7 @@ func TestManualEgressAllocationRespectingCapacity(t *testing.T) {
 	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
 	node2Name, node2IP, node2Capacity := "node2", "172.17.0.2", 1
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -2000,8 +1977,8 @@ func TestManualEgressAllocationRespectingCapacity(t *testing.T) {
 				},
 			},
 		},
-	})
-	nodeStore.Add(&corev1.Node{
+	}
+	node2 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node2Name,
 			Annotations: map[string]string{
@@ -2016,10 +1993,11 @@ func TestManualEgressAllocationRespectingCapacity(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	fClient := fakekubeclient.NewSimpleClientset(node1, node2)
 
 	eit, w := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	updateHostSubnetEgress(eit, &osdnv1.HostSubnet{
 		Host:        node1Name,
@@ -2138,12 +2116,7 @@ func TestManualEgressAllocationRespectingCapacity(t *testing.T) {
 func TestValidEgressCIDRsForCloudNodes(t *testing.T) {
 	node1Name, node1IP, node1Capacity := "node1", "172.17.0.1", 2
 
-	fClient := fakekubeclient.NewSimpleClientset()
-	kubeInformer := kubeinformers.NewSharedInformerFactory(fClient, 0)
-	nodeInformer := kubeInformer.Core().V1().Nodes()
-
-	nodeStore := nodeInformer.Informer().GetStore()
-	nodeStore.Add(&corev1.Node{
+	node1 := &corev1.Node{
 		ObjectMeta: v1.ObjectMeta{
 			Name: node1Name,
 			Annotations: map[string]string{
@@ -2158,10 +2131,12 @@ func TestValidEgressCIDRsForCloudNodes(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+
+	fClient := fakekubeclient.NewSimpleClientset(node1)
 
 	eit, _ := setupEgressIPTracker(t, true)
-	eit.nodeInformer = nodeInformer
+	eit.kubeClient = fClient
 
 	// Fully within the cloud network, no error
 	err := eit.validateEgressCIDRsAreSubnetOfCloudNetwork(&osdnv1.HostSubnet{

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -15,10 +16,12 @@ import (
 	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -109,7 +112,7 @@ type EgressIPTracker struct {
 
 	watcher EgressIPWatcher
 
-	nodeInformer kcoreinformers.NodeInformer
+	kubeClient kubernetes.Interface
 
 	nodes            map[ktypes.UID]*nodeEgress
 	nodesByNodeIP    map[string]*nodeEgress
@@ -138,12 +141,13 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTr
 	}
 }
 
-func (eit *EgressIPTracker) Start(hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
+func (eit *EgressIPTracker) Start(kubeClient kubernetes.Interface, hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
+
 	eit.watchHostSubnets(hostSubnetInformer)
 	eit.watchNetNamespaces(netNamespaceInformer)
 
 	if nodeInformer != nil {
-		eit.nodeInformer = nodeInformer
+		eit.kubeClient = kubeClient
 		eit.watchNodes(nodeInformer)
 	}
 
@@ -378,7 +382,7 @@ func (eit *EgressIPTracker) GetNodeNameByNodeIP(nodeIP string) string {
 
 func (eit *EgressIPTracker) watchNodes(nodeInformer kcoreinformers.NodeInformer) {
 	funcs := InformerFuncs(&corev1.Node{}, eit.handleAddOrUpdateNode, nil)
-	eit.nodeInformer.Informer().AddEventHandler(funcs)
+	nodeInformer.Informer().AddEventHandler(funcs)
 }
 
 func (eit *EgressIPTracker) handleAddOrUpdateNode(obj, _ interface{}, eventType watch.EventType) {
@@ -456,7 +460,7 @@ func (eit *EgressIPTracker) validateEgressIPConfigExists(hs *osdnv1.HostSubnet) 
 
 // GetNodeCloudEgressIPConfig returns cloud egress IP config for the specified node
 func (eit *EgressIPTracker) GetNodeCloudEgressIPConfig(nodeName string) (*nodeCloudEgressIPConfiguration, error) {
-	node, err := eit.nodeInformer.Lister().Get(nodeName)
+	node, err := eit.kubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, v1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving node %q, err: %v", nodeName, err)
 	}

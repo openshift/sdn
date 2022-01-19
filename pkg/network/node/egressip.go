@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -73,12 +74,12 @@ func newEgressIPWatcher(oc *ovsController, cloudEgressIP bool, localIP string, m
 	return eip
 }
 
-func (eip *egressIPWatcher) Start(osdnInformers osdninformers.SharedInformerFactory, kubeInformers informers.SharedInformerFactory, iptables *NodeIPTables) error {
+func (eip *egressIPWatcher) Start(osdnInformers osdninformers.SharedInformerFactory, kubeInformers informers.SharedInformerFactory, kubeClient kubernetes.Interface, iptables *NodeIPTables) error {
 	eip.iptables = iptables
 	if eip.tracker.CloudEgressIP {
-		eip.tracker.Start(osdnInformers.Network().V1().HostSubnets(), osdnInformers.Network().V1().NetNamespaces(), kubeInformers.Core().V1().Nodes())
+		eip.tracker.Start(kubeClient, osdnInformers.Network().V1().HostSubnets(), osdnInformers.Network().V1().NetNamespaces(), kubeInformers.Core().V1().Nodes())
 	} else {
-		eip.tracker.Start(osdnInformers.Network().V1().HostSubnets(), osdnInformers.Network().V1().NetNamespaces(), nil)
+		eip.tracker.Start(kubeClient, osdnInformers.Network().V1().HostSubnets(), osdnInformers.Network().V1().NetNamespaces(), nil)
 	}
 	return nil
 }
