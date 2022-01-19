@@ -10,6 +10,7 @@ import (
 	kinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 )
 
 var defaultInformerResyncPeriod = 30 * time.Minute
@@ -58,6 +59,7 @@ func (sdn *openShiftSDN) buildInformers() error {
 
 // start starts the informers.
 func (i *sdnInformers) start(stopCh <-chan struct{}) {
+	klog.Infof("Starting SDN informers...")
 	i.kubeInformers.Start(stopCh)
 	i.osdnInformers.Start(stopCh)
 }

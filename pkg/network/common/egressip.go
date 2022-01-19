@@ -139,21 +139,40 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTr
 }
 
 func (eit *EgressIPTracker) Start(hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
-	eit.watchHostSubnets(hostSubnetInformer)
-	eit.watchNetNamespaces(netNamespaceInformer)
 
+	cachesSynced := make(chan bool, 1)
+
+	// I think the correct english expression is: clutching at straws here..
+	hostSubnetInformer.Informer()
+	netNamespaceInformer.Informer()
 	if nodeInformer != nil {
-		eit.nodeInformer = nodeInformer
-		eit.watchNodes(nodeInformer)
+		nodeInformer.Informer()
 	}
 
+	// This is completely idiotic
 	go func() {
+		for <-cachesSynced {
+			klog.Infof("Cache sync signal received...")
+			eit.watchHostSubnets(hostSubnetInformer)
+			eit.watchNetNamespaces(netNamespaceInformer)
+
+			if nodeInformer != nil {
+				eit.nodeInformer = nodeInformer
+				eit.watchNodes(nodeInformer)
+			}
+		}
+	}()
+
+	go func() {
+		klog.Infof("Waiting for caches to sync...")
 		cache.WaitForCacheSync(utilwait.NeverStop,
 			hostSubnetInformer.Informer().HasSynced,
 			netNamespaceInformer.Informer().HasSynced)
 		if nodeInformer != nil {
 			cache.WaitForCacheSync(utilwait.NeverStop, nodeInformer.Informer().HasSynced)
 		}
+		klog.Infof("Caches have synced, signalling...")
+		cachesSynced <- true
 
 		eit.Lock()
 		defer eit.Unlock()
