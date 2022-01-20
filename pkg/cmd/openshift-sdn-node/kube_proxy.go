@@ -2,14 +2,13 @@ package openshift_sdn_node
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 
 	// In this file we use the import names that the upstream kube-proxy code uses.
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -152,7 +151,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 
 		proxier, err = userspace.NewProxier(
 			userspace.NewLoadBalancerRR(),
-			net.ParseIP(config.BindAddress),
+			nodeIP,
 			iptInterface,
 			execer,
 			*utilnet.ParsePortRangeOrDie(config.PortRange),
