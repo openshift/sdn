@@ -713,10 +713,15 @@ func (eit *EgressIPTracker) SetNodeOffline(nodeIP string, offline bool) {
 // route" indicates that the node is online.
 // It is required that the IP provided is from SDN, nodes primary IP might drop traffic destined to port 9
 func (eit *EgressIPTracker) Ping(sdnIP string, timeout time.Duration) bool {
+	klog.Infof("Dialing...")
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(sdnIP, "9"), timeout)
 	if conn != nil {
-		conn.Close()
+		klog.Infof("Closing connection...")
+		if cErr := conn.Close(); cErr != nil {
+			klog.Infof("Error closing connection, err: %v", cErr)
+		}
 	}
+	klog.Infof("Analysing result, err: %v", err)
 	if opErr, ok := err.(*net.OpError); ok {
 		if opErr.Timeout() {
 			return false
