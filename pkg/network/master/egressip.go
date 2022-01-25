@@ -312,12 +312,10 @@ func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP s
 				Node: nodeName,
 			},
 		}
-		if _, err := eim.cloudNetworkClient.CloudV1().CloudPrivateIPConfigs().Create(context.TODO(), &cloudPrivateIPConfig, metav1.CreateOptions{}); err != nil {
-			if kerrors.IsAlreadyExists(err) {
-				if cloudPrivateIPConfig.Spec.Node != nodeName {
-					klog.Infof("CloudPrivateIPConfig: %s is being moved and still exists, enqueuing its creation", egressIP)
-					eim.cloudPrivateIPConfigCreationQueue[egressIP] = cloudPrivateIPConfig
-				}
+		if existingCloudPrivateIPConfig, err := eim.cloudNetworkClient.CloudV1().CloudPrivateIPConfigs().Create(context.TODO(), &cloudPrivateIPConfig, metav1.CreateOptions{}); err != nil {
+			if kerrors.IsAlreadyExists(err) && existingCloudPrivateIPConfig.Spec.Node != nodeName {
+				klog.Infof("CloudPrivateIPConfig: %s is being moved and still exists, enqueuing its creation", egressIP)
+				eim.cloudPrivateIPConfigCreationQueue[egressIP] = cloudPrivateIPConfig
 			} else {
 				klog.Errorf("Error creating CloudPrivateIPConfig: %s, err: %v", egressIP, err)
 			}
