@@ -9,6 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
+	github.com/opencontainers/runc v1.0.0-rc95
 	github.com/openshift/api v0.0.0-20210907191108-c6615eb597c3
 	github.com/openshift/build-machinery-go v0.0.0-20210712174854-1bb7fd1518d3
 	github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142
@@ -17,10 +18,12 @@ require (
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
 	github.com/vishvananda/netlink v1.1.0
+	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22
 	k8s.io/api v1.22.0-rc.0
 	k8s.io/apimachinery v1.22.0-rc.0
 	k8s.io/apiserver v1.22.0-rc.0
 	k8s.io/client-go v1.22.0-rc.0
+	k8s.io/cloud-provider v0.0.0
 	k8s.io/component-base v1.22.0-rc.0
 	k8s.io/cri-api v1.22.0-rc.0
 	k8s.io/klog/v2 v2.9.0
