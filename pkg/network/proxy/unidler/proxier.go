@@ -1069,7 +1069,7 @@ func iptablesCommonPortalArgs(destIP net.IP, addPhysicalInterfaceMatch bool, add
 	}
 
 	if destIP != nil {
-		args = append(args, "-d", utilproxy.ToCIDR(destIP))
+		args = append(args, "-d", toCIDR(destIP))
 	}
 
 	if addPhysicalInterfaceMatch {
@@ -1193,4 +1193,14 @@ func isClosedError(err error) bool {
 	// https://code.google.com/p/go/issues/detail?id=4373#c14
 	// TODO: maybe create a stoppable TCP listener that returns a StoppedError
 	return strings.HasSuffix(err.Error(), "use of closed network connection")
+}
+
+// toCIDR returns a host address of the form <ip-address>/32 for
+// IPv4 and <ip-address>/128 for IPv6
+func toCIDR(ip net.IP) string {
+	len := 32
+	if ip.To4() == nil {
+		len = 128
+	}
+	return fmt.Sprintf("%s/%d", ip.String(), len)
 }
