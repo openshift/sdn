@@ -7,7 +7,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeletapi "k8s.io/cri-api/pkg/apis"
-	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
+	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kubeletremote "k8s.io/kubernetes/pkg/kubelet/cri/remote"
 )
 

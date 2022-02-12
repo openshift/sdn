@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/kubernetes/pkg/proxy"
+	"k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/util/async"
 
 	unidlingapi "github.com/openshift/api/unidling/v1alpha1"
@@ -166,7 +167,7 @@ func (p *HybridProxier) releaseService(svcName types.NamespacedName) {
 			p.mainProxy.OnServiceDelete(service)
 			p.unidlingProxy.OnServiceAdd(service)
 			if !hsvc.unidlingProxyWantsEndpoints() {
-				p.unidlingProxy.OnEndpointsAdd(hsvc.emptyEndpoints)
+				p.unidlingProxy.(config.EndpointsHandler).OnEndpointsAdd(hsvc.emptyEndpoints)
 			}
 			hsvc.isIdled = true
 			hsvc.unidledAt = nil
@@ -343,7 +344,7 @@ func (p *HybridProxier) OnEndpointSliceAdd(slice *discoveryv1.EndpointSlice) {
 	klog.V(6).Infof("hybrid proxy: add slice %s", svcName)
 	p.mainProxy.OnEndpointSliceAdd(slice)
 	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsAdd(sliceToEndpoints(slice))
+		p.unidlingProxy.(config.EndpointsHandler).OnEndpointsAdd(sliceToEndpoints(slice))
 	}
 }
 
@@ -357,9 +358,9 @@ func (p *HybridProxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1.Endpo
 	klog.V(6).Infof("hybrid proxy: update slice %s", svcName)
 	p.mainProxy.OnEndpointSliceUpdate(oldSlice, slice)
 	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsUpdate(sliceToEndpoints(oldSlice), sliceToEndpoints(slice))
+		p.unidlingProxy.(config.EndpointsHandler).OnEndpointsUpdate(sliceToEndpoints(oldSlice), sliceToEndpoints(slice))
 	} else if hsvc.unidlingPeriodHasExpired() {
-		p.unidlingProxy.OnEndpointsDelete(sliceToEndpoints(oldSlice))
+		p.unidlingProxy.(config.EndpointsHandler).OnEndpointsDelete(sliceToEndpoints(oldSlice))
 		hsvc.unidledAt = nil
 	}
 }
@@ -375,14 +376,14 @@ func (p *HybridProxier) OnEndpointSliceDelete(slice *discoveryv1.EndpointSlice) 
 	klog.V(6).Infof("hybrid proxy: del slice %s", svcName)
 	p.mainProxy.OnEndpointSliceDelete(slice)
 	if hsvc.unidlingProxyWantsEndpoints() {
-		p.unidlingProxy.OnEndpointsDelete(sliceToEndpoints(slice))
+		p.unidlingProxy.(config.EndpointsHandler).OnEndpointsDelete(sliceToEndpoints(slice))
 		hsvc.unidledAt = nil
 	}
 }
 
 func (p *HybridProxier) OnEndpointSlicesSynced() {
 	klog.V(6).Infof("hybrid proxy: endpointslices synced")
-	p.unidlingProxy.OnEndpointsSynced()
+	p.unidlingProxy.(config.EndpointsHandler).OnEndpointsSynced()
 	p.mainProxy.OnEndpointSlicesSynced()
 }
 
