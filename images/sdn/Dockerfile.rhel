@@ -1,10 +1,10 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.10 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.11 AS builder
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables
 RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
 
-FROM registry.ci.openshift.org/ocp/4.10:base
+FROM registry.ci.openshift.org/ocp/4.11:base
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn
