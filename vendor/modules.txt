@@ -266,7 +266,6 @@ github.com/sirupsen/logrus
 ## explicit
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5 => github.com/spf13/pflag v1.0.5
-## explicit
 github.com/spf13/pflag
 # github.com/vishvananda/netlink v1.1.0 => github.com/vishvananda/netlink v1.1.0
 ## explicit
