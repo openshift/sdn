@@ -15,7 +15,6 @@ require (
 	github.com/openshift/library-go v0.0.0-20211209153216-ed9bc958bd8a
 	github.com/prometheus/client_golang v1.11.0
 	github.com/spf13/cobra v1.2.1
-	github.com/spf13/pflag v1.0.5
 	github.com/vishvananda/netlink v1.1.0
 	k8s.io/api v1.23.4
 	k8s.io/apimachinery v1.23.4
