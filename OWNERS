@@ -1,12 +1,8 @@
 reviewers:
   - abhat
-  - alexanderConstantinescu
-  - aojea
-  - danielmellado
   - danwinship
   - dcbw
   - JacobTanenbaum
-  - rcarrillocruz
   - squeed
   - tssurya
 approvers:
@@ -14,7 +10,6 @@ approvers:
   - danwinship
   - dcbw
   - knobunc
-  - rcarrillocruz
   - squeed
 
 # Bugzilla info
