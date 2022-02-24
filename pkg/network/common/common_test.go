@@ -118,25 +118,25 @@ func TestCheckHostNetworks(t *testing.T) {
 	}
 }
 
-func dummySubnet(hostip string, subnet string) osdnv1.HostSubnet {
-	return osdnv1.HostSubnet{HostIP: hostip, Subnet: subnet}
+func dummySubnet(hostip string, subnet string) *osdnv1.HostSubnet {
+	return &osdnv1.HostSubnet{HostIP: hostip, Subnet: subnet}
 }
 
-func dummyService(ip string) corev1.Service {
-	return corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: ip}}
+func dummyService(ip string) *corev1.Service {
+	return &corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: ip}}
 }
 
-func dummyPod(ip string) corev1.Pod {
-	return corev1.Pod{Status: corev1.PodStatus{PodIP: ip}}
+func dummyPod(ip string) *corev1.Pod {
+	return &corev1.Pod{Status: corev1.PodStatus{PodIP: ip}}
 }
 
 func Test_checkClusterObjects(t *testing.T) {
-	subnets := []osdnv1.HostSubnet{
+	subnets := []*osdnv1.HostSubnet{
 		dummySubnet("192.168.1.2", "10.128.0.0/23"),
 		dummySubnet("192.168.1.3", "10.129.0.0/23"),
 		dummySubnet("192.168.1.4", "10.130.0.0/23"),
 	}
-	pods := []corev1.Pod{
+	pods := []*corev1.Pod{
 		dummyPod("10.128.0.2"),
 		dummyPod("10.128.0.4"),
 		dummyPod("10.128.0.6"),
@@ -147,7 +147,7 @@ func Test_checkClusterObjects(t *testing.T) {
 		dummyPod("10.129.0.9"),
 		dummyPod("10.130.0.10"),
 	}
-	services := []corev1.Service{
+	services := []*corev1.Service{
 		dummyService("172.30.0.1"),
 		dummyService("172.30.0.128"),
 		dummyService("172.30.99.99"),
