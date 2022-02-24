@@ -145,7 +145,7 @@ func (pcn *ParsedClusterNetwork) CheckHostNetworks(hostIPNets []*net.IPNet) erro
 	return kerrors.NewAggregate(errList)
 }
 
-func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []osdnv1.HostSubnet, pods []corev1.Pod, services []corev1.Service) error {
+func (pcn *ParsedClusterNetwork) CheckClusterObjects(subnets []*osdnv1.HostSubnet, pods []*corev1.Pod, services []*corev1.Service) error {
 	var errList []error
 
 	for _, subnet := range subnets {

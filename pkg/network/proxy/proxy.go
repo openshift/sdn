@@ -11,7 +11,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -116,7 +115,7 @@ func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 	}
 	proxy.waitChan = waitChan
 
-	policies, err := proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := common.ListAllEgressNetworkPolicies(context.TODO(), proxy.osdnClient)
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
@@ -124,9 +123,9 @@ func (proxy *OsdnProxy) Start(waitChan chan<- bool) error {
 	proxy.Lock()
 	defer proxy.Unlock()
 
-	for _, policy := range policies.Items {
-		proxy.egressDNS.Add(policy)
-		proxy.updateEgressNetworkPolicy(policy)
+	for _, policy := range policies {
+		proxy.egressDNS.Add(*policy)
+		proxy.updateEgressNetworkPolicy(*policy)
 	}
 
 	go utilwait.Forever(proxy.syncEgressDNSProxyFirewall, 0)
@@ -615,7 +614,7 @@ func (proxy *OsdnProxy) SyncLoop() {
 }
 
 func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
-	policies, err := proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := common.ListAllEgressNetworkPolicies(context.TODO(), proxy.osdnClient)
 	if err != nil {
 		klog.Errorf("Could not get EgressNetworkPolicies: %v", err)
 		return
@@ -630,7 +629,7 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 
 			policy, ok := getPolicy(policyUpdate.UID, policies)
 			if !ok {
-				policies, err = proxy.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+				policies, err = common.ListAllEgressNetworkPolicies(context.TODO(), proxy.osdnClient)
 				if err != nil {
 					klog.Errorf("Failed to update proxy firewall for policy: %v, Could not get EgressNetworkPolicies: %v", policyUpdate.UID, err)
 					continue
@@ -646,17 +645,17 @@ func (proxy *OsdnProxy) syncEgressDNSProxyFirewall() {
 			func() {
 				proxy.Lock()
 				defer proxy.Unlock()
-				proxy.updateEgressNetworkPolicy(policy)
+				proxy.updateEgressNetworkPolicy(*policy)
 			}()
 		}
 	}
 }
 
-func getPolicy(policyUID ktypes.UID, policies *osdnv1.EgressNetworkPolicyList) (osdnv1.EgressNetworkPolicy, bool) {
-	for _, p := range policies.Items {
+func getPolicy(policyUID ktypes.UID, policies []*osdnv1.EgressNetworkPolicy) (*osdnv1.EgressNetworkPolicy, bool) {
+	for _, p := range policies {
 		if p.UID == policyUID {
 			return p, true
 		}
 	}
-	return osdnv1.EgressNetworkPolicy{}, false
+	return &osdnv1.EgressNetworkPolicy{}, false
 }
