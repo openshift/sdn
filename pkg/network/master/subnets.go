@@ -28,11 +28,11 @@ func (master *OsdnMaster) startSubnetMaster() error {
 	}
 
 	// Populate subnet allocator
-	subnets, err := master.osdnClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{})
+	subnets, err := common.ListAllHostSubnets(context.TODO(), master.osdnClient)
 	if err != nil {
 		return err
 	}
-	for _, sn := range subnets.Items {
+	for _, sn := range subnets {
 		if err := master.subnetAllocator.MarkAllocatedNetwork(sn.Subnet); err != nil {
 			klog.Errorf("Error marking allocated subnet: %v", err)
 		}

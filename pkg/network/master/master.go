@@ -3,8 +3,6 @@ package master
 import (
 	"context"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -13,7 +11,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	osdnv1 "github.com/openshift/api/network/v1"
 	cloudnetworkclient "github.com/openshift/client-go/cloudnetwork/clientset/versioned"
 	cloudnetworkinformer "github.com/openshift/client-go/cloudnetwork/informers/externalversions"
 	cloudnetworkinformerv1 "github.com/openshift/client-go/cloudnetwork/informers/externalversions/cloudnetwork/v1"
@@ -148,17 +145,19 @@ func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstClusterObjects() error {
-	var subnets []osdnv1.HostSubnet
-	var pods []corev1.Pod
-	var services []corev1.Service
-	if subnetList, err := master.osdnClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{}); err == nil {
-		subnets = subnetList.Items
+	subnets, err := common.ListAllHostSubnets(context.TODO(), master.osdnClient)
+	if err != nil {
+		klog.Warningf("Failed to list subnets: %v", err)
 	}
-	if podList, err := master.kClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{}); err == nil {
-		pods = podList.Items
+
+	pods, err := common.ListAllPods(context.TODO(), master.kClient)
+	if err != nil {
+		klog.Warningf("Failed to list pods: %v", err)
 	}
-	if serviceList, err := master.kClient.CoreV1().Services(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{}); err == nil {
-		services = serviceList.Items
+
+	services, err := common.ListAllServices(context.TODO(), master.kClient)
+	if err != nil {
+		klog.Warningf("Failed to list services: %v", err)
 	}
 
 	return master.networkInfo.CheckClusterObjects(subnets, pods, services)

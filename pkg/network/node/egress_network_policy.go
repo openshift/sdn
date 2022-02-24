@@ -9,13 +9,12 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/network/common"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
 func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
-	policies, err := plugin.osdnClient.NetworkV1().EgressNetworkPolicies(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := common.ListAllEgressNetworkPolicies(context.TODO(), plugin.osdnClient)
 	if err != nil {
 		return fmt.Errorf("could not get EgressNetworkPolicies: %s", err)
 	}
@@ -23,15 +22,15 @@ func (plugin *OsdnNode) SetupEgressNetworkPolicy() error {
 	plugin.egressPoliciesLock.Lock()
 	defer plugin.egressPoliciesLock.Unlock()
 
-	for _, policy := range policies.Items {
+	for _, policy := range policies {
 		vnid, err := plugin.policy.GetVNID(policy.Namespace)
 		if err != nil {
 			klog.Warningf("Could not find netid for namespace %q: %v", policy.Namespace, err)
 			continue
 		}
-		plugin.egressPolicies[vnid] = append(plugin.egressPolicies[vnid], policy)
+		plugin.egressPolicies[vnid] = append(plugin.egressPolicies[vnid], *policy)
 
-		plugin.egressDNS.Add(policy)
+		plugin.egressDNS.Add(*policy)
 	}
 
 	for vnid := range plugin.egressPolicies {
