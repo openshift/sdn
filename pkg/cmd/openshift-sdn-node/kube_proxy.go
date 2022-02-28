@@ -9,7 +9,7 @@ import (
 	// In this file we use the import names that the upstream kube-proxy code uses.
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics/legacyregistry"
+	utilsysctl "k8s.io/component-helpers/node/util/sysctl"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/proxy/apis"
@@ -37,7 +38,6 @@ import (
 	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
 	"k8s.io/kubernetes/pkg/proxy/userspace"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
-	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
 	"k8s.io/utils/exec"
 
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
@@ -305,14 +305,14 @@ func startProxyServer(s *ProxyServer) error {
 	serviceConfig.RegisterEventHandler(s.Proxier)
 	go serviceConfig.Run(wait.NeverStop)
 
-	if s.UseEndpointSlices {
+	if endpointsHandler, ok := s.Proxier.(config.EndpointsHandler); ok && !s.UseEndpointSlices {
+		endpointsConfig := config.NewEndpointsConfig(informerFactory.Core().V1().Endpoints(), s.ConfigSyncPeriod)
+		endpointsConfig.RegisterEventHandler(endpointsHandler)
+		go endpointsConfig.Run(wait.NeverStop)
+	} else {
 		endpointSliceConfig := config.NewEndpointSliceConfig(informerFactory.Discovery().V1().EndpointSlices(), s.ConfigSyncPeriod)
 		endpointSliceConfig.RegisterEventHandler(s.Proxier)
 		go endpointSliceConfig.Run(wait.NeverStop)
-	} else {
-		endpointsConfig := config.NewEndpointsConfig(informerFactory.Core().V1().Endpoints(), s.ConfigSyncPeriod)
-		endpointsConfig.RegisterEventHandler(s.Proxier)
-		go endpointsConfig.Run(wait.NeverStop)
 	}
 
 	// This has to start after the calls to NewServiceConfig and NewEndpointsConfig because those
