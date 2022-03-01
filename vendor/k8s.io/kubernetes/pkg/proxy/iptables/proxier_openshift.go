@@ -17,7 +17,7 @@ func (p *Proxier) UsesEndpointSlices() bool {
 }
 
 func (p *Proxier) SyncProxyRules() {
-	p.syncProxyRules()
+	p.syncChangedProxyRules()
 }
 
 func (p *Proxier) SetSyncRunner(b *async.BoundedFrequencyRunner) {
