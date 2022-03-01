@@ -1049,18 +1049,28 @@ func (proxier *Proxier) syncProxyRules() {
 
 		// Figure out if we actually need to write out the SVC/XLB/SEP chains
 		syncServiceChains := proxier.needFullSync || serviceChanged[svcName.NamespacedName.String()] || endpointsChanged[svcName.NamespacedName.String()]
+		klog.Infof("SSC syncServiceChains=%v for %q (needFullSync=%v, serviceChanged=%v, endpointsChanged=%v)", syncServiceChains, svcNameString, proxier.needFullSync, serviceChanged[svcName.NamespacedName.String()], endpointsChanged[svcName.NamespacedName.String()])
 		if !syncServiceChains && hasEndpoints {
 			if _, exists := existingNATChains[svcChain]; !exists {
+				if !syncServiceChains {
+					klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, svcChain)
+				}
 				syncServiceChains = true
 			}
 			if svcInfo.NodeLocalExternal() {
 				if _, exists := existingNATChains[svcXlbChain]; !exists {
+					if !syncServiceChains {
+						klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, svcXlbChain)
+					}
 					syncServiceChains = true
 				}
 			}
 
 			if len(svcInfo.LoadBalancerIPStrings()) != 0 {
 				if _, exists := existingNATChains[fwChain]; !exists {
+					if !syncServiceChains {
+						klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, fwChain)
+					}
 					syncServiceChains = true
 				}
 			}
@@ -1082,6 +1092,9 @@ func (proxier *Proxier) syncProxyRules() {
 				if endpointInUse {
 					endpointChain := epInfo.endpointChain(svcNameString, protocol)
 					if _, exists := existingNATChains[endpointChain]; !exists {
+						if !syncServiceChains {
+							klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, endpointChain)
+						}
 						syncServiceChains = true
 						break
 					}
@@ -1468,7 +1481,11 @@ func (proxier *Proxier) syncProxyRules() {
 			)
 		}
 
-		if !hasEndpoints || !syncServiceChains {
+		if !hasEndpoints {
+			continue
+		}
+		if !syncServiceChains {
+			klog.Infof("SSC skipping synchronization of %q!", svcNameString)
 			continue
 		}
 
