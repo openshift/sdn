@@ -1046,6 +1046,7 @@ func (proxier *Proxier) syncProxyRules(syncAll bool) {
 		svcNameString := svcInfo.serviceNameString
 
 		syncServiceChains := syncAll || serviceChanged[svcNameString] || endpointsChanged[svcNameString]
+		klog.Infof("SSC syncServiceChains=%v for %q (syncAll=%v, serviceChanged=%v, endpointsChanged=%v)", syncServiceChains, svcNameString, syncAll, serviceChanged[svcNameString], endpointsChanged[svcNameString])
 
 		allEndpoints := proxier.endpointsMap[svcName]
 
@@ -1083,6 +1084,9 @@ func (proxier *Proxier) syncProxyRules(syncAll bool) {
 		if hasEndpoints {
 			activeNATChains[svcChain] = true
 			if _, exists := existingNATChains[svcChain]; !exists {
+				if !syncServiceChains {
+					klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, svcChain)
+				}
 				syncServiceChains = true
 			}
 		}
@@ -1091,6 +1095,9 @@ func (proxier *Proxier) syncProxyRules(syncAll bool) {
 		if hasEndpoints && svcInfo.NodeLocalExternal() {
 			activeNATChains[svcXlbChain] = true
 			if _, exists := existingNATChains[svcXlbChain]; !exists {
+				if !syncServiceChains {
+					klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, svcXlbChain)
+				}
 				syncServiceChains = true
 			}
 		}
@@ -1398,6 +1405,9 @@ func (proxier *Proxier) syncProxyRules(syncAll bool) {
 			activeNATChains[endpointChain] = true
 
 			if _, exists := existingNATChains[endpointChain]; !exists {
+				if !syncServiceChains {
+					klog.Infof("SSC syncServiceChains=true for %q because %q does not exist", svcNameString, endpointChain)
+				}
 				syncServiceChains = true
 			}
 		}
@@ -1406,6 +1416,7 @@ func (proxier *Proxier) syncProxyRules(syncAll bool) {
 			// The Service and Endpoints have not changed since the last sync,
 			// and all of the expected chains already exist. So there's nothing
 			// to do.
+			klog.Infof("SSC skipping synchronization of %q!", svcNameString)
 			continue
 		}
 
