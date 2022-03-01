@@ -209,6 +209,7 @@ type Proxier struct {
 	// updating iptables with some partial data after kube-proxy restart.
 	endpointSlicesSynced bool
 	servicesSynced       bool
+	needFullSync         bool
 	initialized          int32
 	syncRunner           *async.BoundedFrequencyRunner // governs calls to syncProxyRules
 	syncPeriod           time.Duration
@@ -344,7 +345,7 @@ func NewProxier(ipt utiliptables.Interface,
 	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, time.Hour, burstSyncs)
 
 	go ipt.Monitor(kubeProxyCanaryChain, []utiliptables.Table{utiliptables.TableMangle, utiliptables.TableNAT, utiliptables.TableFilter},
-		proxier.syncProxyRules, syncPeriod, wait.NeverStop)
+		proxier.forceSyncProxyRules, syncPeriod, wait.NeverStop)
 
 	if ipt.HasRandomFully() {
 		klog.V(2).InfoS("Iptables supports --random-fully", "ipFamily", ipt.Protocol())
@@ -589,7 +590,7 @@ func (proxier *Proxier) OnServiceSynced() {
 	proxier.mu.Unlock()
 
 	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnEndpointSliceAdd is called whenever creation of a new endpoint slice object
@@ -625,7 +626,7 @@ func (proxier *Proxier) OnEndpointSlicesSynced() {
 	proxier.mu.Unlock()
 
 	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnNodeAdd is called whenever creation of new node object
@@ -649,7 +650,7 @@ func (proxier *Proxier) OnNodeAdd(node *v1.Node) {
 	proxier.mu.Unlock()
 	klog.V(4).InfoS("Updated proxier node labels", "labels", node.Labels)
 
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnNodeUpdate is called whenever modification of an existing
@@ -673,7 +674,7 @@ func (proxier *Proxier) OnNodeUpdate(oldNode, node *v1.Node) {
 	proxier.mu.Unlock()
 	klog.V(4).InfoS("Updated proxier node labels", "labels", node.Labels)
 
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnNodeDelete is called whenever deletion of an existing node
@@ -688,7 +689,7 @@ func (proxier *Proxier) OnNodeDelete(node *v1.Node) {
 	proxier.nodeLabels = nil
 	proxier.mu.Unlock()
 
-	proxier.syncProxyRules()
+	proxier.forceSyncProxyRules()
 }
 
 // OnNodeSynced is called once all the initial event handlers were
@@ -786,6 +787,14 @@ func (proxier *Proxier) appendServiceCommentLocked(args []string, svcName string
 	return append(args, "-m", "comment", "--comment", svcName)
 }
 
+// Called by the iptables.Monitor, and in response to topology changes; this calls
+// syncProxyRules() and tells it to resync all services, regardless of whether the
+// Service or Endpoints/EndpointSlice objects themselves have changed
+func (proxier *Proxier) forceSyncProxyRules() {
+	proxier.needFullSync = true
+	proxier.syncProxyRules()
+}
+
 // This is where all of the iptables-save/restore calls happen.
 // The only other iptables rules are those that are setup in iptablesInit()
 // This assumes proxier.mu is NOT held
@@ -806,9 +815,11 @@ func (proxier *Proxier) syncProxyRules() {
 		klog.V(2).InfoS("SyncProxyRules complete", "elapsed", time.Since(start))
 	}()
 
-	// We assume that if this was called, we really want to sync them,
-	// even if nothing changed in the meantime. In other words, callers are
-	// responsible for detecting no-op changes and not calling this function.
+	var serviceChanged, endpointsChanged map[string]bool
+	if !proxier.needFullSync {
+		serviceChanged = proxier.serviceChanges.PendingChanges()
+		endpointsChanged = proxier.endpointsChanges.PendingChanges()
+	}
 	serviceUpdateResult := proxier.serviceMap.Update(proxier.serviceChanges)
 	endpointUpdateResult := proxier.endpointsMap.Update(proxier.endpointsChanges)
 
@@ -843,6 +854,7 @@ func (proxier *Proxier) syncProxyRules() {
 		if !success {
 			klog.InfoS("Sync failed", "retryingTime", proxier.syncPeriod)
 			proxier.syncRunner.RetryAfter(proxier.syncPeriod)
+			proxier.needFullSync = true
 		}
 	}()
 
@@ -1031,6 +1043,52 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 		useTerminatingEndpoints := !hasLocalReadyEndpoints && hasLocalServingTerminatingEndpoints
 
+		svcChain := svcInfo.servicePortChainName
+		svcXlbChain := svcInfo.serviceLBChainName
+		fwChain := svcInfo.serviceFirewallChainName
+
+		// Figure out if we actually need to write out the SVC/XLB/SEP chains
+		syncServiceChains := proxier.needFullSync || serviceChanged[svcName.NamespacedName.String()] || endpointsChanged[svcName.NamespacedName.String()]
+		if !syncServiceChains && hasEndpoints {
+			if _, exists := existingNATChains[svcChain]; !exists {
+				syncServiceChains = true
+			}
+			if svcInfo.NodeLocalExternal() {
+				if _, exists := existingNATChains[svcXlbChain]; !exists {
+					syncServiceChains = true
+				}
+			}
+
+			if len(svcInfo.LoadBalancerIPStrings()) != 0 {
+				if _, exists := existingNATChains[fwChain]; !exists {
+					syncServiceChains = true
+				}
+			}
+
+			// This is totally redundant with the code that follows but it will
+			// be cleaner in the next release...
+			for _, ep := range allEndpoints {
+				epInfo, ok := ep.(*endpointsInfo)
+				if !ok {
+					continue
+				}
+
+				endpointInUse := false
+				if epInfo.Ready {
+					endpointInUse = true
+				} else if svc.NodeLocalExternal() && epInfo.IsLocal && useTerminatingEndpoints && epInfo.Serving && epInfo.Terminating {
+					endpointInUse = true
+				}
+				if endpointInUse {
+					endpointChain := epInfo.endpointChain(svcNameString, protocol)
+					if _, exists := existingNATChains[endpointChain]; !exists {
+						syncServiceChains = true
+						break
+					}
+				}
+			}
+		}
+
 		// Generate the per-endpoint chains.
 		readyEndpointChains = readyEndpointChains[:0]
 		localEndpointChains = localEndpointChains[:0]
@@ -1064,13 +1122,17 @@ func (proxier *Proxier) syncProxyRules() {
 				continue
 			}
 
+			activeNATChains[endpointChain] = true
+			if !syncServiceChains {
+				continue
+			}
+
 			// Create the endpoint chain, retaining counters if possible.
 			if chain, ok := existingNATChains[endpointChain]; ok {
 				proxier.natChains.WriteBytes(chain)
 			} else {
 				proxier.natChains.Write(utiliptables.MakeChainLine(endpointChain))
 			}
-			activeNATChains[endpointChain] = true
 
 			args = append(args[:0], "-A", string(endpointChain))
 			args = proxier.appendServiceCommentLocked(args, svcNameString)
@@ -1102,27 +1164,31 @@ func (proxier *Proxier) syncProxyRules() {
 			}
 		}
 
-		svcChain := svcInfo.servicePortChainName
 		if hasEndpoints {
-			// Create the per-service chain, retaining counters if possible.
-			if chain, ok := existingNATChains[svcChain]; ok {
-				proxier.natChains.WriteBytes(chain)
-			} else {
-				proxier.natChains.Write(utiliptables.MakeChainLine(svcChain))
-			}
 			activeNATChains[svcChain] = true
+
+			if syncServiceChains {
+				// Create the per-service chain, retaining counters if possible.
+				if chain, ok := existingNATChains[svcChain]; ok {
+					proxier.natChains.WriteBytes(chain)
+				} else {
+					proxier.natChains.Write(utiliptables.MakeChainLine(svcChain))
+				}
+			}
 		}
 
-		svcXlbChain := svcInfo.serviceLBChainName
-		if svcInfo.NodeLocalExternal() {
-			// Only for services request OnlyLocal traffic
-			// create the per-service LB chain, retaining counters if possible.
-			if lbChain, ok := existingNATChains[svcXlbChain]; ok {
-				proxier.natChains.WriteBytes(lbChain)
-			} else {
-				proxier.natChains.Write(utiliptables.MakeChainLine(svcXlbChain))
-			}
+		if hasEndpoints && svcInfo.NodeLocalExternal() {
 			activeNATChains[svcXlbChain] = true
+
+			if syncServiceChains {
+				// Only for services request OnlyLocal traffic
+				// create the per-service LB chain, retaining counters if possible.
+				if lbChain, ok := existingNATChains[svcXlbChain]; ok {
+					proxier.natChains.WriteBytes(lbChain)
+				} else {
+					proxier.natChains.Write(utiliptables.MakeChainLine(svcXlbChain))
+				}
+			}
 		}
 
 		// Capture the clusterIP.
@@ -1133,20 +1199,22 @@ func (proxier *Proxier) syncProxyRules() {
 				"-d", svcInfo.ClusterIP().String(),
 				"--dport", strconv.Itoa(svcInfo.Port()),
 			)
-			if proxier.masqueradeAll {
-				proxier.natRules.Write(
-					"-A", string(svcChain),
-					args,
-					"-j", string(KubeMarkMasqChain))
-			} else if proxier.localDetector.IsImplemented() {
-				// This masquerades off-cluster traffic to a service VIP.  The idea
-				// is that you can establish a static route for your Service range,
-				// routing to any node, and that node will bridge into the Service
-				// for you.  Since that might bounce off-node, we masquerade here.
-				// If/when we support "Local" policy for VIPs, we should update this.
-				proxier.natRules.Write(
-					"-A", string(svcChain),
-					proxier.localDetector.JumpIfNotLocal(args, string(KubeMarkMasqChain)))
+			if syncServiceChains {
+				if proxier.masqueradeAll {
+					proxier.natRules.Write(
+						"-A", string(svcChain),
+						args,
+						"-j", string(KubeMarkMasqChain))
+				} else if proxier.localDetector.IsImplemented() {
+					// This masquerades off-cluster traffic to a service VIP.  The idea
+					// is that you can establish a static route for your Service range,
+					// routing to any node, and that node will bridge into the Service
+					// for you.  Since that might bounce off-node, we masquerade here.
+					// If/when we support "Local" policy for VIPs, we should update this.
+					proxier.natRules.Write(
+						"-A", string(svcChain),
+						proxier.localDetector.JumpIfNotLocal(args, string(KubeMarkMasqChain)))
+				}
 			}
 			proxier.natRules.Write(
 				"-A", string(kubeServicesChain),
@@ -1193,7 +1261,7 @@ func (proxier *Proxier) syncProxyRules() {
 				// and the traffic is NOT Local. Local traffic coming from Pods and Nodes will
 				// be always forwarded to the corresponding Service, so no need to SNAT
 				// If we can't differentiate the local traffic we always SNAT.
-				if !svcInfo.NodeLocalExternal() {
+				if !svcInfo.NodeLocalExternal() && syncServiceChains {
 					appendTo := []string{"-A", string(svcChain)}
 					destChain = svcChain
 					// This masquerades off-cluster traffic to a External IP.
@@ -1228,16 +1296,18 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		// Capture load-balancer ingress.
-		fwChain := svcInfo.serviceFirewallChainName
 		for _, ingress := range svcInfo.LoadBalancerIPStrings() {
 			if hasEndpoints {
-				// create service firewall chain
-				if chain, ok := existingNATChains[fwChain]; ok {
-					proxier.natChains.WriteBytes(chain)
-				} else {
-					proxier.natChains.Write(utiliptables.MakeChainLine(fwChain))
-				}
 				activeNATChains[fwChain] = true
+
+				if syncServiceChains {
+					// create service firewall chain
+					if chain, ok := existingNATChains[fwChain]; ok {
+						proxier.natChains.WriteBytes(chain)
+					} else {
+						proxier.natChains.Write(utiliptables.MakeChainLine(fwChain))
+					}
+				}
 				// The service firewall rules are created based on ServiceSpec.loadBalancerSourceRanges field.
 				// This currently works for loadbalancers that preserves source ips.
 				// For loadbalancers which direct traffic to service NodePort, the firewall rules will not apply.
@@ -1251,6 +1321,10 @@ func (proxier *Proxier) syncProxyRules() {
 				)
 				// jump to service firewall chain
 				proxier.natRules.Write(args, "-j", string(fwChain))
+
+				if !syncServiceChains {
+					continue
+				}
 
 				args = append(args[:0],
 					"-A", string(fwChain),
@@ -1337,11 +1411,13 @@ func (proxier *Proxier) syncProxyRules() {
 					"--dport", strconv.Itoa(svcInfo.NodePort()),
 				)
 				if !svcInfo.NodeLocalExternal() {
-					// Nodeports need SNAT, unless they're local.
-					proxier.natRules.Write(
-						"-A", string(svcChain),
-						args,
-						"-j", string(KubeMarkMasqChain))
+					if syncServiceChains {
+						// Nodeports need SNAT, unless they're local.
+						proxier.natRules.Write(
+							"-A", string(svcChain),
+							args,
+							"-j", string(KubeMarkMasqChain))
+					}
 					// Jump to the service chain.
 					proxier.natRules.Write(
 						"-A", string(kubeNodePortsChain),
@@ -1392,7 +1468,7 @@ func (proxier *Proxier) syncProxyRules() {
 			)
 		}
 
-		if !hasEndpoints {
+		if !hasEndpoints || !syncServiceChains {
 			continue
 		}
 
@@ -1563,6 +1639,7 @@ func (proxier *Proxier) syncProxyRules() {
 		return
 	}
 	success = true
+	proxier.needFullSync = false
 
 	for name, lastChangeTriggerTimes := range endpointUpdateResult.LastChangeTriggerTimes {
 		for _, lastChangeTriggerTime := range lastChangeTriggerTimes {
