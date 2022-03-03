@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"k8s.io/kubernetes/pkg/util/iptables"
-	kexec "k8s.io/utils/exec"
+	iptablestest "k8s.io/kubernetes/pkg/util/iptables/testing"
 )
 
 func TestVxlanNoTrackRulesWithDefaultVxlanPort(t *testing.T) {
@@ -17,7 +17,7 @@ func TestVxlanNoTrackRulesWithCustomVxlanPort(t *testing.T) {
 }
 
 func validateIPTableRuleForVxlanPort(t *testing.T, dstPort uint32) {
-	ipt := iptables.New(kexec.New(), iptables.ProtocolIPv4)
+	ipt := iptablestest.NewFake()
 	nodeIpt := newNodeIPTables(ipt, nil, true, dstPort, uint32(0))
 	err := nodeIpt.syncIPTableRules()
 	if err != nil {
