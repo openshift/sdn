@@ -357,18 +357,23 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 		return
 	}
 
-	var allPodsSelected, affectsIngress, affectsEgress bool
+	var allIngressPodsSelected, allEgressPodsSelected, affectsIngress, affectsEgress bool
 
 	// Add "allow" rules for all traffic allowed by a NetworkPolicy
 	for _, npp := range npns.policies {
-		if npp.selectsAllIPs {
-			allPodsSelected = true
-		}
 		if npp.affectsIngress {
 			affectsIngress = true
+
+			if npp.selectsAllIPs {
+				allIngressPodsSelected = true
+			}
 		}
 		if npp.affectsEgress {
 			affectsEgress = true
+
+			if npp.selectsAllIPs {
+				allEgressPodsSelected = true
+			}
 		}
 
 		if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
@@ -387,7 +392,7 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 		}
 	}
 
-	if allPodsSelected {
+	if (!affectsIngress || allIngressPodsSelected) && (!affectsEgress || allEgressPodsSelected) {
 		// Some policy selects all pods, so all pods are "isolated" and no
 		// traffic is allowed beyond what we explicitly allowed above. (And
 		// the "priority=0, actions=drop" rule will filter out all remaining
@@ -402,10 +407,10 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			for _, ip := range npp.selectedIPs {
 				if !selectedIPs.Has(ip) {
 					selectedIPs.Insert(ip)
-					if affectsIngress {
+					if affectsIngress && !allIngressPodsSelected {
 						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 					}
-					if affectsEgress {
+					if affectsEgress && !allEgressPodsSelected {
 						otx.AddFlow("table=27, priority=100, reg0=%d, ip, nw_src=%s, actions=drop", npns.vnid, ip)
 					}
 				}
@@ -413,10 +418,10 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 		}
 	}
 
-	if !allPodsSelected || !affectsIngress {
+	if !allIngressPodsSelected || !affectsIngress {
 		otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 	}
-	if !allPodsSelected || !affectsEgress {
+	if !allEgressPodsSelected || !affectsEgress {
 		otx.AddFlow("table=27, priority=50, reg0=%d, actions=goto_table:30", npns.vnid)
 	}
 }
