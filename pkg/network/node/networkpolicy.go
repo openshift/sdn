@@ -406,10 +406,10 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			for _, ip := range npp.selectedIPs {
 				if !selectedIPs.Has(ip) {
 					selectedIPs.Insert(ip)
-					if hasIngressPolicies && !allPodsIsolatedForIngress {
+					if npp.affectsIngress && !allPodsIsolatedForIngress {
 						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 					}
-					if hasEgressPolicies && !allPodsIsolatedForEgress {
+					if npp.affectsEgress && !allPodsIsolatedForEgress {
 						otx.AddFlow("table=27, priority=100, reg0=%d, ip, nw_src=%s, actions=drop", npns.vnid, ip)
 					}
 				}
