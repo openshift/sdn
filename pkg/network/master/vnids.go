@@ -276,12 +276,12 @@ func (master *OsdnMaster) startVNIDMaster() error {
 }
 
 func (master *OsdnMaster) initNetIDAllocator() error {
-	netnsList, err := master.osdnClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
+	netnsList, err := common.ListAllNetNamespaces(context.TODO(), master.osdnClient)
 	if err != nil {
 		return err
 	}
 
-	for _, netns := range netnsList.Items {
+	for _, netns := range netnsList {
 		if err := master.vnids.markAllocatedNetID(netns.NetID); err != nil {
 			klog.Errorf("Error marking allocated VNID: %v", err)
 		}
