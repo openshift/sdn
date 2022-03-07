@@ -1117,9 +1117,12 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
 	npns1 := np.namespaces[1]
 	addPods(np, npns1)
+	addNamespace(np, "two", 2, map[string]string{"parity": "even"})
+	npns2 := np.namespaces[2]
+	addPods(np, npns2)
 	waitForSync(np, synced, "initial namespaces")
 
-	// Both namespaces should get "default allow" rules to override the
+	// All namespaces should get "default allow" rules to override the
 	// "priority=0, actions=drop" rules at the end of tables 27 and 80
 	flows, err := ovsif.DumpFlows("")
 	if err != nil {
@@ -1141,6 +1144,14 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=1", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=2", "actions=output:NXM_NX_REG2[]"},
 		},
 	)
 	if err != nil {
@@ -1330,6 +1341,120 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=27", "reg0=0", "nw_dst=10.1.0.3", "actions=goto_table:30"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
+
+	// Add NetworkPolicies to "two". In particular:
+	//   - all pods are isolated for Ingress
+	//   - Ingress is allowed to "server" only by the second policy
+	//   - Egress is denied to some non-existent pod by the third policy.
+	// The egress policy should have no effect.
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-deny-ingress",
+			UID:       uid(npns2, "default-deny-ingress"),
+			Namespace: npns2.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{},
+		},
+	})
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-client-to-server",
+			UID:       uid(npns2, "allow-client-to-server"),
+			Namespace: npns2.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "server",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "irrelevant-egress",
+			UID:       uid(npns2, "irrelevant-egress"),
+			Namespace: npns2.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "nonexistent",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{},
+		},
+	})
+	waitForSync(np, synced, "ns2 policies")
+
+	err = assertPolicies(np, npns2, 3, map[string]*npPolicy{
+		"default-deny-ingress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			ingressFlows:      []string{},
+			egressFlows:       []string{},
+		},
+		"allow-client-to-server": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns2), clientIP(npns2)),
+			},
+		},
+		"irrelevant-egress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+			egressFlows:       []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// No egress flows should change, because the egress policy is irrelevant.
+	// The ingress default-allow should go away and be replaced with a narrow allow.
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:    flowRemoved,
+			match:   []string{"table=80", "reg1=2", "actions=output:NXM_NX_REG2[]"},
+			noMatch: []string{"reg0=2"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=2", "ip", "nw_dst=10.2.0.3", "nw_src=10.2.0.2", "actions=output:NXM_NX_REG2[]"},
 		},
 	)
 	if err != nil {
