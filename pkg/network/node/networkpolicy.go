@@ -375,10 +375,6 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 			}
 		}
 
-		if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
-			continue
-		}
-
 		if npp.affectsIngress {
 			for _, flow := range npp.ingressFlows {
 				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
@@ -815,6 +811,11 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			}
 		}
 		sort.Strings(npp.egressFlows)
+	}
+
+	if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
+		npp.ingressFlows = nil
+		npp.egressFlows = nil
 	}
 
 	klog.V(5).Infof("Parsed NetworkPolicy: %#v", npp)
