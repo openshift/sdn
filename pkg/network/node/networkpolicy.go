@@ -357,70 +357,104 @@ func (np *networkPolicyPlugin) generateNamespaceFlows(otx ovs.Transaction, npns 
 		return
 	}
 
-	var hasIngressPolicies, hasEgressPolicies bool
-	var allPodsIsolatedForIngress, allPodsIsolatedForEgress bool
+	np.generateNamespaceIngressFlows(otx, npns)
+	np.generateNamespaceEgressFlows(otx, npns)
+}
+
+func (np *networkPolicyPlugin) generateNamespaceIngressFlows(otx ovs.Transaction, npns *npNamespace) {
+	var hasIngressPolicies, allPodsIsolated bool
 
 	// Add "allow" rules for all traffic allowed by a NetworkPolicy
 	for _, npp := range npns.policies {
-		if npp.affectsIngress {
-			hasIngressPolicies = true
-			if npp.selectsAllIPs {
-				allPodsIsolatedForIngress = true
-			}
-		}
-		if npp.affectsEgress {
-			hasEgressPolicies = true
-			if npp.selectsAllIPs {
-				allPodsIsolatedForEgress = true
-			}
-		}
-
-		if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
+		if !npp.affectsIngress {
 			continue
 		}
 
-		if npp.affectsIngress {
-			for _, flow := range npp.ingressFlows {
-				otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
-			}
+		hasIngressPolicies = true
+		if npp.selectsAllIPs {
+			allPodsIsolated = true
 		}
-		if npp.affectsEgress {
-			for _, flow := range npp.egressFlows {
-				otx.AddFlow("table=27, priority=150, reg0=%d, %s actions=goto_table:30", npns.vnid, flow)
-			}
+
+		for _, flow := range npp.ingressFlows {
+			otx.AddFlow("table=80, priority=150, reg1=%d, %s actions=output:NXM_NX_REG2[]", npns.vnid, flow)
 		}
 	}
 
-	if (!hasIngressPolicies || allPodsIsolatedForIngress) && (!hasEgressPolicies || allPodsIsolatedForEgress) {
-		// Some policy selects all pods, so all pods are "isolated" and no
-		// traffic is allowed beyond what we explicitly allowed above. (And
-		// the "priority=0, actions=drop" rule will filter out all remaining
-		// traffic in this Namespace).
-	} else {
-		// No policy selects all pods, so we need an "else accept" rule to
-		// allow traffic to pod IPs that aren't selected by a policy. But
-		// before that we need rules to drop any remaining traffic for any pod
-		// IP that *is* selected by a policy.
+	switch {
+	case allPodsIsolated:
+		// Anything not allowed above is denied and will be rejected by the
+		// "priority=0, actions=drop" rule.
+
+	case !hasIngressPolicies:
+		// All ingress traffic is accepted
+		otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
+
+	default:
+		// Some (but not all) pods are isolated; write rules to reject remaining
+		// traffic to the isolated pods.
 		selectedIPs := sets.NewString()
 		for _, npp := range npns.policies {
+			if !npp.affectsIngress {
+				continue
+			}
 			for _, ip := range npp.selectedIPs {
 				if !selectedIPs.Has(ip) {
 					selectedIPs.Insert(ip)
-					if npp.affectsIngress && !allPodsIsolatedForIngress {
-						otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
-					}
-					if npp.affectsEgress && !allPodsIsolatedForEgress {
-						otx.AddFlow("table=27, priority=100, reg0=%d, ip, nw_src=%s, actions=drop", npns.vnid, ip)
-					}
+					otx.AddFlow("table=80, priority=100, reg1=%d, ip, nw_dst=%s, actions=drop", npns.vnid, ip)
 				}
 			}
 		}
-	}
 
-	if !allPodsIsolatedForIngress || !hasIngressPolicies {
+		// All remaining ingress traffic (ie, to non-isolated pods) is accepted
 		otx.AddFlow("table=80, priority=50, reg1=%d, actions=output:NXM_NX_REG2[]", npns.vnid)
 	}
-	if !allPodsIsolatedForEgress || !hasEgressPolicies {
+}
+
+func (np *networkPolicyPlugin) generateNamespaceEgressFlows(otx ovs.Transaction, npns *npNamespace) {
+	var hasEgressPolicies, allPodsIsolated bool
+
+	// Add "allow" rules for all traffic allowed by a NetworkPolicy
+	for _, npp := range npns.policies {
+		if !npp.affectsEgress {
+			continue
+		}
+
+		hasEgressPolicies = true
+		if npp.selectsAllIPs {
+			allPodsIsolated = true
+		}
+
+		for _, flow := range npp.egressFlows {
+			otx.AddFlow("table=27, priority=150, reg0=%d, %s actions=goto_table:30", npns.vnid, flow)
+		}
+	}
+
+	switch {
+	case allPodsIsolated:
+		// Anything not allowed above is denied and will be rejected by the
+		// "priority=0, actions=drop" rule.
+
+	case !hasEgressPolicies:
+		// All egress traffic is accepted
+		otx.AddFlow("table=27, priority=50, reg0=%d, actions=goto_table:30", npns.vnid)
+
+	default:
+		// Some (but not all) pods are isolated; write rules to reject remaining
+		// traffic to the isolated pods.
+		selectedIPs := sets.NewString()
+		for _, npp := range npns.policies {
+			if !npp.affectsEgress {
+				continue
+			}
+			for _, ip := range npp.selectedIPs {
+				if !selectedIPs.Has(ip) {
+					selectedIPs.Insert(ip)
+					otx.AddFlow("table=27, priority=100, reg0=%d, ip, nw_src=%s, actions=drop", npns.vnid, ip)
+				}
+			}
+		}
+
+		// All remaining egress traffic (ie, to non-isolated pods) is accepted
 		otx.AddFlow("table=27, priority=50, reg0=%d, actions=goto_table:30", npns.vnid)
 	}
 }
@@ -815,6 +849,11 @@ func (np *networkPolicyPlugin) parseNetworkPolicy(npns *npNamespace, policy *net
 			}
 		}
 		sort.Strings(npp.egressFlows)
+	}
+
+	if np.skipIfTooManyFlows(&npp.policy, len(npp.ingressFlows)+len(npp.egressFlows)) {
+		npp.ingressFlows = nil
+		npp.egressFlows = nil
 	}
 
 	klog.V(5).Infof("Parsed NetworkPolicy: %#v", npp)
