@@ -495,8 +495,8 @@ github.com/openshift/client-go v0.0.0-20200422192633-6f6c07fc2a70 h1:LvJxSt/lnLT
 github.com/openshift/client-go v0.0.0-20200422192633-6f6c07fc2a70/go.mod h1:HeCrq1LSOBgHAUpINH4IgBLkt2U/NBwE5sq4JJgcl2Y=
 github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533 h1:A5VovyRu3JFIPmC20HHrsOOny0PIdHuzDdNMULru48k=
 github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533/go.mod h1:3sa6LKKRDnR1xy4Kn8htvPwqIOVwXh8fIU3LRY22q3U=
-github.com/openshift/kubernetes v1.21.2-0.20210915122642-502540daa3f9 h1:O8chmcu7Gpxbde0RsU909MYCymYoKRY2NhRBqqmhHCU=
-github.com/openshift/kubernetes v1.21.2-0.20210915122642-502540daa3f9/go.mod h1:ef++isEL1PW0taH6z7DXrSztPglrZ7jQhyvcMEtm0gQ=
+github.com/openshift/kubernetes v1.22.0-alpha.0.0.20220606134137-f0488bbef750 h1:rqoBt4lOdMME+JFhEE5ysaH1ZF9eeYDFv21xFP/HzSg=
+github.com/openshift/kubernetes v1.22.0-alpha.0.0.20220606134137-f0488bbef750/go.mod h1:ef++isEL1PW0taH6z7DXrSztPglrZ7jQhyvcMEtm0gQ=
 github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20210915122642-502540daa3f9 h1:Xc2xb4ggaY8lg/zRaOsMPuCvKQVfmqrGDQg36t6B+GA=
 github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20210915122642-502540daa3f9/go.mod h1:DKjoC7WTLvupppdmb5jEvRDPQENLZqz/stEUs19TOOc=
 github.com/openshift/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20210915122642-502540daa3f9/go.mod h1:z4ndT0jW6BSHky3MjKfpX8hfxFiOobduUEPsG67DW+o=
