@@ -136,6 +136,8 @@ github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ3
 github.com/creack/pty v1.1.11/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cyphar/filepath-securejoin v0.2.2 h1:jCwT2GTP+PY5nBz3c/YL5PAIbusElVrPujOBSCj8xRg=
 github.com/cyphar/filepath-securejoin v0.2.2/go.mod h1:FpkQEhXnPnOthhzymB7CGsFk2G9VLXONKD9G7QGMM+4=
+github.com/danwinship/kubernetes v1.1.0-alpha.0.0.20220315121357-03da5aa820d2 h1:tCgyHU7SMGmmhlZ7AriXlT87YzEhxxguiyT5ZQbgh84=
+github.com/danwinship/kubernetes v1.1.0-alpha.0.0.20220315121357-03da5aa820d2/go.mod h1:8qHPWKJA1ylLSTccPTPnnXyhFNBSEhAyHMjxn/GQ9As=
 github.com/dave/dst v0.26.2/go.mod h1:UMDJuIRPfyUCC78eFuB+SV/WI8oDeyFDvM/JR6NI3IU=
 github.com/dave/gopackages v0.0.0-20170318123100-46e7023ec56e/go.mod h1:i00+b/gKdIDIxuLDFob7ustLAVqhsZRk2qVZrArELGQ=
 github.com/dave/jennifer v1.2.0/go.mod h1:fIb+770HOpJ2fmN9EPPKOqm1vMGhB+TwXKMZhrIygKg=
@@ -429,8 +431,6 @@ github.com/openshift/build-machinery-go v0.0.0-20210712174854-1bb7fd1518d3/go.mo
 github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142 h1:ZHRIMCFIJN1p9LsJt4HQ+akDrys4PrYnXzOWI5LK03I=
 github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142/go.mod h1:fjS8r9mqDVsPb5td3NehsNOAWa4uiFkYEfVZioQ2gH0=
 github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533/go.mod h1:3sa6LKKRDnR1xy4Kn8htvPwqIOVwXh8fIU3LRY22q3U=
-github.com/openshift/kubernetes v1.22.0-rc.0.0.20210907143412-ff80f21e802b h1:XKhIQwh5yFogkYx73gs4wixRMaSLn+U2AGWK4EQndYU=
-github.com/openshift/kubernetes v1.22.0-rc.0.0.20210907143412-ff80f21e802b/go.mod h1:8qHPWKJA1ylLSTccPTPnnXyhFNBSEhAyHMjxn/GQ9As=
 github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20210907143412-ff80f21e802b h1:+0VR4R1XnN8iEVJ27AdaTPJFHKpqEJMwTLHbdxgp+Pw=
 github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20210907143412-ff80f21e802b/go.mod h1:IpPnJRE5t3olVaut5p67N16cZkWwwU5KVFM35xCKyxM=
 github.com/openshift/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20210907143412-ff80f21e802b/go.mod h1:jTgFcW8xltjKznImgnPThxdONRgdN7N6TCjeDBpp8Ac=
