@@ -100,7 +100,7 @@ type OsdnNode struct {
 	useConnTrack     bool
 	masqueradeBit    uint32
 	platformType     string
-	mtu              uint32
+	overlayMTU       uint32
 	routableMTU      uint32
 
 	// Synchronizes operations on egressPolicies
@@ -172,10 +172,10 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		return nil, err
 	}
 
-	mtu := networkInfo.MTU
+	overlayMTU := networkInfo.OverlayMTU
 	routableMTU := uint32(0)
 	if c.OverrideMTU != 0 {
-		mtu = c.OverrideMTU
+		overlayMTU = c.OverrideMTU
 		routableMTU = c.RoutableMTU
 	}
 
@@ -186,7 +186,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		recorder:       c.Recorder,
 		oc:             oc,
 		networkInfo:    networkInfo,
-		podManager:     newPodManager(c.KClient, policy, mtu, routableMTU, oc),
+		podManager:     newPodManager(c.KClient, policy, overlayMTU, routableMTU, oc),
 		localIP:        c.NodeIP,
 		hostName:       c.NodeName,
 		useConnTrack:   useConnTrack,
@@ -197,7 +197,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		kubeInformers:  c.KubeInformers,
 		osdnInformers:  c.OSDNInformers,
 		platformType:   c.PlatformType,
-		mtu:            mtu,
+		overlayMTU:     overlayMTU,
 		routableMTU:    routableMTU,
 		egressIP:       newEgressIPWatcher(oc, common.PlatformUsesCloudEgressIP(c.PlatformType), c.NodeIP, c.MasqueradeBit),
 	}
@@ -272,7 +272,7 @@ func (node *OsdnNode) validateMTU() error {
 	}
 
 	const maxMTU = 65536
-	mtu := maxMTU + 1
+	interfaceMTU := maxMTU + 1
 	for _, route := range routes {
 		// Skip non-default routes
 		if route.Dst != nil {
@@ -283,7 +283,7 @@ func (node *OsdnNode) validateMTU() error {
 			return fmt.Errorf("could not retrieve link id %d while validating MTU", route.LinkIndex)
 		}
 
-		// we want to check the mtu only for the interface assigned to the node's primary ip
+		// we want to check the MTU only for the interface assigned to the node's primary ip
 		found := false
 		addresses, err := netlink.AddrList(link, netlink.FAMILY_V4)
 		for _, address := range addresses {
@@ -296,16 +296,16 @@ func (node *OsdnNode) validateMTU() error {
 			continue
 		}
 
-		newmtu := link.Attrs().MTU
-		if newmtu > 0 && newmtu < mtu {
-			mtu = newmtu
+		mtu := link.Attrs().MTU
+		if mtu > 0 && mtu < interfaceMTU {
+			interfaceMTU = mtu
 		}
 	}
-	if mtu > maxMTU {
+	if interfaceMTU > maxMTU {
 		return fmt.Errorf("unable to determine MTU while performing validation")
 	}
 
-	needsTaint := mtu < int(node.mtu)+50
+	needsTaint := interfaceMTU < int(node.overlayMTU)+50
 	const MTUTaintKey string = "network.openshift.io/mtu-too-small"
 	mtuTooSmallTaint := &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"}
 	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
