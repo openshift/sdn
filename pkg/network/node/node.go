@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -14,15 +13,12 @@ import (
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kapi "k8s.io/kubernetes/pkg/apis/core"
@@ -30,7 +26,6 @@ import (
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/iptables"
-	taints "k8s.io/kubernetes/pkg/util/taints"
 	kexec "k8s.io/utils/exec"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -265,10 +260,12 @@ func (node *OsdnNode) validateMTU() error {
 	// TODO(cdc) handle v6-only nodes
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
-		return fmt.Errorf("could not list routes while validating MTU: %v", err)
+		klog.Errorf("Could not list routes while validating MTU: %v. (Assuming MTU is valid.)", err)
+		return nil
 	}
 	if len(routes) == 0 {
-		return fmt.Errorf("got no routes while validating MTU")
+		klog.Errorf("Got no routes while validating MTU. (Assuming MTU is valid.)")
+		return nil
 	}
 
 	const maxMTU = 65536
@@ -280,7 +277,8 @@ func (node *OsdnNode) validateMTU() error {
 		}
 		link, err := netlink.LinkByIndex(route.LinkIndex)
 		if err != nil {
-			return fmt.Errorf("could not retrieve link id %d while validating MTU", route.LinkIndex)
+			klog.Errorf("Could not retrieve link id %d while validating MTU. (Assuming MTU is valid.)", route.LinkIndex)
+			return nil
 		}
 
 		// we want to check the MTU only for the interface assigned to the node's primary ip
@@ -302,65 +300,13 @@ func (node *OsdnNode) validateMTU() error {
 		}
 	}
 	if interfaceMTU > maxMTU {
-		return fmt.Errorf("unable to determine MTU while performing validation")
+		klog.Errorf("Unable to determine MTU while performing validation. (Assuming MTU is valid.)")
+		return nil
 	}
 
-	needsTaint := interfaceMTU < int(node.overlayMTU)+50
-	const MTUTaintKey string = "network.openshift.io/mtu-too-small"
-	mtuTooSmallTaint := &corev1.Taint{Key: MTUTaintKey, Value: "value", Effect: "NoSchedule"}
-	nodeObj, err := node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
+	if interfaceMTU < int(node.overlayMTU)+50 {
+		return fmt.Errorf("interface MTU (%d) is too small for specified overlay MTU (%d)", interfaceMTU, node.overlayMTU)
 	}
-	tainted := taints.TaintExists(nodeObj.Spec.Taints, mtuTooSmallTaint)
-	if needsTaint != tainted {
-		resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			nodeObj, err = node.kClient.CoreV1().Nodes().Get(context.TODO(), node.hostName, metav1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("could not get Kubernetes Node object by hostname: %v", err)
-			}
-			nodeObjCopy := nodeObj.DeepCopy()
-			var nodeWithTaintMods *corev1.Node
-
-			if needsTaint && !tainted {
-				klog.V(2).Infof("Default interface MTU is less than VXLAN overhead, tainting node...")
-				nodeWithTaintMods, _, err = taints.AddOrUpdateTaint(nodeObjCopy, mtuTooSmallTaint)
-				if err != nil {
-					return fmt.Errorf("could not taint the node with key %s: %v", MTUTaintKey, err)
-				}
-			} else if !needsTaint && tainted {
-				klog.V(2).Infof("Node has too small MTU taint but default interface MTU is big enough, untainting node...")
-				nodeWithTaintMods, _, err = taints.RemoveTaint(nodeObjCopy, mtuTooSmallTaint)
-				if err != nil {
-					return fmt.Errorf("could not untaint the node with key %s: %v", MTUTaintKey, err)
-				}
-			}
-
-			nodeObjJson, err := json.Marshal(nodeObj)
-			if err != nil {
-				return fmt.Errorf("could not marshal old Node object: %v", err)
-			}
-
-			newNodeObjJson, err := json.Marshal(nodeWithTaintMods)
-			if err != nil {
-				return fmt.Errorf("could not marshal new Node object: %v", err)
-			}
-
-			patchBytes, err := strategicpatch.CreateTwoWayMergePatch(nodeObjJson, newNodeObjJson, corev1.Node{})
-			if err != nil {
-				return fmt.Errorf("could not create patch for object: %v", err)
-			}
-
-			_, err = node.kClient.CoreV1().Nodes().Patch(context.TODO(), node.hostName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
-
-			return err
-		})
-
-		if resultErr != nil {
-			return fmt.Errorf("could not update node taints after many retries: %v", resultErr)
-		}
-	}
-
 	return nil
 }
 
@@ -432,7 +378,7 @@ func (node *OsdnNode) Start() error {
 	}
 
 	if err := node.validateMTU(); err != nil {
-		klog.Errorf("Error validating node MTU: %v", err)
+		return err
 	}
 
 	go kwait.Forever(node.policy.SyncVNIDRules, time.Hour)
