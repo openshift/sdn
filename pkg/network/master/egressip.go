@@ -255,11 +255,11 @@ func (eim *egressIPManager) check(retrying bool) (bool, error) {
 		}
 
 		if !nodeIsReady(nn) {
-			klog.Warningf("Node %s is not Ready", node.name)
+			klog.Warningf("Node %s is not Ready, marking it offline...", node.name)
 			node.offline = true
 			eim.tracker.SetNodeOffline(node.ip, true)
-			// Return when there's a not Ready node
-			return false, nil
+			// continue to process other nodes in the list when we encounter a not Ready node
+			continue
 		}
 
 		online := eim.tracker.Ping(node.sdnIP, timeout)
