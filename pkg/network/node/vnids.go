@@ -184,13 +184,13 @@ func netnsIsMulticastEnabled(netns *osdnv1.NetNamespace) bool {
 }
 
 func (vmap *nodeVNIDMap) populateVNIDs() error {
-	nets, err := vmap.osdnClient.NetworkV1().NetNamespaces().List(context.TODO(), metav1.ListOptions{})
+	nets, err := common.ListAllNetNamespaces(context.TODO(), vmap.osdnClient)
 	if err != nil {
 		return err
 	}
 
-	for _, net := range nets.Items {
-		vmap.setVNID(net.Name, net.NetID, netnsIsMulticastEnabled(&net))
+	for _, net := range nets {
+		vmap.setVNID(net.Name, net.NetID, netnsIsMulticastEnabled(net))
 	}
 	return nil
 }
