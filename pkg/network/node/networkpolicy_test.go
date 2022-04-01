@@ -1117,9 +1117,12 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
 	npns1 := np.namespaces[1]
 	addPods(np, npns1)
-	addNamespace(np, "two", 2, map[string]string{"parity": "even"})
+	addNamespace(np, "two", 2, map[string]string{})
 	npns2 := np.namespaces[2]
 	addPods(np, npns2)
+	addNamespace(np, "three", 3, map[string]string{})
+	npns3 := np.namespaces[3]
+	addPods(np, npns3)
 	waitForSync(np, synced, "initial namespaces")
 
 	// All namespaces should get "default allow" rules to override the
@@ -1152,6 +1155,14 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=2", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=3", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=3", "actions=output:NXM_NX_REG2[]"},
 		},
 	)
 	if err != nil {
@@ -1455,6 +1466,133 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=2", "ip", "nw_dst=10.2.0.3", "nw_src=10.2.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+		// (This gets reordered so we have to claim it got deleted and re-added)
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=27", "reg0=2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=2", "actions=goto_table:30"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+	prevFlows = flows
+
+	// Add NetworkPolicies to "three":
+	//   - Ingress is allowed to "server" only by one policy
+	//   - Egress is allowed to "server" only by a different policy
+	// Make sure that this allows both ingress and egress...
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "server-ingress",
+			UID:       uid(npns3, "server-ingress"),
+			Namespace: npns3.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "server",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "server-egress",
+			UID:       uid(npns3, "server-egress"),
+			Namespace: npns3.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "server",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kind": "client",
+						},
+					},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "ns3 policies")
+
+	err = assertPolicies(np, npns3, 2, map[string]*npPolicy{
+		"server-ingress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns3), clientIP(npns3)),
+			},
+		},
+		"server-egress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+			egressFlows: []string{
+				fmt.Sprintf("ip, nw_src=%s, ip, nw_dst=%s", serverIP(npns3), clientIP(npns3)),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=3", "ip", "nw_src=10.3.0.3", "nw_dst=10.3.0.2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:    flowAdded,
+			match:   []string{"table=27", "reg0=3", "ip", "nw_src=10.3.0.3", "actions=drop"},
+			noMatch: []string{"nw_dst=10.3.0.2"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=3", "ip", "nw_dst=10.3.0.3", "nw_src=10.3.0.2", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:    flowAdded,
+			match:   []string{"table=80", "reg1=3", "ip", "nw_dst=10.3.0.3", "actions=drop"},
+			noMatch: []string{"nw_src=10.3.0.2"},
+		},
+		// (This gets reordered so we have to claim it got deleted and re-added)
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=27", "reg0=3", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=3", "actions=goto_table:30"},
 		},
 	)
 	if err != nil {
