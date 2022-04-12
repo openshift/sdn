@@ -67,7 +67,8 @@ type podManager struct {
 
 	// Things only accessed through the processCNIRequests() goroutine
 	// and thus can be set from Start()
-	ipamConfig []byte
+	ipamConfig   []byte
+	reattachPods map[string]*corev1.Pod
 }
 
 // Creates a new live podManager; used by node code0
@@ -85,8 +86,9 @@ func newPodManager(kClient kubernetes.Interface, policy osdnPolicy, mtu uint32, 
 // Creates a new basic podManager; used by testcases
 func newDefaultPodManager() *podManager {
 	return &podManager{
-		runningPods: make(map[string]*runningPod),
-		requests:    make(chan *cniserver.PodRequest, 20),
+		runningPods:  make(map[string]*runningPod),
+		requests:     make(chan *cniserver.PodRequest, 20),
+		reattachPods: make(map[string]*corev1.Pod),
 	}
 }
 
@@ -203,6 +205,19 @@ func getPodKey(namespace, name string) string {
 
 func (m *podManager) getPod(request *cniserver.PodRequest) *runningPod {
 	return m.runningPods[getPodKey(request.PodNamespace, request.PodName)]
+}
+
+// Add pods to Pod Manager reattach pod cache
+func (m *podManager) setReattachPodsCache(pods []corev1.Pod) {
+	for _, pod := range pods {
+		pKey := getPodKey(pod.Namespace, pod.Name)
+		m.reattachPods[pKey] = &pod
+	}
+}
+
+// Delete the Pod Manager reattach pods cache
+func (m *podManager) clearReattachPodsCache() {
+	m.reattachPods = make(map[string]*corev1.Pod)
 }
 
 // Add a request to the podManager CNI request queue
@@ -470,7 +485,8 @@ func podIsExited(p *kcontainer.Pod) bool {
 // Set up all networking (host/container veth, OVS flows, IPAM, loopback, etc)
 func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *runningPod, error) {
 	defer metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationSetup).Observe(metrics.SinceInMicroseconds(time.Now()))
-
+	var v1Pod *corev1.Pod
+	var err error
 	// Release any IPAM allocations if the setup failed
 	var success bool
 	defer func() {
@@ -478,10 +494,11 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 			m.ipamDel(req.SandboxID)
 		}
 	}()
-
-	v1Pod, err := m.kClient.CoreV1().Pods(req.PodNamespace).Get(context.TODO(), req.PodName, metav1.GetOptions{})
-	if err != nil {
-		return nil, nil, err
+	pKey := getPodKey(req.PodNamespace, req.PodName)
+	if v1Pod, success = m.reattachPods[pKey]; !success {
+		if v1Pod, err = m.kClient.CoreV1().Pods(req.PodNamespace).Get(context.TODO(), req.PodName, metav1.GetOptions{}); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	var ipamResult cnitypes.Result

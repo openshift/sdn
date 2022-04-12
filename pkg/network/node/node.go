@@ -450,6 +450,13 @@ func (node *OsdnNode) Start() error {
 // attached to the OVS bridge before restart, and either reattaches or kills each of the
 // corresponding pods.
 func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.PodSandbox, existingOFPodNetworks map[string]podNetworkInfo) error {
+	pods, err := node.GetRunningPods(metav1.NamespaceAll)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	defer klog.V(2).Infof("reattachPods took %v", time.Since(start))
+	node.podManager.setReattachPodsCache(pods)
 	for sandboxID, podInfo := range existingOFPodNetworks {
 		sandbox, ok := existingPodSandboxes[sandboxID]
 		if !ok {
@@ -479,6 +486,7 @@ func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.
 			klog.Warningf("Could not reattach pod '%s/%s' to SDN: %v", req.PodNamespace, req.PodName, err)
 		}
 	}
+	node.podManager.clearReattachPodsCache()
 
 	// Kill any remaining pods in another thread, after letting SDN startup proceed
 	go node.killFailedPods(existingPodSandboxes)
