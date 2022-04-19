@@ -145,7 +145,7 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 
 	var hostVeth, contVeth net.Interface
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
-		hostVeth, contVeth, err = ip.SetupVeth(args.IfName, int(config.OverlayMTU), hostNS)
+		hostVeth, contVeth, err = ip.SetupVeth(args.IfName, int(config.MTU), hostNS)
 		if err != nil {
 			return fmt.Errorf("failed to create container veth: %v", err)
 		}

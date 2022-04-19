@@ -54,7 +54,7 @@ const CNIServerConfigFilePath string = CNIServerRunDir + "/" + CNIServerConfigFi
 
 // Server-to-plugin config data
 type Config struct {
-	OverlayMTU   uint32 `json:"mtu"`
+	MTU          uint32 `json:"mtu"`
 	RoutableMTU  uint32 `json:"routableMTU,omitempty"`
 	PlatformType string `json:"platformType,omitempty"`
 }

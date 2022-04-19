@@ -37,7 +37,7 @@ type ParsedClusterNetwork struct {
 	ClusterNetworks []ParsedClusterNetworkEntry
 	ServiceNetwork  *net.IPNet
 	VXLANPort       uint32
-	OverlayMTU      uint32
+	MTU             uint32
 }
 
 type ParsedClusterNetworkEntry struct {
@@ -80,9 +80,9 @@ func ParseClusterNetwork(cn *osdnv1.ClusterNetwork) (*ParsedClusterNetwork, erro
 	}
 
 	if cn.MTU != nil {
-		pcn.OverlayMTU = *cn.MTU
+		pcn.MTU = *cn.MTU
 	} else {
-		pcn.OverlayMTU = 1450
+		pcn.MTU = 1450
 	}
 
 	return pcn, nil

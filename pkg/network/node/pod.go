@@ -61,7 +61,7 @@ type podManager struct {
 	// Live pod setup/teardown stuff not used in testing code
 	kClient     kubernetes.Interface
 	policy      osdnPolicy
-	overlayMTU  uint32
+	mtu         uint32
 	routableMTU uint32
 	ovs         *ovsController
 
@@ -71,11 +71,11 @@ type podManager struct {
 }
 
 // Creates a new live podManager; used by node code0
-func newPodManager(kClient kubernetes.Interface, policy osdnPolicy, overlayMTU uint32, routableMTU uint32, ovs *ovsController) *podManager {
+func newPodManager(kClient kubernetes.Interface, policy osdnPolicy, mtu uint32, routableMTU uint32, ovs *ovsController) *podManager {
 	pm := newDefaultPodManager()
 	pm.kClient = kClient
 	pm.policy = policy
-	pm.overlayMTU = overlayMTU
+	pm.mtu = mtu
 	pm.routableMTU = routableMTU
 	pm.podHandler = pm
 	pm.ovs = ovs
@@ -166,7 +166,7 @@ func (m *podManager) Start(rundir string, localSubnetCIDR string, clusterNetwork
 
 	go m.processCNIRequests()
 
-	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{OverlayMTU: m.overlayMTU, RoutableMTU: m.routableMTU, PlatformType: platformType})
+	m.cniServer = cniserver.NewCNIServer(rundir, &cniserver.Config{MTU: m.mtu, RoutableMTU: m.routableMTU, PlatformType: platformType})
 	return m.cniServer.Start(m.handleCNIRequest)
 }
 

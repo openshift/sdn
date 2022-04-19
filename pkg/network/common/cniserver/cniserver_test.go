@@ -60,7 +60,7 @@ func TestCNIServer(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	socketPath := filepath.Join(tmpDir, CNIServerSocketName)
 
-	s := NewCNIServer(tmpDir, &Config{OverlayMTU: 1500})
+	s := NewCNIServer(tmpDir, &Config{MTU: 1500})
 	if err := s.Start(serverHandleCNI); err != nil {
 		t.Fatalf("error starting CNI server: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestCNIServerDirectory(t *testing.T) {
 
 	// If the rundir doesn't exist, it will create it, with the correct permissions
 	runDir := filepath.Join(tmpDir, "1")
-	s := NewCNIServer(runDir, &Config{OverlayMTU: 1500})
+	s := NewCNIServer(runDir, &Config{MTU: 1500})
 	if err := s.Start(serverHandleCNI); err != nil {
 		t.Fatalf("error starting CNI server: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestCNIServerDirectory(t *testing.T) {
 	if err := ioutil.WriteFile(tmpFile, []byte("foo"), 0444); err != nil {
 		t.Fatalf("could not write tmp file: %v", err)
 	}
-	s = NewCNIServer(runDir, &Config{OverlayMTU: 1500})
+	s = NewCNIServer(runDir, &Config{MTU: 1500})
 	if err := s.Start(serverHandleCNI); err != nil {
 		t.Fatalf("error starting CNI server: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestCNIServerDirectory(t *testing.T) {
 	if err := ioutil.WriteFile(tmpFile, []byte("foo"), 0444); err != nil {
 		t.Fatalf("could not write tmp file: %v", err)
 	}
-	s = NewCNIServer(runDir, &Config{OverlayMTU: 1500})
+	s = NewCNIServer(runDir, &Config{MTU: 1500})
 	if err := s.Start(serverHandleCNI); err != nil {
 		t.Fatalf("error starting CNI server: %v", err)
 	}

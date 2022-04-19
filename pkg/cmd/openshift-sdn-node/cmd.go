@@ -278,7 +278,7 @@ func readMTUOverride(file string) (uint32, uint32, error) {
 	}
 
 	conf := struct {
-		OverlayMTU  uint32 `json:"mtu"`
+		MTU         uint32 `json:"mtu"`
 		RoutableMTU uint32 `json:"routable-mtu"`
 	}{}
 	err = yaml.Unmarshal(bytes, &conf)
@@ -286,5 +286,5 @@ func readMTUOverride(file string) (uint32, uint32, error) {
 		return 0, 0, err
 	}
 
-	return conf.OverlayMTU, conf.RoutableMTU, err
+	return conf.MTU, conf.RoutableMTU, err
 }
