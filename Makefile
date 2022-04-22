@@ -37,3 +37,15 @@ build-image-sdn-test:
 	podman build --no-cache -f images/sdn/Dockerfile.fedora -t sdn-test .
 
 .PHONY: build-image-sdn-test
+
+# eBPF stuff
+clean: ebpf-clean
+.PHONY: ebpf-clean
+build: ebpf-build
+.PHONE: ebpf-build
+
+ebpf-clean:
+	make -C pkg/network/node/bpf clean
+
+ebpf-build:
+	make -C pkg/network/node/bpf all

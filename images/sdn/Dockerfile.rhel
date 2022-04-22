@@ -1,4 +1,8 @@
 FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.11 AS builder
+RUN INSTALL_PKGS=" \
+    bpftool \
+    " && \
+    yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables

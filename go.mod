@@ -3,6 +3,7 @@ module github.com/openshift/sdn
 go 1.16
 
 require (
+	github.com/cilium/ebpf v0.8.1
 	github.com/containernetworking/cni v0.8.1
 	github.com/containernetworking/plugins v0.6.0
 	github.com/coreos/go-iptables v0.0.0-00010101000000-000000000000 // indirect
@@ -17,7 +18,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/spf13/cobra v1.2.1
 	github.com/vishvananda/netlink v1.1.0
-	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+	golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
 	k8s.io/api v1.23.4
 	k8s.io/apimachinery v1.23.4
 	k8s.io/apiserver v1.23.4

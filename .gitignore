@@ -1,5 +1,6 @@
 /host-local
 /kube-proxy
+/loader
 /openshift-sdn-cni
 /openshift-sdn-controller
 /openshift-sdn-node

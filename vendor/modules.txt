@@ -42,6 +42,16 @@ github.com/bits-and-blooms/bitset
 github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
+# github.com/cilium/ebpf v0.8.1
+## explicit
+github.com/cilium/ebpf
+github.com/cilium/ebpf/asm
+github.com/cilium/ebpf/cmd/bpf2go
+github.com/cilium/ebpf/internal
+github.com/cilium/ebpf/internal/btf
+github.com/cilium/ebpf/internal/sys
+github.com/cilium/ebpf/internal/unix
+github.com/cilium/ebpf/rlimit
 # github.com/containerd/cgroups v1.0.1
 github.com/containerd/cgroups/stats/v1
 # github.com/containernetworking/cni v0.8.1 => github.com/containernetworking/cni v0.6.0-rc1
@@ -125,7 +135,7 @@ github.com/google/cadvisor/utils
 github.com/google/cadvisor/utils/cloudinfo
 github.com/google/cadvisor/utils/sysfs
 github.com/google/cadvisor/utils/sysinfo
-# github.com/google/go-cmp v0.5.5
+# github.com/google/go-cmp v0.5.6
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -391,7 +401,7 @@ golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+# golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
 ## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9

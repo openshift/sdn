@@ -3,6 +3,7 @@ FROM fedora:36 AS builder
 
 RUN INSTALL_PKGS=" \
       golang git \
+      bpftool clang \
       " && \
     yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS
 
