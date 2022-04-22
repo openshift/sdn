@@ -1,17 +1,17 @@
 # This can be used to build images for testing
-FROM fedora:34 AS builder
+FROM fedora:36 AS builder
 
 RUN INSTALL_PKGS=" \
-      golang \
+      golang git \
       " && \
     yum install -y --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS
 
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables
-RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
+RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl -mod=vendor" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
 
-FROM fedora:34
+FROM fedora:36
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn

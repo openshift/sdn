@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
-	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
+	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kapi "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
