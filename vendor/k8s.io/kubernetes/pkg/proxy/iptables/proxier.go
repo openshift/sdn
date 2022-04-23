@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base32"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"reflect"
@@ -31,7 +32,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+
+	"github.com/cilium/ebpf"
 
 	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
@@ -189,6 +193,47 @@ func (e *endpointsInfo) endpointChain(svcNameString, protocol string) utiliptabl
 	return e.chainName
 }
 
+// ebpfServicePortKey is the key used for per-serviceport eBPF maps
+type ebpfServiceKey [8]byte
+
+func (key ebpfServiceKey) String() string {
+	return fmt.Sprintf("{ %v %s %d %d }",
+		[8]byte(key), net.IP(key[0:4]).String(),
+		binary.BigEndian.Uint16(key[4:6]),
+		key[6],
+	)
+}
+
+func makeEBPFServiceKey(ip string, port int, protocol string) ([8]byte, bool) {
+	var key [8]byte
+
+	ipBytes := net.ParseIP(ip).To4()
+	if ipBytes == nil {
+		return key, false
+	}
+	key[0] = ipBytes[0]
+	key[1] = ipBytes[1]
+	key[2] = ipBytes[2]
+	key[3] = ipBytes[3]
+
+	binary.BigEndian.PutUint16(key[4:6], uint16(port))
+
+	var proto uint8
+	switch protocol {
+	case "tcp":
+		proto = syscall.IPPROTO_TCP
+	case "udp":
+		proto = syscall.IPPROTO_UDP
+	case "sctp":
+		proto = syscall.IPPROTO_SCTP
+	default:
+		return key, false
+	}
+	key[6] = proto
+
+	return key, true
+}
+
 // Proxier is an iptables based proxy for connections between a localhost:lport
 // and services that provide the actual backends.
 type Proxier struct {
@@ -252,6 +297,14 @@ type Proxier struct {
 	// networkInterfacer defines an interface for several net library functions.
 	// Inject for test purpose.
 	networkInterfacer utilproxy.NetworkInterfacer
+
+	// FIXME: we need to keep track of the last known accept/reject map state
+	// because the existing change tracking stuff doesn't explicitly tell us
+	// when things get deleted
+	acceptMap       map[ebpfServiceKey]bool
+	kernelAcceptMap *ebpf.Map
+	rejectMap       map[ebpfServiceKey]bool
+	kernelRejectMap *ebpf.Map
 }
 
 // Proxier implements proxy.Provider
@@ -275,6 +328,7 @@ func NewProxier(ipt utiliptables.Interface,
 	recorder events.EventRecorder,
 	healthzServer healthcheck.ProxierHealthUpdater,
 	nodePortAddresses []string,
+	eBPFMaps map[string]*ebpf.Map,
 ) (*Proxier, error) {
 	// Set the route_localnet sysctl we need for
 	if err := utilproxy.EnsureSysctl(sysctl, sysctlRouteLocalnet, 1); err != nil {
@@ -336,6 +390,10 @@ func NewProxier(ipt utiliptables.Interface,
 		networkInterfacer:        utilproxy.RealNetwork{},
 	}
 
+	// FIXME: need to initialize acceptMap/rejectMap from the kernel value
+	proxier.kernelAcceptMap = eBPFMaps["accept_map"]
+	proxier.kernelRejectMap = eBPFMaps["reject_map"]
+
 	burstSyncs := 2
 	klog.V(2).InfoS("Iptables sync params", "ipFamily", ipt.Protocol(), "minSyncPeriod", minSyncPeriod, "syncPeriod", syncPeriod, "burstSyncs", burstSyncs)
 	// We pass syncPeriod to ipt.Monitor, which will call us only if it needs to.
@@ -375,14 +433,14 @@ func NewDualStackProxier(
 	ipFamilyMap := utilproxy.MapCIDRsByIPFamily(nodePortAddresses)
 	ipv4Proxier, err := NewProxier(ipt[0], sysctl,
 		exec, syncPeriod, minSyncPeriod, masqueradeAll, masqueradeBit, localDetectors[0], hostname,
-		nodeIP[0], recorder, healthzServer, ipFamilyMap[v1.IPv4Protocol])
+		nodeIP[0], recorder, healthzServer, ipFamilyMap[v1.IPv4Protocol], nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ipv4 proxier: %v", err)
 	}
 
 	ipv6Proxier, err := NewProxier(ipt[1], sysctl,
 		exec, syncPeriod, minSyncPeriod, masqueradeAll, masqueradeBit, localDetectors[1], hostname,
-		nodeIP[1], recorder, healthzServer, ipFamilyMap[v1.IPv6Protocol])
+		nodeIP[1], recorder, healthzServer, ipFamilyMap[v1.IPv6Protocol], nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ipv6 proxier: %v", err)
 	}
@@ -955,6 +1013,21 @@ func (proxier *Proxier) syncProxyRules() {
 		"-j", "MARK", "--or-mark", proxier.masqueradeMark,
 	)
 
+	// Install the kubernetes-specific ACCEPT/REJECT rules, and create maps to
+	// record the updated state.
+	proxier.filterRules.Write(
+		"-A", string(kubeNodePortsChain),
+		"-m", "bpf", "--object-pinned", "/sys/fs/bpf/check_reject_map",
+		"-j", "ACCEPT",
+	)
+	proxier.filterRules.Write(
+		"-A", string(kubeServicesChain),
+		"-m", "bpf", "--object-pinned", "/sys/fs/bpf/check_reject_map",
+		"-j", "REJECT",
+	)
+	newAcceptMap := make(map[ebpfServiceKey]bool, len(proxier.acceptMap))
+	newRejectMap := make(map[ebpfServiceKey]bool, len(proxier.rejectMap))
+
 	// Accumulate NAT chains to keep.
 	activeNATChains := map[utiliptables.Chain]bool{} // use a map as a set
 
@@ -1154,14 +1227,9 @@ func (proxier *Proxier) syncProxyRules() {
 				"-j", string(svcChain))
 		} else {
 			// No endpoints.
-			proxier.filterRules.Write(
-				"-A", string(kubeServicesChain),
-				"-m", "comment", "--comment", fmt.Sprintf(`"%s has no endpoints"`, svcNameString),
-				"-m", protocol, "-p", protocol,
-				"-d", svcInfo.ClusterIP().String(),
-				"--dport", strconv.Itoa(svcInfo.Port()),
-				"-j", "REJECT",
-			)
+			if key, ok := makeEBPFServiceKey(svcInfo.ClusterIP().String(), svcInfo.Port(), protocol); ok {
+				newRejectMap[key] = true
+			}
 		}
 
 		// Capture externalIPs.
@@ -1216,14 +1284,9 @@ func (proxier *Proxier) syncProxyRules() {
 
 			} else {
 				// No endpoints.
-				proxier.filterRules.Write(
-					"-A", string(kubeExternalServicesChain),
-					"-m", "comment", "--comment", fmt.Sprintf(`"%s has no endpoints"`, svcNameString),
-					"-m", protocol, "-p", protocol,
-					"-d", externalIP,
-					"--dport", strconv.Itoa(svcInfo.Port()),
-					"-j", "REJECT",
-				)
+				if key, ok := makeEBPFServiceKey(externalIP, svcInfo.Port(), protocol); ok {
+					newRejectMap[key] = true
+				}
 			}
 		}
 
@@ -1297,14 +1360,9 @@ func (proxier *Proxier) syncProxyRules() {
 				proxier.natRules.Write(args, "-j", string(KubeMarkDropChain))
 			} else {
 				// No endpoints.
-				proxier.filterRules.Write(
-					"-A", string(kubeExternalServicesChain),
-					"-m", "comment", "--comment", fmt.Sprintf(`"%s has no endpoints"`, svcNameString),
-					"-m", protocol, "-p", protocol,
-					"-d", ingress,
-					"--dport", strconv.Itoa(svcInfo.Port()),
-					"-j", "REJECT",
-				)
+				if key, ok := makeEBPFServiceKey(ingress, svcInfo.Port(), protocol); ok {
+					newRejectMap[key] = true
+				}
 			}
 		}
 
@@ -1368,14 +1426,10 @@ func (proxier *Proxier) syncProxyRules() {
 				}
 			} else {
 				// No endpoints.
-				proxier.filterRules.Write(
-					"-A", string(kubeExternalServicesChain),
-					"-m", "comment", "--comment", fmt.Sprintf(`"%s has no endpoints"`, svcNameString),
-					"-m", "addrtype", "--dst-type", "LOCAL",
-					"-m", protocol, "-p", protocol,
-					"--dport", strconv.Itoa(svcInfo.NodePort()),
-					"-j", "REJECT",
-				)
+				// FIXME all node IPs
+				if key, ok := makeEBPFServiceKey(proxier.nodeIP.String(), svcInfo.NodePort(), protocol); ok {
+					newRejectMap[key] = true
+				}
 			}
 		}
 
@@ -1383,13 +1437,10 @@ func (proxier *Proxier) syncProxyRules() {
 		if svcInfo.HealthCheckNodePort() != 0 {
 			// no matter if node has local endpoints, healthCheckNodePorts
 			// need to add a rule to accept the incoming connection
-			proxier.filterRules.Write(
-				"-A", string(kubeNodePortsChain),
-				"-m", "comment", "--comment", fmt.Sprintf(`"%s health check node port"`, svcNameString),
-				"-m", "tcp", "-p", "tcp",
-				"--dport", strconv.Itoa(svcInfo.HealthCheckNodePort()),
-				"-j", "ACCEPT",
-			)
+			// FIXME all node IPs
+			if key, ok := makeEBPFServiceKey(proxier.nodeIP.String(), svcInfo.HealthCheckNodePort(), "tcp"); ok {
+				newAcceptMap[key] = true
+			}
 		}
 
 		if !hasEndpoints {
@@ -1594,6 +1645,52 @@ func (proxier *Proxier) syncProxyRules() {
 	if err := proxier.serviceHealthServer.SyncEndpoints(endpointUpdateResult.HCEndpointsLocalIPSize); err != nil {
 		klog.ErrorS(err, "Error syncing healthcheck endpoints")
 	}
+
+	// Sync eBPF maps
+	// FIXME use batch APIs after figuring out whether they work right with [][8]byte
+	for key := range newRejectMap {
+		if !proxier.rejectMap[key] {
+			err := proxier.kernelRejectMap.Put(key, byte(1))
+			if err != nil {
+				klog.ErrorS(err, "Failed to update eBPF reject map entry for key %s", key)
+			} else {
+				klog.InfoS("Updated eBPF reject map entry for key %s", key)
+			}
+		}
+	}
+	for key := range proxier.rejectMap {
+		if !newRejectMap[key] {
+			err := proxier.kernelRejectMap.Delete(key)
+			if err != nil {
+				klog.ErrorS(err, "Failed to delete eBPF reject map entry for key %s", key)
+			} else {
+				klog.InfoS("Deleted eBPF reject map entry for key %s", key)
+			}
+		}
+	}
+	proxier.rejectMap = newRejectMap	
+
+	for key := range newAcceptMap {
+		if !proxier.acceptMap[key] {
+			err := proxier.kernelAcceptMap.Put(key, byte(1))
+			if err != nil {
+				klog.ErrorS(err, "Failed to update eBPF accept map entry for key %s", key)
+			} else {
+				klog.InfoS("Updated eBPF accept map entry for key %s", key)
+			}
+		}
+	}
+	for key := range proxier.acceptMap {
+		if !newAcceptMap[key] {
+			err := proxier.kernelAcceptMap.Delete(key)
+			if err != nil {
+				klog.ErrorS(err, "Failed to delete eBPF accept map entry for key %s", key)
+			} else {
+				klog.InfoS("Deleted eBPF accept map entry for key %s", key)
+			}
+		}
+	}
+	proxier.acceptMap = newAcceptMap	
 
 	// Finish housekeeping.
 	// Clear stale conntrack entries for UDP Services, this has to be done AFTER the iptables rules are programmed.

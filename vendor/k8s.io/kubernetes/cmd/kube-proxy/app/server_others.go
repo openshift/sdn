@@ -258,6 +258,7 @@ func newProxyServer(
 				recorder,
 				healthzServer,
 				config.NodePortAddresses,
+				nil,
 			)
 		}
 

@@ -50,7 +50,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		return
 	}
 
-	s, err := newProxyServer(sdn.proxyConfig, sdn.informers.kubeClient, sdn.nodeName, sdn.nodeIP)
+	s, err := newProxyServer(sdn.proxyConfig, sdn.informers.kubeClient, sdn.nodeName, sdn.nodeIP, sdn.eBPFMaps)
 	if err != nil {
 		klog.Fatalf("Unable to create proxy server: %v", err)
 	}

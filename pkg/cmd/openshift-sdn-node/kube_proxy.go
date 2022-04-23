@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cilium/ebpf"
+
 	// In this file we use the import names that the upstream kube-proxy code uses.
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
 
@@ -74,7 +76,7 @@ type ProxyServer struct {
 // newProxyServer creates the service proxy. This is a modified version of
 // newProxyServer() from k8s.io/kubernetes/cmd/kube-proxy/app/server_others.go, and should
 // be kept in sync with that.
-func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clientset.Interface, hostname, sdnNodeIP string) (*ProxyServer, error) {
+func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clientset.Interface, hostname, sdnNodeIP string, eBPFMaps map[string]*ebpf.Map) (*ProxyServer, error) {
 	var err error
 
 	var iptInterface utiliptables.Interface
@@ -139,6 +141,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 			recorder,
 			healthzServer,
 			config.NodePortAddresses,
+			eBPFMaps,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create proxier: %v", err)

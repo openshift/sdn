@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cilium/ebpf"
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/openshift/library-go/pkg/serviceability"
 	sdnnode "github.com/openshift/sdn/pkg/network/node"
+	sdnbpf "github.com/openshift/sdn/pkg/network/node/bpf"
 	sdnproxy "github.com/openshift/sdn/pkg/network/proxy"
 	"github.com/openshift/sdn/pkg/version"
 )
@@ -46,6 +48,8 @@ type openShiftSDN struct {
 	osdnProxy   *sdnproxy.OsdnProxy
 
 	ipt iptables.Interface
+
+	eBPFMaps map[string]*ebpf.Map
 }
 
 var networkLong = `
@@ -153,6 +157,11 @@ func (sdn *openShiftSDN) init() error {
 	}
 
 	sdn.ipt = iptables.New(kexec.New(), iptables.ProtocolIPv4)
+
+	sdn.eBPFMaps, err = sdnbpf.InitBPF("/host")
+	if err != nil {
+		return fmt.Errorf("failed to initialize eBPF: %v", err)
+	}
 
 	// Configure SDN
 	err = sdn.initSDN()

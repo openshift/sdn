@@ -2,7 +2,7 @@ BPF2GO_TARGETS=bpf_bpfeb.go bpf_bpfel.go bpf_bpfeb.o bpf_bpfel.o
 
 all: $(BPF2GO_TARGETS)
 
-$(BPF2GO_TARGETS): include/vmlinux.h
+$(BPF2GO_TARGETS): bpf.c include/vmlinux.h
 	go generate -mod=vendor .
 
 include/vmlinux.h:
