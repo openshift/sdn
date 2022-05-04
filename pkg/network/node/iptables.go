@@ -300,11 +300,16 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 
 func (n *NodeIPTables) ensureEgressIPRules(egressIP, mark string) error {
 	for _, cidr := range n.clusterNetworkCIDR {
-		err := execIPTablesWithRetry(func() error {
+		if err := execIPTablesWithRetry(func() error {
 			_, err := n.ipt.EnsureRule(iptables.Prepend, iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
+			if err != nil {
+				return err
+			}
+			// EgressIP cannot be used for destination IPs that are in cluster network.
+			// In a scenario where the destination got DNATed to an IP in cluster network(ExternalIP, LoadBalancer) masquerade the traffic so both DNAT and unDNAT happen on the same node.
+			_, err = n.ipt.EnsureRule(iptables.Prepend, iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-d", cidr, "-m", "mark", "--mark", mark, "-j", "MASQUERADE")
 			return err
-		})
-		if err != nil {
+		}); err != nil {
 			return err
 		}
 	}
@@ -333,10 +338,13 @@ func (n *NodeIPTables) DeleteEgressIPRules(egressIP, mark string) error {
 	delete(n.egressIPs, egressIP)
 
 	for _, cidr := range n.clusterNetworkCIDR {
-		err := execIPTablesWithRetry(func() error {
+		if err := execIPTablesWithRetry(func() error {
+			err := n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-d", cidr, "-m", "mark", "--mark", mark, "-j", "MASQUERADE")
+			if err != nil {
+				return err
+			}
 			return n.ipt.DeleteRule(iptables.TableNAT, iptables.Chain("OPENSHIFT-MASQUERADE"), "-s", cidr, "-m", "mark", "--mark", mark, "-j", "SNAT", "--to-source", egressIP)
-		})
-		if err != nil {
+		}); err != nil {
 			return err
 		}
 	}
