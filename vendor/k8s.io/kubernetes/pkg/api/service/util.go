@@ -69,6 +69,8 @@ func GetLoadBalancerSourceRanges(service *api.Service) (utilnet.IPNetSet, error)
 
 // RequestsOnlyLocalTraffic checks if service requests OnlyLocal traffic.
 func RequestsOnlyLocalTraffic(service *api.Service) bool {
+	return false
+
 	if service.Spec.Type != api.ServiceTypeLoadBalancer &&
 		service.Spec.Type != api.ServiceTypeNodePort {
 		return false
