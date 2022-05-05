@@ -370,7 +370,7 @@ func (eip *egressIPWatcher) releaseEgressIP(egressIP, mark string) error {
 		return nil
 	}
 
-	localEgressLink, localEgressNet, _, err := eip.getEgressLinkDetails()
+	localEgressLink, localEgressNet, err := GetLinkDetails(eip.localIP)
 	if err != nil {
 		return fmt.Errorf("unable to get egress link details: %v", err)
 	}
