@@ -115,15 +115,15 @@ func NewHybridProxier(
 }
 
 func (proxier *HybridProxier) OnNodeAdd(node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+	proxier.mainProxy.OnNodeAdd(node)
 }
 
 func (proxier *HybridProxier) OnNodeUpdate(oldNode, node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+	proxier.mainProxy.OnNodeUpdate(oldNode, node)
 }
 
 func (proxier *HybridProxier) OnNodeDelete(node *corev1.Node) {
-	// TODO implement https://github.com/kubernetes/enhancements/pull/640
+	proxier.mainProxy.OnNodeDelete(node)
 }
 
 func (proxier *HybridProxier) OnNodeSynced() {

@@ -2,6 +2,9 @@ package openshift_sdn_node
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/fields"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 	"net"
 	"net/http"
 	"time"
@@ -60,6 +63,7 @@ type ProxyServer struct {
 	Broadcaster        events.EventBroadcaster
 	Proxier            proxy.Provider
 	ProxyMode          string
+	NodeRef            *v1.ObjectReference
 	MetricsBindAddress string
 	EnableProfiling    bool
 	UseEndpointSlices  bool
@@ -178,6 +182,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		execer:             execer,
 		Broadcaster:        eventBroadcaster,
 		ProxyMode:          string(proxyMode),
+		NodeRef:            nodeRef,
 		MetricsBindAddress: config.MetricsBindAddress,
 		EnableProfiling:    config.EnableProfiling,
 		ConfigSyncPeriod:   config.ConfigSyncPeriod.Duration,
@@ -319,7 +324,20 @@ func startProxyServer(s *ProxyServer) error {
 	// functions must configure their shared informer event handlers first.
 	informerFactory.Start(wait.NeverStop)
 
-	// SDNMISSING: upstream handles features.TopologyAwareHints here
+	if utilfeature.DefaultFeatureGate.Enabled(features.TopologyAwareHints) {
+		// Make an informer that selects for our nodename.
+		currentNodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(s.Client, s.ConfigSyncPeriod,
+			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.FieldSelector = fields.OneTermEqualSelector("metadata.name", s.NodeRef.Name).String()
+			}))
+		nodeConfig := config.NewNodeConfig(currentNodeInformerFactory.Core().V1().Nodes(), s.ConfigSyncPeriod)
+		nodeConfig.RegisterEventHandler(s.Proxier)
+		go nodeConfig.Run(wait.NeverStop)
+
+		// This has to start after the calls to NewNodeConfig because that must
+		// configure the shared informer event handler first.
+		currentNodeInformerFactory.Start(wait.NeverStop)
+	}
 
 	go s.Proxier.SyncLoop()
 
