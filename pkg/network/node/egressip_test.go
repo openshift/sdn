@@ -993,6 +993,24 @@ func TestMarkForVNID(t *testing.T) {
 			masqueradeBit: 0x00000000,
 			result:        0xff000000,
 		},
+		{
+			description:   "masqBit == bit 25, VNID == defaultKubeletDropBit",
+			vnid:          defaultKubeletDropBit,
+			masqueradeBit: 0x10000000,
+			result:        0x01000000,
+		},
+		{
+			description:   "no masqBit, VNID matches defaultKubeletDropBit",
+			vnid:          0x00008aaa,
+			masqueradeBit: 0x00000000,
+			result:        0x10000aaa,
+		},
+		{
+			description:   "masqBit == 1, VNID == defaultKubeletDropBit | 1",
+			vnid:          defaultKubeletDropBit | 1,
+			masqueradeBit: 1,
+			result:        0x11000000,
+		},
 	}
 
 	for _, tc := range testcases {
