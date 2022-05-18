@@ -13,6 +13,7 @@ import (
 
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -394,6 +395,13 @@ func (node *OsdnNode) Start() error {
 // attached to the OVS bridge before restart, and either reattaches or kills each of the
 // corresponding pods.
 func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.PodSandbox, existingOFPodNetworks map[string]podNetworkInfo) error {
+	pods, err := common.ListPodsInNodeAndNamespace(context.TODO(), node.kClient, node.hostName, metav1.NamespaceAll)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	defer klog.V(2).Infof("reattachPods took %v", time.Since(start))
+	node.podManager.setReattachPodsCache(pods)
 	for sandboxID, podInfo := range existingOFPodNetworks {
 		sandbox, ok := existingPodSandboxes[sandboxID]
 		if !ok {
@@ -423,6 +431,7 @@ func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.
 			klog.Warningf("Could not reattach pod '%s/%s' to SDN: %v", req.PodNamespace, req.PodName, err)
 		}
 	}
+	node.podManager.clearReattachPodsCache()
 
 	// Kill any remaining pods in another thread, after letting SDN startup proceed
 	go node.killFailedPods(existingPodSandboxes)
