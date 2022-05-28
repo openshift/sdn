@@ -3,11 +3,9 @@ package openshift_sdn_node
 import (
 	"net"
 
-	corev1 "k8s.io/api/core/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/kubernetes/scheme"
-	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/record"
+	eventsv1 "k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
 	kubeproxyoptions "k8s.io/kubernetes/cmd/kube-proxy/app"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
@@ -42,7 +40,7 @@ func (sdn *openShiftSDN) initProxy() error {
 
 // runProxy starts the configured proxy process and closes the provided channel
 // when the proxy has initialized
-func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
+func (sdn *openShiftSDN) runProxy(waitChan chan<- bool, stopCh <-chan struct{}) {
 	if sdn.proxyConfig.Mode == proxyModeDisabled {
 		klog.Warningf("Built-in kube-proxy is disabled")
 		serveMetrics(sdn.proxyConfig.MetricsBindAddress, "disabled", false, nil)
@@ -55,7 +53,7 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 		klog.Fatalf("Unable to create proxy server: %v", err)
 	}
 
-	err = sdn.wrapProxy(s, waitChan)
+	err = sdn.wrapProxy(s, waitChan, stopCh)
 	if err != nil {
 		klog.Fatalf("Unable to create proxy wrapper: %v", err)
 	}
@@ -69,18 +67,14 @@ func (sdn *openShiftSDN) runProxy(waitChan chan<- bool) {
 }
 
 // wrapProxy wraps the created proxier with the unidling and firewalling proxies
-func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
+func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool, stopCh <-chan struct{}) error {
 	var err error
 	var unidlingProxy sdnproxy.HybridizableProxy
 
 	if s.enableUnidling {
-		// FIXME: openshift-controller-manager assumes the LastTimestamp field in
-		// the Event will be set, which is only true if we use the legacy
-		// corev1.Event API rather than the new eventsv1.Event API. So we need a
-		// legacy event recorder.
-		unidlingBroadcaster := record.NewBroadcaster()
-		unidlingBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: sdn.informers.kubeClient.CoreV1().Events("")})
-		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
+		unidlingBroadcaster := eventsv1.NewBroadcaster(&eventsv1.EventSinkImpl{Interface: sdn.informers.kubeClient.EventsV1()})
+		unidlingBroadcaster.StartRecordingToSink(stopCh)
+		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, "openshift-sdn")
 
 		unidlingProxy, err = unidler.NewUnidlerProxier(
 			net.ParseIP(sdn.proxyConfig.BindAddress),

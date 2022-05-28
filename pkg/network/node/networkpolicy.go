@@ -476,17 +476,18 @@ func (np *networkPolicyPlugin) skipIfTooManyFlows(policy *networkingv1.NetworkPo
 
 	switch {
 	case skip && skippedVersion != policy.ResourceVersion:
-		np.node.recorder.Eventf(npRef, corev1.EventTypeWarning,
-			"NetworkPolicySize", "TooManyFlows",
-			"This NetworkPolicy generates an extremely large number of OVS flows (%d) and so it will be ignored to prevent network degradation.", numFlows)
+		np.node.recorder.Eventf(npRef, nil, corev1.EventTypeWarning,
+			"NetworkPolicySize", "FailedToApplyNetworkPolicy",
+			"This NetworkPolicy generates an extremely large number of OVS flows (%d) and so it will be ignored "+
+				"to prevent network degradation.", numFlows)
 		np.skippedPolicies[policy.UID] = policy.ResourceVersion
 		delete(np.warnedPolicies, policy.UID)
 		klog.Warningf("Ignoring NetworkPolicy %s/%s because it generates an unreasonable number of flows (%d)",
 			policy.Namespace, policy.Name, numFlows)
 
 	case warn && warnedVersion != policy.ResourceVersion:
-		np.node.recorder.Eventf(npRef, corev1.EventTypeWarning,
-			"NetworkPolicySize", "TooManyFlows",
+		np.node.recorder.Eventf(npRef, nil, corev1.EventTypeWarning,
+			"NetworkPolicySize", "FailedToApplyNetworkPolicy",
 			"This NetworkPolicy generates a very large number of OVS flows (%d) and may degrade network performance.", numFlows)
 		np.warnedPolicies[policy.UID] = policy.ResourceVersion
 		delete(np.skippedPolicies, policy.UID)
@@ -494,8 +495,8 @@ func (np *networkPolicyPlugin) skipIfTooManyFlows(policy *networkingv1.NetworkPo
 			policy.Namespace, policy.Name, numFlows)
 
 	case !skip && !warn && (skippedVersion != "" || warnedVersion != ""):
-		np.node.recorder.Eventf(npRef, corev1.EventTypeNormal,
-			"NetworkPolicySize", "OK",
+		np.node.recorder.Eventf(npRef, nil, corev1.EventTypeNormal,
+			"NetworkPolicySize", "CreatedNetworkPolicy",
 			"This NetworkPolicy now generates an acceptable number of OVS flows.")
 		delete(np.skippedPolicies, policy.UID)
 		delete(np.warnedPolicies, policy.UID)

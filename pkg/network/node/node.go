@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
+	eventsv1 "k8s.io/client-go/tools/events"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kapi "k8s.io/kubernetes/pkg/apis/core"
@@ -65,7 +65,7 @@ type OsdnNodeConfig struct {
 
 	OSDNClient osdnclient.Interface
 	KClient    kubernetes.Interface
-	Recorder   record.EventRecorder
+	Recorder   eventsv1.EventRecorder
 
 	KubeInformers informers.SharedInformerFactory
 	OSDNInformers osdninformers.SharedInformerFactory
@@ -82,7 +82,7 @@ type OsdnNode struct {
 	policy           osdnPolicy
 	kClient          kubernetes.Interface
 	osdnClient       osdnclient.Interface
-	recorder         record.EventRecorder
+	recorder         eventsv1.EventRecorder
 	oc               *ovsController
 	networkInfo      *common.ParsedClusterNetwork
 	podManager       *podManager
@@ -443,12 +443,16 @@ func (node *OsdnNode) killFailedPods(failed map[string]*kruntimeapi.PodSandbox) 
 	// Kill pods we couldn't recover; they will get restarted and then
 	// we'll be able to set them up correctly
 	for _, sandbox := range failed {
-		podRef := &corev1.ObjectReference{Kind: "Pod", Name: sandbox.Metadata.Name, Namespace: sandbox.Metadata.Namespace, UID: types.UID(sandbox.Metadata.Uid)}
-		node.recorder.Eventf(podRef, corev1.EventTypeWarning, "NetworkFailed", "The pod's network interface has been lost and the pod will be stopped.")
-
+		podRef := &corev1.ObjectReference{Kind: "Pod", Name: sandbox.Metadata.Name, Namespace: sandbox.Metadata.Namespace,
+			UID: types.UID(sandbox.Metadata.Uid)}
 		klog.V(5).Infof("Killing pod '%s/%s' sandbox", podRef.Namespace, podRef.Name)
 		if err := node.runtimeService.StopPodSandbox(sandbox.Id); err != nil {
 			klog.Warningf("Failed to kill pod '%s/%s' sandbox: %v", podRef.Namespace, podRef.Name, err)
+			node.recorder.Eventf(podRef, nil, corev1.EventTypeWarning, "StopPodSandboxFailed",
+				"FailedToRemovePod", "The pods network interface has been lost and failed to remove pod.")
+		} else {
+			node.recorder.Eventf(podRef, nil, corev1.EventTypeWarning, "", "RemovedPod",
+				"The pods network interface has been lost and the pod is stopped.")
 		}
 	}
 }

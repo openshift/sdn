@@ -17,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/record"
+	eventsv1 "k8s.io/client-go/tools/events"
 	"k8s.io/kubernetes/pkg/util/async"
 
 	osdnv1 "github.com/openshift/api/network/v1"
@@ -1845,7 +1845,7 @@ func TestNetworkPolicyPathological(t *testing.T) {
 	np, ovsif, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
-	fakeRecorder := record.NewFakeRecorder(5)
+	fakeRecorder := eventsv1.NewFakeRecorder(5)
 	np.node.recorder = fakeRecorder
 
 	origFlows, err := ovsif.DumpFlows("")

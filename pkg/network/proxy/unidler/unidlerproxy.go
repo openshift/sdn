@@ -7,7 +7,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/client-go/tools/record"
+	eventsv1 "k8s.io/client-go/tools/events"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
 
@@ -16,7 +16,9 @@ import (
 
 // NewUnidlerProxier creates a new Proxier for the given LoadBalancer and address which fires off
 // unidling signals connections and traffic.  It is intended to be used as one half of a HybridProxier.
-func NewUnidlerProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange, syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string, eventRecorder record.EventRecorder) (*Proxier, error) {
+func NewUnidlerProxier(listenIP net.IP, iptables iptables.Interface, exec utilexec.Interface, pr utilnet.PortRange,
+	syncPeriod, minSyncPeriod, udpIdleTimeout time.Duration, nodePortAddresses []string,
+	eventRecorder eventsv1.EventRecorder) (*Proxier, error) {
 	signaler := &NeedPodsSignaler{eventRecorder}
 	newFunc := func(protocol v1.Protocol, ip net.IP, port int) (ProxySocket, error) {
 		return newUnidlerSocket(protocol, ip, port, signaler)
@@ -25,7 +27,7 @@ func NewUnidlerProxier(listenIP net.IP, iptables iptables.Interface, exec utilex
 }
 
 type NeedPodsSignaler struct {
-	recorder record.EventRecorder
+	recorder eventsv1.EventRecorder
 }
 
 // NeedPods signals that endpoint addresses are needed in order to
@@ -40,7 +42,8 @@ func (sig *NeedPodsSignaler) NeedPods(serviceName types.NamespacedName, port str
 	}
 
 	// HACK: make the message different to prevent event aggregation
-	sig.recorder.Eventf(&serviceRef, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "The service-port %s:%s needs pods.", serviceRef.Name, port)
+	sig.recorder.Eventf(&serviceRef, nil, v1.EventTypeNormal, unidlingapi.NeedPodsReason, "Unidling",
+		"The service-port %s:%s needs pods.", serviceRef.Name, port)
 
 	return nil
 }

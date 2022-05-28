@@ -13,7 +13,7 @@ import (
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/record"
+	eventsv1 "k8s.io/client-go/tools/events"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/interrupt"
 	"k8s.io/kubernetes/pkg/util/iptables"
@@ -42,7 +42,7 @@ type openShiftSDN struct {
 
 	informers   *sdnInformers
 	osdnNode    *sdnnode.OsdnNode
-	sdnRecorder record.EventRecorder
+	sdnRecorder eventsv1.EventRecorder
 	osdnProxy   *sdnproxy.OsdnProxy
 
 	ipt iptables.Interface
@@ -108,7 +108,7 @@ func (sdn *openShiftSDN) run(c *cobra.Command, errout io.Writer, stopCh chan str
 	}
 
 	// Build underlying network objects
-	err = sdn.init()
+	err = sdn.init(stopCh)
 	if err != nil {
 		klog.Fatalf("Failed to initialize sdn: %v", err)
 	}
@@ -144,7 +144,7 @@ func (sdn *openShiftSDN) validateAndParse() error {
 }
 
 // init builds the underlying structs for the network processes.
-func (sdn *openShiftSDN) init() error {
+func (sdn *openShiftSDN) init(stopCh <-chan struct{}) error {
 	// Build the informers
 	var err error
 	err = sdn.buildInformers()
@@ -155,7 +155,7 @@ func (sdn *openShiftSDN) init() error {
 	sdn.ipt = iptables.New(kexec.New(), iptables.ProtocolIPv4)
 
 	// Configure SDN
-	err = sdn.initSDN()
+	err = sdn.initSDN(stopCh)
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDN: %v", err)
 	}
@@ -178,7 +178,7 @@ func (sdn *openShiftSDN) start(stopCh <-chan struct{}) error {
 		return err
 	}
 	proxyInitChan := make(chan bool)
-	sdn.runProxy(proxyInitChan)
+	sdn.runProxy(proxyInitChan, stopCh)
 	sdn.informers.start(stopCh)
 
 	klog.V(2).Infof("openshift-sdn network plugin waiting for proxy startup to complete")
