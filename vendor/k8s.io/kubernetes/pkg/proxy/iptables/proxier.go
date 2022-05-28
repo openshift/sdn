@@ -78,6 +78,9 @@ const (
 	// the kubernetes forward chain
 	kubeForwardChain utiliptables.Chain = "KUBE-FORWARD"
 
+	// kubeProxyFirewallChain is the kube-proxy firewall chain.
+	kubeProxyFirewallChain utiliptables.Chain = "KUBE-PROXY-FIREWALL"
+
 	// kube proxy canary chain is used for monitoring rule reload
 	kubeProxyCanaryChain utiliptables.Chain = "KUBE-PROXY-CANARY"
 )
@@ -404,6 +407,9 @@ var iptablesJumpChains = []iptablesJumpChain{
 	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainForward, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableFilter, kubeServicesChain, utiliptables.ChainOutput, "kubernetes service portals", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableFilter, kubeForwardChain, utiliptables.ChainForward, "kubernetes forwarding rules", nil},
+	{utiliptables.TableFilter, kubeProxyFirewallChain, utiliptables.ChainInput, "kubernetes load balancer firewall", []string{"-m", "conntrack", "--ctstate", "NEW"}},
+	{utiliptables.TableFilter, kubeProxyFirewallChain, utiliptables.ChainOutput, "kubernetes load balancer firewall", []string{"-m", "conntrack", "--ctstate", "NEW"}},
+	{utiliptables.TableFilter, kubeProxyFirewallChain, utiliptables.ChainForward, "kubernetes load balancer firewall", []string{"-m", "conntrack", "--ctstate", "NEW"}},
 	{utiliptables.TableNAT, kubeServicesChain, utiliptables.ChainOutput, "kubernetes service portals", nil},
 	{utiliptables.TableNAT, kubeServicesChain, utiliptables.ChainPrerouting, "kubernetes service portals", nil},
 	{utiliptables.TableNAT, kubePostroutingChain, utiliptables.ChainPostrouting, "kubernetes postrouting rules", nil},
@@ -908,7 +914,7 @@ func (proxier *Proxier) syncProxyRules() {
 
 	// Make sure we keep stats for the top-level chains, if they existed
 	// (which most should have because we created them above).
-	for _, chainName := range []utiliptables.Chain{kubeServicesChain, kubeExternalServicesChain, kubeForwardChain, kubeNodePortsChain} {
+	for _, chainName := range []utiliptables.Chain{kubeServicesChain, kubeExternalServicesChain, kubeForwardChain, kubeNodePortsChain, kubeProxyFirewallChain} {
 		if chain, ok := existingFilterChains[chainName]; ok {
 			proxier.filterChains.WriteBytes(chain)
 		} else {
@@ -1290,11 +1296,19 @@ func (proxier *Proxier) syncProxyRules() {
 							"-s", ingress,
 							"-j", string(chosenChain))
 					}
-				}
 
-				// If the packet was able to reach the end of firewall chain, then it did not get DNATed.
-				// It means the packet cannot go thru the firewall, then mark it for DROP
-				proxier.natRules.Write(args, "-j", string(KubeMarkDropChain))
+					// Finally add a DROP rule to KUBE-PROXY-FIREWALL. Anything
+					// that was accepted by the fwChain will have been
+					// DNATed before this rule is reached, so it won't match
+					// the {"-d", lbip}
+					proxier.filterRules.Write(
+						"-A", string(kubeProxyFirewallChain),
+						"-m", "comment", "--comment", fmt.Sprintf(`"%s traffic not accepted by %s"`, svcNameString, fwChain),
+						"-m", protocol, "-p", protocol,
+						"-d", ingress,
+						"--dport", strconv.Itoa(svcInfo.Port()),
+						"-j", "DROP")
+				}
 			} else {
 				// No endpoints.
 				proxier.filterRules.Write(
