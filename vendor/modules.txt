@@ -260,6 +260,9 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
+# github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1
+## explicit
+github.com/safchain/ethtool
 # github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
 # github.com/spf13/cobra v1.2.1 => github.com/spf13/cobra v0.0.4

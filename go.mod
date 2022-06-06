@@ -15,6 +15,7 @@ require (
 	github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3
 	github.com/openshift/library-go v0.0.0-20211209153216-ed9bc958bd8a
 	github.com/prometheus/client_golang v1.11.0
+	github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1
 	github.com/spf13/cobra v1.2.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e

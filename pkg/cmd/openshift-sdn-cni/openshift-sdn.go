@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -22,6 +23,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/plugins/pkg/ns"
 
+	"github.com/safchain/ethtool"
 	"github.com/vishvananda/netlink"
 )
 
@@ -114,6 +116,61 @@ func (p *cniPlugin) testCmdAdd(args *skel.CmdArgs) (types.Result, error) {
 		return nil, err
 	}
 	return convertToRequestedVersion(args.StdinData, result)
+}
+
+// sets up the host side of a veth for UDP Generic Receive Offload
+func setupUDPOffloadHost(ifname string) error {
+	e, err := ethtool.NewEthtool()
+	if err != nil {
+		return fmt.Errorf("failed to initialize ethtool: %v", err)
+	}
+	defer e.Close()
+
+	err = e.Change(ifname, map[string]bool{
+		"rx-gro":                true,
+		"rx-udp-gro-forwarding": true,
+	})
+	if err != nil {
+		return fmt.Errorf("could not enable UDP offload features: %v", err)
+	}
+	channels, err := e.GetChannels(ifname)
+	if err != nil {
+		return fmt.Errorf("could not query interface channels: %v", err)
+	}
+	channels.RxCount = uint32(runtime.NumCPU())
+	_, err = e.SetChannels(ifname, channels)
+	if err != nil {
+		return fmt.Errorf("could not update interface channels: %v", err)
+	}
+
+	timeoutFile := fmt.Sprintf("/sys/class/net/%s/gro_flush_timeout", ifname)
+	err = os.WriteFile(timeoutFile, []byte("50000\n"), 0644)
+	if err != nil {
+		return fmt.Errorf("could not set UDP flush timeout: %v", err)
+	}
+
+	return nil
+}
+
+// sets up the container side of a veth for UDP Generic Receive Offload
+func setupUDPOffloadContainer(ifname string) error {
+	e, err := ethtool.NewEthtool()
+	if err != nil {
+		return fmt.Errorf("failed to initialize ethtool: %v", err)
+	}
+	defer e.Close()
+
+	channels, err := e.GetChannels(ifname)
+	if err != nil {
+		return fmt.Errorf("could not query interface channels: %v", err)
+	}
+	channels.TxCount = uint32(runtime.NumCPU())
+	_, err = e.SetChannels(ifname, channels)
+	if err != nil {
+		return fmt.Errorf("could not update interface channels: %v", err)
+	}
+
+	return nil
 }
 
 func generateIPTablesCommands(platformType string) [][]string {
@@ -260,10 +317,22 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 			}
 		}
 
+		// Enable UDP GRO
+		err = setupUDPOffloadContainer(args.IfName)
+		if err != nil {
+			return fmt.Errorf("could not enable UDP GRO: %v", err)
+		}
+
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+
+	// Enable UDP GRO
+	err = setupUDPOffloadHost(hostVeth.Name)
+	if err != nil {
+		return fmt.Errorf("could not enable UDP GRO: %v", err)
 	}
 
 	convertedResult, err := convertToRequestedVersion(req.Config, result)

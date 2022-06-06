@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/safchain/ethtool"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
 
@@ -203,8 +204,25 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	return plugin, nil
 }
 
+func setupUDPOffloadUplink(ifname string) error {
+	e, err := ethtool.NewEthtool()
+	if err != nil {
+		return fmt.Errorf("failed to initialize ethtool: %v", err)
+	}
+	defer e.Close()
+
+	err = e.Change(ifname, map[string]bool{
+		"rx-udp-gro-forwarding": true,
+	})
+	if err != nil {
+		return fmt.Errorf("could not enable UDP offload features: %v", err)
+	}
+	return nil
+}
+
 func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork) error {
-	if _, _, err := GetLinkDetails(c.NodeIP); err != nil {
+	link, _, err := GetLinkDetails(c.NodeIP)
+	if err != nil {
 		if err == ErrorNetworkInterfaceNotFound {
 			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.NodeIP, c.NodeName)
 		}
@@ -218,6 +236,10 @@ func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork
 	if err := networkInfo.CheckHostNetworks(hostIPNets); err != nil {
 		// checkHostNetworks() errors *should* be fatal, but we didn't used to check this, and we can't break (mostly-)working nodes on upgrade.
 		klog.Errorf("Local networks conflict with SDN; this will eventually cause problems: %v", err)
+	}
+
+	if err := setupUDPOffloadUplink(link.Attrs().Name); err != nil {
+		return fmt.Errorf("could not enable UDP GRO: %v", err)
 	}
 
 	return nil
