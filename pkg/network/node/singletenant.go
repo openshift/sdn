@@ -3,6 +3,7 @@ package node
 import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/library-go/pkg/network/networkutils"
+	corev1 "k8s.io/api/core/v1"
 )
 
 type singleTenantPlugin struct{}
@@ -39,7 +40,7 @@ func (sp *singleTenantPlugin) UpdateNetNamespace(netns *osdnv1.NetNamespace, old
 func (sp *singleTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 }
 
-func (sp *singleTenantPlugin) SetUpPod(podIP string) error {
+func (sp *singleTenantPlugin) SetUpPod(pod *corev1.Pod, podIP string) error {
 	return nil
 }
 

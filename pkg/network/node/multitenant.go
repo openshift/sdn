@@ -119,7 +119,7 @@ func (mp *multiTenantPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	mp.updatePodNetwork(netns.Name, netns.NetID, 0)
 }
 
-func (mp *multiTenantPlugin) SetUpPod(podIP string) error {
+func (mp *multiTenantPlugin) SetUpPod(pod *corev1.Pod, podIP string) error {
 	return nil
 }
 
