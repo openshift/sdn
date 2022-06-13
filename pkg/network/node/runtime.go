@@ -61,12 +61,12 @@ func (node *OsdnNode) getSDNPodSandboxes() (map[string]*kruntimeapi.PodSandbox, 
 
 	podSandboxMap := make(map[string]*kruntimeapi.PodSandbox)
 	for _, sandbox := range podSandboxList {
-		status, err := runtimeService.PodSandboxStatus(sandbox.Id)
+		response, err := runtimeService.PodSandboxStatus(sandbox.Id, false)
 		if err != nil {
 			klog.Warningf("Could not get status of pod %s/%s: %v", sandbox.Metadata.Namespace, sandbox.Metadata.Name, err)
 			continue
 		}
-		if status.Linux.Namespaces.Options.Network == kruntimeapi.NamespaceMode_NODE {
+		if response.Status.Linux.Namespaces.Options.Network == kruntimeapi.NamespaceMode_NODE {
 			klog.V(4).Infof("Ignoring pod %s/%s which is hostNetwork", sandbox.Metadata.Namespace, sandbox.Metadata.Name)
 			continue
 		}
