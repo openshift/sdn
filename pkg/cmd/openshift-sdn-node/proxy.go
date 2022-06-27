@@ -124,12 +124,12 @@ func (d *sdnLocalDetector) IsImplemented() bool {
 	return true
 }
 
-func (d *sdnLocalDetector) IfLocal() []string {
-	return []string{"-i", sdnnode.Tun0}
+func (d *sdnLocalDetector) JumpIfLocal(args []string, toChain string) []string {
+	return append(args, "-i", sdnnode.Tun0, "-j", toChain)
 }
 
-func (d *sdnLocalDetector) IfNotLocal() []string {
-	return []string{"!", "-i", sdnnode.Tun0}
+func (d *sdnLocalDetector) JumpIfNotLocal(args []string, toChain string) []string {
+	return append(args, "!", "-i", sdnnode.Tun0, "-j", toChain)
 }
 
 func getLocalDetector() proxyutiliptables.LocalTrafficDetector {
