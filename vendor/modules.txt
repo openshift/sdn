@@ -197,13 +197,13 @@ github.com/opencontainers/runtime-spec/specs-go
 github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/pkg/pwalk
 github.com/opencontainers/selinux/pkg/pwalkdir
-# github.com/openshift/api v0.0.0-20220613185440-63b58097a95d
+# github.com/openshift/api v0.0.0-20211209173311-a19f3b9052a6
 ## explicit
 github.com/openshift/api/cloudnetwork/v1
 github.com/openshift/api/config/v1
 github.com/openshift/api/network/v1
 github.com/openshift/api/unidling/v1alpha1
-# github.com/openshift/build-machinery-go v0.0.0-20211213093930-7e33a7eb4ce3
+# github.com/openshift/build-machinery-go v0.0.0-20210806203541-4ea9b6da3a37
 ## explicit
 github.com/openshift/build-machinery-go
 github.com/openshift/build-machinery-go/make
@@ -213,7 +213,7 @@ github.com/openshift/build-machinery-go/make/targets/golang
 github.com/openshift/build-machinery-go/make/targets/openshift
 github.com/openshift/build-machinery-go/make/targets/openshift/operator
 github.com/openshift/build-machinery-go/scripts
-# github.com/openshift/client-go v0.0.0-20220603133046-984ee5ebedcf
+# github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3
 ## explicit
 github.com/openshift/client-go/cloudnetwork/clientset/versioned
 github.com/openshift/client-go/cloudnetwork/clientset/versioned/scheme
@@ -231,7 +231,7 @@ github.com/openshift/client-go/network/informers/externalversions/internalinterf
 github.com/openshift/client-go/network/informers/externalversions/network
 github.com/openshift/client-go/network/informers/externalversions/network/v1
 github.com/openshift/client-go/network/listers/network/v1
-# github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc
+# github.com/openshift/library-go v0.0.0-20211209153216-ed9bc958bd8a
 ## explicit
 github.com/openshift/library-go/pkg/config/leaderelection
 github.com/openshift/library-go/pkg/network/networkapihelpers
@@ -385,7 +385,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
+# golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
