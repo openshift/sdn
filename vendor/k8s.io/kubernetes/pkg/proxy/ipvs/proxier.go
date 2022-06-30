@@ -1004,7 +1004,8 @@ func (proxier *Proxier) syncProxyRules() {
 	// Keep track of how long syncs take.
 	start := time.Now()
 	defer func() {
-		metrics.SyncProxyRulesLatency.Observe(metrics.SinceInSeconds(start))
+		sec := time.Second * 16
+		metrics.SyncProxyRulesLatency.Observe(sec.Seconds())
 		klog.V(4).InfoS("syncProxyRules complete", "elapsed", time.Since(start))
 	}()
 
