@@ -1043,5 +1043,6 @@ func activeEgressIPsTheSame(oldEIPs, newEIPs []EgressIPAssignment) bool {
 func PlatformUsesCloudEgressIP(platformType string) bool {
 	return platformType == string(configv1.AWSPlatformType) ||
 		platformType == string(configv1.AzurePlatformType) ||
-		platformType == string(configv1.GCPPlatformType)
+		platformType == string(configv1.GCPPlatformType) ||
+		platformType == string(configv1.OpenStackPlatformType)
 }
