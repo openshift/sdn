@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	defaultPollInterval = 5 * time.Second
-	repollInterval      = time.Second
-	maxRetries          = 2
+	defaultPollInterval   = 5 * time.Second
+	repollInterval        = time.Second
+	maxRetries            = 2
+	defaultKubeletDropBit = 1 << uint32(15) // https://github.com/kubernetes/kubelet/blob/release-1.24/config/v1beta1/types.go#L555
 )
 
 type egressNode struct {
@@ -121,11 +122,14 @@ func egressIPLabel(link netlink.Link) (string, error) {
 	return label, nil
 }
 
-// Convert vnid to a hex value that is not 0, does not have masqueradeBit set, and isn't
+// Convert vnid to a hex value that is not 0, does not have masqueradeBit and defaultKubeletDropBit set, and isn't
 // the same value as would be returned for any other valid vnid.
 func getMarkForVNID(vnid, masqueradeBit uint32) string {
 	if vnid == 0 {
 		vnid = 0xff000000
+	}
+	if (vnid & defaultKubeletDropBit) != 0 {
+		vnid = (vnid | 0x10000000) ^ defaultKubeletDropBit
 	}
 	if (vnid & masqueradeBit) != 0 {
 		vnid = (vnid | 0x01000000) ^ masqueradeBit
