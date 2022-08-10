@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -60,7 +61,7 @@ type egressIPMetaData struct {
 	packetMark string
 }
 
-func newEgressIPWatcher(oc *ovsController, cloudEgressIP bool, localIP string, masqueradeBit *int32) *egressIPWatcher {
+func newEgressIPWatcher(oc *ovsController, cloudEgressIP bool, localIP string, masqueradeBit *int32, recorder record.EventRecorder) *egressIPWatcher {
 	eip := &egressIPWatcher{
 		oc:           oc,
 		localIP:      localIP,
@@ -71,7 +72,7 @@ func newEgressIPWatcher(oc *ovsController, cloudEgressIP bool, localIP string, m
 		eip.masqueradeBit = 1 << uint32(*masqueradeBit)
 	}
 
-	eip.tracker = common.NewEgressIPTracker(eip, cloudEgressIP)
+	eip.tracker = common.NewEgressIPTracker(eip, cloudEgressIP, recorder)
 	return eip
 }
 
