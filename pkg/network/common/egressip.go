@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
@@ -35,6 +36,9 @@ const (
 	// unlimitedNodeCapacity indicates a discarded capacity - useful on
 	// bare-metal where this is ignored.
 	unlimitedNodeCapacity = math.MaxInt32
+	// nodeExhaustEventInterval minimum interval at which event for node
+	// exhaust for egress ip can be triggered.
+	nodeExhaustEventInterval = 5 * time.Minute
 )
 
 type ifAddr struct {
@@ -123,9 +127,12 @@ type EgressIPTracker struct {
 	changedEgressIPs  map[*egressIPInfo]bool
 	changedNamespaces map[*namespaceEgress]bool
 	updateEgressCIDRs bool
+	recorder          record.EventRecorder
+	start             time.Time
+	isFirstEvent      bool
 }
 
-func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTracker {
+func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, eventRecorder record.EventRecorder) *EgressIPTracker {
 	return &EgressIPTracker{
 		watcher: watcher,
 
@@ -138,6 +145,9 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTr
 
 		changedEgressIPs:  make(map[*egressIPInfo]bool),
 		changedNamespaces: make(map[*namespaceEgress]bool),
+		recorder:          eventRecorder,
+		start:             time.Now(),
+		isFirstEvent:      true,
 	}
 }
 
@@ -247,6 +257,21 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 		if err := eit.validateEgressCIDRsAreSubnetOfCloudNetwork(hs); err != nil {
 			klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
 			return
+		}
+	}
+	if eit.recorder != nil && len(hs.EgressIPs) > 0 && eit.CloudEgressIP {
+		capacity, err := eit.getCapacity(hs)
+		if err != nil {
+			klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)
+			return
+		}
+		now := time.Now()
+		if len(hs.EgressIPs) >= capacity && (eit.isFirstEvent || now.After(eit.start.Add(nodeExhaustEventInterval))) {
+			eit.start = now
+			eit.isFirstEvent = false
+			hostRef := &corev1.ObjectReference{Kind: "Node", Name: hs.Host}
+			eit.recorder.Eventf(hostRef, corev1.EventTypeNormal, "Node",
+				"The node reached its maximum egress ip capacity %d", capacity)
 		}
 	}
 	if len(hs.EgressIPs) > 0 && len(hs.EgressCIDRs) == 0 && eit.CloudEgressIP {
@@ -445,6 +470,19 @@ func (eit *EgressIPTracker) validateEgressIPs(hs *osdnv1.HostSubnet) error {
 		}
 	}
 	return nil
+}
+
+// getCapacity retrieves egress ip capacity for the given HostSubnet
+func (eit *EgressIPTracker) getCapacity(hs *osdnv1.HostSubnet) (int, error) {
+	cloudEgressIPConfig, err := eit.validateEgressIPConfigExists(hs)
+	if err != nil {
+		return 0, err
+	}
+	capacity := cloudEgressIPConfig.Capacity.IP
+	if capacity == 0 {
+		capacity = cloudEgressIPConfig.Capacity.IPv4
+	}
+	return capacity, nil
 }
 
 func (eit *EgressIPTracker) validateEgressIPConfigExists(hs *osdnv1.HostSubnet) (*nodeCloudEgressIPConfiguration, error) {

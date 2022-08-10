@@ -16,6 +16,7 @@ import (
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 
 	cloudnetworkclient "github.com/openshift/client-go/cloudnetwork/clientset/versioned"
@@ -53,9 +54,9 @@ type egressNode struct {
 	retries int
 }
 
-func newEgressIPManager(cloudEgressIP bool) *egressIPManager {
+func newEgressIPManager(cloudEgressIP bool, recorder record.EventRecorder) *egressIPManager {
 	eim := &egressIPManager{}
-	eim.tracker = common.NewEgressIPTracker(eim, cloudEgressIP)
+	eim.tracker = common.NewEgressIPTracker(eim, cloudEgressIP, recorder)
 	return eim
 }
 
