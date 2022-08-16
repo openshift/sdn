@@ -518,9 +518,6 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 		return nil, nil, err
 	}
 
-	if err := m.policy.SetUpPod(podIP.String()); err != nil {
-		klog.Errorf("there may be issues with pod isolation: %v", err)
-	}
 	ofport, err := m.ovs.SetUpPod(req.SandboxID, req.HostVeth, podIP, vnid)
 	if err != nil {
 		return nil, nil, err
@@ -530,6 +527,10 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 	}
 
 	m.policy.EnsureVNIDRules(vnid)
+
+	if err := m.policy.SetUpPod(v1Pod, podIP.String()); err != nil {
+		klog.Errorf("network policy cannot be applied to pod %s (%v)", req.PodName, err)
+	}
 	success = true
 	klog.Infof("CNI_ADD %s/%s got IP %s, ofport %d", req.PodNamespace, req.PodName, podIP, ofport)
 	return ipamResult, &runningPod{vnid: vnid, ofport: ofport}, nil
