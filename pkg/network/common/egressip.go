@@ -116,8 +116,8 @@ type EgressIPTracker struct {
 
 	watcher EgressIPWatcher
 
-	kubeClient kubernetes.Interface
-
+	kubeClient       kubernetes.Interface
+	localIP          string
 	nodes            map[ktypes.UID]*nodeEgress
 	nodesByNodeIP    map[string]*nodeEgress
 	namespacesByVNID map[uint32]*namespaceEgress
@@ -132,7 +132,7 @@ type EgressIPTracker struct {
 	isFirstEvent      bool
 }
 
-func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, eventRecorder record.EventRecorder) *EgressIPTracker {
+func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, localIP string, eventRecorder record.EventRecorder) *EgressIPTracker {
 	return &EgressIPTracker{
 		watcher: watcher,
 
@@ -145,6 +145,7 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, eventRecord
 
 		changedEgressIPs:  make(map[*egressIPInfo]bool),
 		changedNamespaces: make(map[*namespaceEgress]bool),
+		localIP:           localIP,
 		recorder:          eventRecorder,
 		start:             time.Now(),
 		isFirstEvent:      true,
@@ -259,7 +260,8 @@ func (eit *EgressIPTracker) handleAddOrUpdateHostSubnet(obj, _ interface{}, even
 			return
 		}
 	}
-	if eit.recorder != nil && len(hs.EgressIPs) > 0 && eit.CloudEgressIP {
+	if eit.localIP != "" && eit.localIP == hs.HostIP &&
+		eit.recorder != nil && len(hs.EgressIPs) > 0 && eit.CloudEgressIP {
 		capacity, err := eit.getCapacity(hs)
 		if err != nil {
 			klog.Errorf("Ignoring invalid HostSubnet %s: %v", HostSubnetToString(hs), err)

@@ -54,9 +54,9 @@ type egressNode struct {
 	retries int
 }
 
-func newEgressIPManager(cloudEgressIP bool, recorder record.EventRecorder) *egressIPManager {
+func newEgressIPManager(cloudEgressIP bool, localIP string, recorder record.EventRecorder) *egressIPManager {
 	eim := &egressIPManager{}
-	eim.tracker = common.NewEgressIPTracker(eim, cloudEgressIP, recorder)
+	eim.tracker = common.NewEgressIPTracker(eim, cloudEgressIP, localIP, recorder)
 	return eim
 }
 
