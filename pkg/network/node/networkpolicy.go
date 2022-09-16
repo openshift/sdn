@@ -31,6 +31,10 @@ import (
 
 const HostNetworkNamespace = "openshift-host-network"
 
+// NetPolIsolationCookie is a random number to distinguish network policy isolation flows,
+// only used by network policy functions
+const NetPolIsolationCookie = 1147582955
+
 type networkPolicyPlugin struct {
 	node   *OsdnNode
 	vnids  *nodeVNIDMap
@@ -48,6 +52,10 @@ type networkPolicyPlugin struct {
 
 	warnedPolicies  map[ktypes.UID]string
 	skippedPolicies map[ktypes.UID]string
+	// network policy needs to know pod ip to get updated and delete pod isolation flows.
+	// since pod.Status.PodIP is not set during pod creation, we keep a separate cache of ips already known to sdn,
+	// but not yet known to the apiserver. When pod.Status.PodIP is set, pod can be deleted from this map
+	localPodIPs map[ktypes.UID]string
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -109,6 +117,7 @@ func NewNetworkPolicyPlugin() osdnPolicy {
 
 		warnedPolicies:  make(map[ktypes.UID]string),
 		skippedPolicies: make(map[ktypes.UID]string),
+		localPodIPs:     make(map[ktypes.UID]string),
 	}
 }
 
@@ -276,14 +285,23 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	np.updateMatchCache(npns)
 }
 
-func (np *networkPolicyPlugin) SetUpPod(podIP string) error {
-	otx := np.node.oc.NewTransaction()
-	// when a pod is created isolate the pod until the current network policy rules can be
-	// evaluated
-	otx.AddFlow("table=27, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
-	otx.AddFlow("table=80, priority=500, cookie=1, ip, nw_src=%s, actions=drop", podIP)
-	if err := otx.Commit(); err != nil {
-		return fmt.Errorf("Error syncing OVS flows to isolate pods %v", err)
+func (np *networkPolicyPlugin) SetUpPod(pod *corev1.Pod, podIP string) error {
+	np.lock.Lock()
+	defer np.lock.Unlock()
+	np.localPodIPs[pod.UID] = podIP
+
+	syncTriggered := np.refreshPodNetworkPolicies(pod)
+	// If network policy update is required for this pod, add isolation rules.
+	// syncFlows (which was triggered by refreshPodNetworkPolicies) needs to hold np.lock.Lock()
+	// therefore it's safe to add flows after it was triggered
+	if syncTriggered {
+		otx := np.node.oc.NewTransaction()
+		// when a pod is created isolate the pod until the current network policy rules can be evaluated
+		otx.AddFlow("table=27, priority=500, cookie=%d, ip, nw_src=%s, actions=drop", NetPolIsolationCookie, podIP)
+		otx.AddFlow("table=80, priority=500, cookie=%d, ip, nw_dst=%s, actions=drop", NetPolIsolationCookie, podIP)
+		if err := otx.Commit(); err != nil {
+			return fmt.Errorf("error syncing OVS flows to isolate pods %v", err)
+		}
 	}
 	return nil
 }
@@ -330,6 +348,10 @@ func (np *networkPolicyPlugin) syncFlows() {
 			npns.mustSync = false
 		}
 	}
+	// Remove the temporary flows added by SetUpPod now that all flows have been updated for new pods
+	// All isolation flows can be deleted, since flows creation code uses np.lock
+	otx.DeleteFlows("table=27, cookie=%d/-1", NetPolIsolationCookie)
+	otx.DeleteFlows("table=80, cookie=%d/-1", NetPolIsolationCookie)
 	if err := otx.Commit(); err != nil {
 		klog.Errorf("Error syncing OVS flows: %v", err)
 	}
@@ -609,11 +631,11 @@ func (np *networkPolicyPlugin) selectPodsFromNamespaces(nsLabelSel, podLabelSel 
 			continue
 		}
 		for _, pod := range pods {
-			if isOnPodNetwork(pod) {
+			if np.isOnPodNetwork(pod) {
 				if dir == ingressFlow {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", pod.Status.PodIP))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", np.getPodIP(pod)))
 				} else {
-					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", pod.Status.PodIP))
+					peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_dst=%s, ", np.getPodIP(pod)))
 				}
 			}
 		}
@@ -658,8 +680,8 @@ func (np *networkPolicyPlugin) selectPods(npns *npNamespace, lsel *metav1.LabelS
 		return ips
 	}
 	for _, pod := range pods {
-		if isOnPodNetwork(pod) {
-			ips = append(ips, pod.Status.PodIP)
+		if np.isOnPodNetwork(pod) {
+			ips = append(ips, np.getPodIP(pod))
 		}
 	}
 	return ips
@@ -952,18 +974,26 @@ func (np *networkPolicyPlugin) watchPods() {
 	np.node.kubeInformers.Core().V1().Pods().Informer().AddEventHandler(funcs)
 }
 
-func isOnPodNetwork(pod *corev1.Pod) bool {
+func (np *networkPolicyPlugin) getPodIP(pod *corev1.Pod) string {
+	if pod.Status.PodIP != "" {
+		return pod.Status.PodIP
+	}
+	// empty string will be returned if both pod.Status.PodIP and np.localPodIPs[pod.UID] are empty
+	return np.localPodIPs[pod.UID]
+}
+
+func (np *networkPolicyPlugin) isOnPodNetwork(pod *corev1.Pod) bool {
 	if pod.Spec.HostNetwork {
 		return false
 	}
-	return pod.Status.PodIP != ""
+	return np.getPodIP(pod) != ""
 }
 
 func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventType watch.EventType) {
 	pod := obj.(*corev1.Pod)
 	klog.V(5).Infof("Watch %s event for Pod %q", eventType, getPodFullName(pod))
 
-	if !isOnPodNetwork(pod) {
+	if !np.isOnPodNetwork(pod) {
 		return
 	}
 
@@ -975,15 +1005,11 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 	}
 
 	np.lock.Lock()
-	defer func() {
-		otx := np.node.oc.NewTransaction()
-		otx.DeleteFlows("table=27, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		otx.DeleteFlows("table=80, cookie=1/-1, ip, nw_src=%s", pod.Status.PodIP)
-		otx.Commit()
-
-		np.lock.Unlock()
-	}()
-
+	defer np.lock.Unlock()
+	if np.localPodIPs[pod.UID] != "" && pod.Status.PodIP != "" {
+		// cleanup local pod ip once pod.Status.PodIP is set
+		delete(np.localPodIPs, pod.UID)
+	}
 	np.refreshPodNetworkPolicies(pod)
 }
 
@@ -993,6 +1019,7 @@ func (np *networkPolicyPlugin) handleDeletePod(obj interface{}) {
 
 	np.lock.Lock()
 	defer np.lock.Unlock()
+	delete(np.localPodIPs, pod.UID)
 
 	np.refreshPodNetworkPolicies(pod)
 }
@@ -1061,7 +1088,8 @@ func (np *networkPolicyPlugin) refreshNamespaceNetworkPolicies() {
 	}
 }
 
-func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
+func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) bool {
+	syncTriggered := false
 	podNs := np.namespacesByName[pod.Namespace]
 	for _, npns := range np.namespaces {
 		for _, npp := range npns.policies {
@@ -1070,9 +1098,11 @@ func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) {
 			}
 		}
 		if npns.mustRecalculate && npns.inUse {
+			syncTriggered = true
 			np.syncNamespace(npns)
 		}
 	}
+	return syncTriggered
 }
 
 func getPodFullName(pod *corev1.Pod) string {
