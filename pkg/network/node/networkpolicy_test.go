@@ -1123,6 +1123,9 @@ func TestNetworkPolicy_egress(t *testing.T) {
 	addNamespace(np, "three", 3, map[string]string{})
 	npns3 := np.namespaces[3]
 	addPods(np, npns3)
+	addNamespace(np, "four", 4, map[string]string{})
+	npns4 := np.namespaces[4]
+	addPods(np, npns4)
 	waitForSync(np, synced, "initial namespaces")
 
 	// All namespaces should get "default allow" rules to override the
@@ -1163,6 +1166,14 @@ func TestNetworkPolicy_egress(t *testing.T) {
 		flowChange{
 			kind:  flowAdded,
 			match: []string{"table=80", "reg1=3", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=4", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=4", "actions=output:NXM_NX_REG2[]"},
 		},
 	)
 	if err != nil {
@@ -1594,10 +1605,98 @@ func TestNetworkPolicy_egress(t *testing.T) {
 			kind:  flowAdded,
 			match: []string{"table=27", "reg0=3", "actions=goto_table:30"},
 		},
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=80", "reg1=3", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=3", "actions=output:NXM_NX_REG2[]"},
+		},
 	)
 	if err != nil {
 		t.Fatalf("Unexpected flow changes: %v", err)
 	}
+
+	prevFlows = flows
+	// Add NetworkPolicies to "four":
+	//   - Egress is allowed to all pods in the namespace
+	synced.Store(false)
+	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-egress",
+			UID:       uid(npns4, "allow-egress"),
+			Namespace: npns4.name,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kind": "server",
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{},
+				}},
+			}},
+		},
+	})
+	waitForSync(np, synced, "ns4 policies")
+
+	err = assertPolicies(np, npns4, 1, map[string]*npPolicy{
+		"allow-egress": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			egressFlows: []string{"ip, nw_src=10.4.0.3, ip, nw_dst=10.4.0.2, ",
+				"ip, nw_src=10.4.0.3, ip, nw_dst=10.4.0.3, "},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+	flows, err = ovsif.DumpFlows("")
+	if err != nil {
+		t.Fatalf("Unexpected error dumping flows: %v", err)
+	}
+	err = assertFlowChanges(prevFlows, flows,
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=4", "ip", "nw_src=10.4.0.3", "ip", "nw_dst=10.4.0.2", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=4", "ip", "nw_dst=10.4.0.3", "ip", "nw_src=10.4.0.3", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=4", "ip", "nw_src=10.4.0.3", "actions=drop"},
+		},
+		// (This gets reordered so we have to claim it got deleted and re-added)
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=27", "reg0=4", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowRemoved,
+			match: []string{"table=80", "reg1=4", "actions=output:NXM_NX_REG2[]"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=27", "reg0=4", "actions=goto_table:30"},
+		},
+		flowChange{
+			kind:  flowAdded,
+			match: []string{"table=80", "reg1=4", "actions=output:NXM_NX_REG2[]"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected flow changes: %v", err)
+	}
+
 }
 
 // Disabled (by initial "_") becaues it's really really slow in CI for some reason?
