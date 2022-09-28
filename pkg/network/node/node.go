@@ -195,7 +195,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		platformType:   c.PlatformType,
 		overlayMTU:     overlayMTU,
 		routableMTU:    routableMTU,
-		egressIP:       newEgressIPWatcher(oc, common.PlatformUsesCloudEgressIP(c.PlatformType), c.NodeIP, c.MasqueradeBit, c.Recorder),
+		egressIP:       newEgressIPWatcher(oc, common.PlatformUsesCloudEgressIP(c.PlatformType), c.NodeIP, c.MasqueradeBit),
 	}
 
 	metrics.RegisterMetrics()

@@ -26,6 +26,8 @@ const (
 	PodOperationsErrorsKey      = "pod_operations_errors"
 	PodOperationsLatencyKey     = "pod_operations_latency"
 	VnidNotFoundErrorsKey       = "vnid_not_found_errors"
+	AssignedEgressIPKey         = "assigned_egressip"
+	EgressIPCapacityKey         = "egressip_capacity"
 
 	// OVS Operation result type
 	OVSOperationSuccess = "success"
@@ -101,6 +103,24 @@ var (
 		},
 	)
 
+	AssignedEgressIP = metrics.NewGauge(
+		&metrics.GaugeOpts{
+			Namespace: SDNNamespace,
+			Subsystem: SDNSubsystem,
+			Name:      AssignedEgressIPKey,
+			Help:      "Number of assigned Egress IPs on the node",
+		},
+	)
+
+	EgressIPCapacity = metrics.NewGauge(
+		&metrics.GaugeOpts{
+			Namespace: SDNNamespace,
+			Subsystem: SDNSubsystem,
+			Name:      EgressIPCapacityKey,
+			Help:      "Egress IP capacity of the node",
+		},
+	)
+
 	// num stale OVS flows (flows that reference non-existent ports)
 	// num vnids (in the master)
 	// num netnamespaces (in the master)
@@ -121,6 +141,8 @@ func RegisterMetrics() {
 		legacyregistry.MustRegister(PodOperationsErrors)
 		legacyregistry.MustRegister(PodOperationsLatency)
 		legacyregistry.MustRegister(VnidNotFoundErrors)
+		legacyregistry.MustRegister(AssignedEgressIP)
+		legacyregistry.MustRegister(EgressIPCapacity)
 	})
 }
 

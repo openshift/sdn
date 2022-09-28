@@ -169,7 +169,7 @@ func setupEgressIPWatcher(t *testing.T) (*egressIPWatcher, []string) {
 		panic("details of fake ovsController changed")
 	}
 	masqBit := int32(0)
-	eip := newEgressIPWatcher(oc, false, "172.17.0.4", &masqBit, nil)
+	eip := newEgressIPWatcher(oc, false, "172.17.0.4", &masqBit)
 	eip.testModeChan = make(chan string, 10)
 
 	flows, err := eip.oc.ovs.DumpFlows("table=101")
