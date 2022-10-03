@@ -9,6 +9,8 @@ import (
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kubeletremote "k8s.io/kubernetes/pkg/kubelet/cri/remote"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -23,7 +25,7 @@ func (node *OsdnNode) getRuntimeService() (kubeletapi.RuntimeService, error) {
 	}
 
 	var err error
-	node.runtimeService, err = kubeletremote.NewRemoteRuntimeService(runtimeEndpoint, runtimeRequestTimeout)
+	node.runtimeService, err = kubeletremote.NewRemoteRuntimeService(runtimeEndpoint, runtimeRequestTimeout, oteltrace.NewNoopTracerProvider())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch runtime service: %v", err)
 	}
