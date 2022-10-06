@@ -58,9 +58,10 @@ const (
 )
 
 type egressOVSChange struct {
-	vnid   uint32
-	egress egressTrafficType
-	remote string
+	vnid      uint32
+	egress    egressTrafficType
+	remote    string
+	ipAddress string // if local add the ip address so we can look up the pkt_mark
 }
 
 // Takes the previous set of egress OVS flows, then fetches the current set and checks
@@ -102,7 +103,7 @@ func assertOVSChanges(eip *egressIPWatcher, flows *[]string, changes ...egressOV
 			flowChanges = append(flowChanges,
 				flowChange{
 					kind:  flowAdded,
-					match: []string{vnidStr, fmt.Sprintf("%s", change.remote)},
+					match: []string{vnidStr, fmt.Sprintf("actions=ct(commit),set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:%s->pkt_mark,output:tun0", eip.iptablesMark[change.ipAddress])},
 				},
 			)
 		case Remote:
@@ -128,7 +129,7 @@ func assertNoOVSChanges(eip *egressIPWatcher, flows *[]string) error {
 	return assertOVSChanges(eip, flows)
 }
 
-//determine if the the groups are the same regardless of order
+// determine if the the groups are the same regardless of order
 func compareGroups(groups []string, expectedGroups []string) (bool, error) {
 	//both groups and expected should be the same size
 	if len(groups) != len(expectedGroups) {
@@ -251,7 +252,7 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ := eip.oc.ovs.DumpGroups()
 	theSame, err := compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -283,14 +284,13 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.5->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.5->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 	if !theSame {
-
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"})
@@ -306,14 +306,13 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 	if !theSame {
-
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
 	err = assertNoOVSChanges(eip, &flows)
@@ -339,9 +338,8 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -350,7 +348,7 @@ func TestEgressIP(t *testing.T) {
 
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local, remote: "group:44"})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local, ipAddress: "172.17.0.104"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -385,10 +383,8 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
-		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -397,7 +393,7 @@ func TestEgressIP(t *testing.T) {
 
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Local, remote: "group:45"})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 45, egress: Local, ipAddress: "172.17.0.103"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -411,9 +407,8 @@ func TestEgressIP(t *testing.T) {
 
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -435,10 +430,8 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
-		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -447,7 +440,7 @@ func TestEgressIP(t *testing.T) {
 
 		t.Fatalf("the egress is not properly set up: %s\n", groups)
 	}
-	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local, remote: "group:44"})
+	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 44, egress: Local, ipAddress: "172.17.0.102"})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -460,9 +453,7 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
-		"group_id=45,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -480,8 +471,7 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -498,9 +488,8 @@ func TestEgressIP(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
-		"group_id=45,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=45,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -524,10 +513,8 @@ func TestEgressIP(t *testing.T) {
 	err = assertOVSChanges(eip, &flows, egressOVSChange{vnid: 43, egress: Remote, remote: "group:43"})
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002a->pkt_mark,output:tun0",
-		"group_id=44,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0000002c->pkt_mark,output:tun0",
-		"group_id=45,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=45,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -551,7 +538,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	}
 	groups, _ := eip.oc.ovs.DumpGroups()
 	theSame, err := compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -624,7 +611,7 @@ func TestMultipleNamespaceEgressIPs(t *testing.T) {
 	}
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -1064,7 +1051,7 @@ func TestEgressNodeRenumbering(t *testing.T) {
 	}
 	groups, _ := eip.oc.ovs.DumpGroups()
 	theSame, err := compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
 		"group_id=43,type=select,bucket=actions=set_field:c6:ac:2c:13:48:4b->eth_dst,set_field:0x0100002a->pkt_mark,output:tun0",
 	})
 	if err != nil {
@@ -1088,8 +1075,8 @@ func TestEgressNodeRenumbering(t *testing.T) {
 	err = assertNoOVSChanges(eip, &flows)
 	groups, _ = eip.oc.ovs.DumpGroups()
 	theSame, err = compareGroups(groups, []string{
-		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,output:vxlan0",
-		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.6->tun_dst,output:vxlan0",
+		"group_id=42,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.3->tun_dst,goto_table:125",
+		"group_id=43,type=select,bucket=actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:172.17.0.6->tun_dst,goto_table:125",
 	})
 	if err != nil {
 		t.Fatalf("%v", err)

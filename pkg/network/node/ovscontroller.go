@@ -939,6 +939,7 @@ func (oc *ovsController) ensureTunMAC() error {
 func (oc *ovsController) SetNamespaceEgressNormal(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=101, reg0=%d", vnid)
+	otx.DeleteFlows("table=125, reg0=%d", vnid)
 	otx.DeleteGroup(vnid)
 	return otx.Commit()
 }
@@ -947,6 +948,7 @@ func (oc *ovsController) SetNamespaceEgressDropped(vnid uint32) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteGroup(vnid)
 	otx.DeleteFlows("table=101, reg0=%d", vnid)
+	otx.DeleteFlows("table=125, reg0=%d", vnid)
 	otx.AddFlow("table=101, priority=100, reg0=%d, actions=drop", vnid)
 	return otx.Commit()
 }
@@ -954,7 +956,10 @@ func (oc *ovsController) SetNamespaceEgressDropped(vnid uint32) error {
 func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMetaData []egressIPMetaData) error {
 	otx := oc.ovs.NewTransaction()
 	otx.DeleteFlows("table=101, reg0=%d", vnid)
+	otx.DeleteFlows("table=125, reg0=%d", vnid)
 	otx.DeleteGroup(vnid)
+
+	otx.AddFlow("table=101, priority=101, reg0=%d, ct_state=+est, actions=move:NXM_NX_CT_MARK->NXM_NX_TUN_IPV4_DST,output:vxlan0", vnid)
 
 	var buildBuckets []string
 	var isLocalEgressIP bool
@@ -963,12 +968,15 @@ func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMe
 			if err := oc.ensureTunMAC(); err != nil {
 				return err
 			}
-			buildBuckets = []string{fmt.Sprintf("actions=set_field:%s->eth_dst,set_field:%s->pkt_mark,output:tun0", oc.tunMAC, egressIPMetaData.packetMark)}
+			//buildBuckets = []string{fmt.Sprintf("actions=set_field:%s->eth_dst,set_field:%s->pkt_mark,output:tun0", oc.tunMAC, egressIPMetaData.packetMark)}
+			buildBuckets = []string{egressIPMetaData.packetMark}
 			// if one of the egressIPs is the IP of the node always use that egress otherwise it might not actually egress and get sent between nodes
 			isLocalEgressIP = true
 			break
 		} else {
-			buildBuckets = append(buildBuckets, fmt.Sprintf("actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:vxlan0", egressIPMetaData.nodeIP))
+			buildBuckets = append(buildBuckets, fmt.Sprintf("actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,goto_table:125", egressIPMetaData.nodeIP))
+
+			otx.AddFlow("table=125, priority=300, reg0=%d, tun_dst=%s actions=ct(commit, exec(set_field:%s->ct_mark)),output:vxlan0", vnid, egressIPMetaData.nodeIP, egressIPMetaData.nodeIP)
 		}
 
 	}
@@ -976,6 +984,14 @@ func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMe
 	if len(egressIPsMetaData) == 0 {
 		// Namespace wants egressIP, but no node hosts it, so drop
 		otx.AddFlow("table=101, priority=100, reg0=%d, actions=drop", vnid)
+	} else if isLocalEgressIP {
+		// the egressIP is hosted by the local node output it and no need for a group
+		commit := ""
+		if oc.useConnTrack {
+			commit = "ct(commit),"
+		}
+		otx.AddFlow("table=101, priority=100,ip,reg0=%d,actions=%s%s", vnid, commit,
+			fmt.Sprintf("set_field:%s->eth_dst,set_field:%s->pkt_mark,output:tun0", oc.tunMAC, buildBuckets[0]))
 	} else {
 		// there is at least one egressIP hosted by one other node. Use a group
 		// to load balance between the egressIPs
