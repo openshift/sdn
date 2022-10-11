@@ -1041,7 +1041,7 @@ func (proxier *Proxier) syncProxyRules() {
 		// implemented and the DNS operator is updated to use it.
 		if svcNameString == "openshift-dns/dns-default:dns" {
 			for _, ep := range allEndpoints {
-				if ep.GetIsLocal() {
+				if ep.GetIsLocal() && ep.IsReady() {
 					klog.V(4).Infof("Found a local endpoint %q for service %q; preferring the local endpoint and ignoring %d other endpoints", ep.String(), svcNameString, len(allEndpoints) - 1)
 					allEndpoints = []proxy.Endpoint{ep}
 					break
