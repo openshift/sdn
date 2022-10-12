@@ -71,7 +71,7 @@ func newEgressIPWatcher(oc *ovsController, cloudEgressIP bool, localIP string, m
 		eip.masqueradeBit = 1 << uint32(*masqueradeBit)
 	}
 
-	eip.tracker = common.NewEgressIPTracker(eip, cloudEgressIP)
+	eip.tracker = common.NewEgressIPTracker(eip, cloudEgressIP, localIP)
 	return eip
 }
 

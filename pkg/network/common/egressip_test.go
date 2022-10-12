@@ -100,7 +100,7 @@ func (w *testEIPWatcher) assertUpdateEgressCIDRsNotification() error {
 
 func setupEgressIPTracker(t *testing.T, cloudEgressIP bool) (*EgressIPTracker, *testEIPWatcher) {
 	watcher := &testEIPWatcher{}
-	return NewEgressIPTracker(watcher, cloudEgressIP), watcher
+	return NewEgressIPTracker(watcher, cloudEgressIP, ""), watcher
 }
 
 func updateHostSubnetEgress(eit *EgressIPTracker, hs *osdnv1.HostSubnet) {

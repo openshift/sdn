@@ -27,6 +27,7 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdninformers "github.com/openshift/client-go/network/informers/externalversions/network/v1"
 	"github.com/openshift/sdn/pkg/network/master/metrics"
+	nodemetrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	kcoreinformers "k8s.io/client-go/informers/core/v1"
 )
 
@@ -112,8 +113,8 @@ type EgressIPTracker struct {
 
 	watcher EgressIPWatcher
 
-	kubeClient kubernetes.Interface
-
+	kubeClient       kubernetes.Interface
+	localIP          string
 	nodes            map[ktypes.UID]*nodeEgress
 	nodesByNodeIP    map[string]*nodeEgress
 	namespacesByVNID map[uint32]*namespaceEgress
@@ -125,7 +126,7 @@ type EgressIPTracker struct {
 	updateEgressCIDRs bool
 }
 
-func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTracker {
+func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, localIP string) *EgressIPTracker {
 	return &EgressIPTracker{
 		watcher: watcher,
 
@@ -138,6 +139,7 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool) *EgressIPTr
 
 		changedEgressIPs:  make(map[*egressIPInfo]bool),
 		changedNamespaces: make(map[*namespaceEgress]bool),
+		localIP:           localIP,
 	}
 }
 
@@ -370,7 +372,7 @@ func (eit *EgressIPTracker) UpdateHostSubnetEgress(hs *osdnv1.HostSubnet) {
 	}
 
 	eit.syncEgressIPs()
-	eit.recordMetrics()
+	eit.recordMetrics(hs)
 }
 
 func (eit *EgressIPTracker) GetNodeNameByNodeIP(nodeIP string) string {
@@ -445,6 +447,19 @@ func (eit *EgressIPTracker) validateEgressIPs(hs *osdnv1.HostSubnet) error {
 		}
 	}
 	return nil
+}
+
+// getCapacity retrieves egress ip capacity for the given HostSubnet
+func (eit *EgressIPTracker) getCapacity(hs *osdnv1.HostSubnet) (int, error) {
+	cloudEgressIPConfig, err := eit.validateEgressIPConfigExists(hs)
+	if err != nil {
+		return 0, err
+	}
+	capacity := cloudEgressIPConfig.Capacity.IP
+	if capacity == 0 {
+		capacity = cloudEgressIPConfig.Capacity.IPv4
+	}
+	return capacity, nil
 }
 
 func (eit *EgressIPTracker) validateEgressIPConfigExists(hs *osdnv1.HostSubnet) (*nodeCloudEgressIPConfiguration, error) {
@@ -1008,7 +1023,7 @@ func (eit *EgressIPTracker) ReallocateEgressIPs() map[string][]string {
 	return allocation
 }
 
-func (eit *EgressIPTracker) recordMetrics() {
+func (eit *EgressIPTracker) recordMetrics(hs *osdnv1.HostSubnet) {
 	activeEgressIPCount := 0.0
 	for _, eipInfo := range eit.egressIPs {
 		if eipInfo.assignedNodeIP != "" {
@@ -1016,6 +1031,15 @@ func (eit *EgressIPTracker) recordMetrics() {
 		}
 	}
 	metrics.RecordEgressIPCount(activeEgressIPCount)
+	if eit.localIP != "" && eit.localIP == hs.HostIP && eit.CloudEgressIP {
+		capacity, err := eit.getCapacity(hs)
+		if err != nil {
+			klog.Errorf("Ignoring invalid HostSubnet %s for node metrics: %v", HostSubnetToString(hs), err)
+			return
+		}
+		nodemetrics.EgressIPCapacity.Set(float64(capacity))
+		nodemetrics.AssignedEgressIP.Set(float64(len(hs.EgressIPs)))
+	}
 }
 
 func activeEgressIPsTheSame(oldEIPs, newEIPs []EgressIPAssignment) bool {
