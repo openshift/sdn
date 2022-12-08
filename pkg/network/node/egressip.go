@@ -168,11 +168,27 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 		return err
 	}
 
+	// ~1 sec total
+	syncIPsBackOff := utilwait.Backoff{
+		Duration: 100 * time.Millisecond,
+		Factor:   1.25,
+		Steps:    7,
+	}
 	syncIPs := func() {
 		eip.tracker.Lock()
 		defer eip.tracker.Unlock()
 
-		eip.SyncIPAssignments()
+		var lastSyncErr error
+		if err := utilwait.ExponentialBackoff(syncIPsBackOff, func() (bool, error) {
+			if err := eip.SyncIPAssignments(); err != nil {
+				klog.V(5).Infof("Error synchronizing IP assignments: %v", err)
+				lastSyncErr = err
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			klog.Errorf("Failed to sync IP assignments: %v", lastSyncErr)
+		}
 	}
 
 	subscribeErr := addrSubscribe()
