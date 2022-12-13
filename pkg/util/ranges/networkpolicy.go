@@ -15,11 +15,11 @@ import (
 // the effect of "&&", but there's no way to say "!="... The only way to make this work is
 // to rewrite
 //
-//    nw_src=[A-H] && nw_src!=B && nw_src!=E
+//	nw_src=[A-H] && nw_src!=B && nw_src!=E
 //
 // as
 //
-//    nw_src=A || nw_src=[C-D] || nw_src=[F-H]
+//	nw_src=A || nw_src=[C-D] || nw_src=[F-H]
 //
 // except that it's more complicated than that because CIDRs can only express ranges
 // whose lengths are powers of 2. So, we call rangesForIPBlock() to generate the list
