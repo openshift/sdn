@@ -5,7 +5,7 @@ export GO111MODULE=on
 unexport GOPATH
 
 GO_LD_FLAGS = \
-    -ldflags "-w $(call version-ldflags,$(GO_PACKAGE)/pkg/version) $(GO_LD_EXTRAFLAGS)"
+    -ldflags "$(call version-ldflags,$(GO_PACKAGE)/pkg/version) $(GO_LD_EXTRAFLAGS)"
 
 GO_BUILD_PACKAGES = \
     ./cmd/... \
