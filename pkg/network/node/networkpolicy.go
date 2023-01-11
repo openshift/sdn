@@ -56,6 +56,13 @@ type networkPolicyPlugin struct {
 	// since pod.Status.PodIP is not set during pod creation, we keep a separate cache of ips already known to sdn,
 	// but not yet known to the apiserver. When pod.Status.PodIP is set, pod can be deleted from this map
 	localPodIPs map[ktypes.UID]string
+	// unProcessedVNIDs holds the vnid entries for which EnsureVNIDRules() is already invoked upon
+	// pod setup even before AddNetNamespace() is invoked. This is possible when WaitAndGetVNID()
+	// could return the vnid in the pod setup thread and then the setup thread continues, before
+	// the AddNetNamespace() call runs in the handler thread. In such scenario populate the vnid
+	// into unProcessedVNIDs in EnsureVNIDRules() method and it can be looked up later in
+	// AddNetNamespace() method so that required nw policy flow rules programmed into OVS.
+	unProcessedVNIDs sets.Int32
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -118,6 +125,8 @@ func NewNetworkPolicyPlugin() osdnPolicy {
 		warnedPolicies:  make(map[ktypes.UID]string),
 		skippedPolicies: make(map[ktypes.UID]string),
 		localPodIPs:     make(map[ktypes.UID]string),
+
+		unProcessedVNIDs: sets.NewInt32(),
 	}
 }
 
@@ -249,6 +258,16 @@ func (np *networkPolicyPlugin) AddNetNamespace(netns *osdnv1.NetNamespace) {
 	npns.inUse = false
 	np.namespaces[netns.NetID] = npns
 
+	var needNsSync bool
+	if np.unProcessedVNIDs.Has(int32(npns.vnid)) {
+		needNsSync = true
+		np.unProcessedVNIDs.Delete(int32(npns.vnid))
+	}
+	if needNsSync {
+		npns.inUse = true
+		np.syncNamespace(npns)
+	}
+
 	npns.gotNetNamespace = true
 	if npns.gotNamespace {
 		np.updateMatchCache(npns)
@@ -280,6 +299,8 @@ func (np *networkPolicyPlugin) DeleteNetNamespace(netns *osdnv1.NetNamespace) {
 	}
 	delete(np.namespaces, netns.NetID)
 	npns.gotNetNamespace = false
+
+	np.unProcessedVNIDs.Delete(int32(npns.vnid))
 
 	// We don't need to call refreshNetworkPolicies here; if the VNID doesn't get
 	// reused then the stale flows won't hurt anything, and if it does get reused then
@@ -544,7 +565,11 @@ func (np *networkPolicyPlugin) EnsureVNIDRules(vnid uint32) {
 	defer np.lock.Unlock()
 
 	npns, exists := np.namespaces[vnid]
-	if !exists || npns.inUse {
+	if !exists {
+		np.unProcessedVNIDs.Insert(int32(vnid))
+		return
+	}
+	if npns.inUse {
 		return
 	}
 
@@ -565,6 +590,7 @@ func (np *networkPolicyPlugin) SyncVNIDRules() {
 			npns.inUse = false
 			np.syncNamespace(npns)
 		}
+		np.unProcessedVNIDs.Delete(int32(vnid))
 	}
 }
 
