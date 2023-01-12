@@ -746,13 +746,9 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 	peerFlows := []string{}
 	for _, peer := range peers {
 		if peer.PodSelector != nil && peer.NamespaceSelector == nil {
-			if len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0 {
+			if dir == ingressFlow && (len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0) {
 				// The PodSelector is empty, meaning it selects all pods in this namespace
-				if dir == ingressFlow {
-					peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
-				} else {
-					peerFlows = append(peerFlows, fmt.Sprintf("reg1=%d, ", npns.vnid))
-				}
+				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
 			} else {
 				npp.watchesOwnPods = true
 				for _, ip := range np.selectPods(npns, peer.PodSelector) {
