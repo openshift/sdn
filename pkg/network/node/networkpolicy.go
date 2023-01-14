@@ -166,8 +166,10 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 			otx.AddFlow("table=30, priority=100, ip, nw_src=%s, nw_dst=%s, ct_state=-rpl, actions=ct(commit,table=31)", scn.ClusterCIDR.String(), dcn.ClusterCIDR.String())
 		}
 	}
+	np.purgeLegacyFlows(otx)
 
 	if err := otx.Commit(); err != nil {
+		klog.Errorf("Error performing initial OVS flows: %v", err)
 		return err
 	}
 
@@ -331,6 +333,17 @@ func (np *networkPolicyPlugin) syncNamespaceImmediately(npns *npNamespace) {
 	if err := otx.Commit(); err != nil {
 		klog.Errorf("Error syncing OVS flows for namespace %q: %v", npns.name, err)
 	}
+}
+
+// purgeLegacyFlows removes flows that may have been created by previous versions and
+// are no longer applicable. Called once upon networkPolicyPlugin start.
+func (np *networkPolicyPlugin) purgeLegacyFlows(otx ovs.Transaction) {
+	const legacyNetPolIsolationCookie = 1
+
+	// Remove temporary flows added by SetUpPod using cookie from previous release.
+	// Ref: https://issues.redhat.com/browse/OCPBUGS-998
+	otx.DeleteFlows("table=27, cookie=%d/-1, ip", legacyNetPolIsolationCookie)
+	otx.DeleteFlows("table=80, cookie=%d/-1, ip", legacyNetPolIsolationCookie)
 }
 
 // This is the entry point for the BoundedFrequencyRunner
