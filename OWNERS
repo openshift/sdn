@@ -3,14 +3,14 @@ reviewers:
   - danwinship
   - dcbw
   - JacobTanenbaum
-  - squeed
+  - trozet
   - tssurya
 approvers:
   - abhat
   - danwinship
   - dcbw
   - knobunc
-  - squeed
+  - trozet
 
 # Bugzilla info
 component: Networking
