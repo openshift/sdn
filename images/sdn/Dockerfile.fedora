@@ -11,13 +11,13 @@ COPY . .
 RUN make build --warn-undefined-variables
 RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl -mod=vendor" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
 
+FROM registry.ci.openshift.org/ocp/4.13:cli AS cli
 FROM fedora:36
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn
 COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
-FROM registry.ci.openshift.org/ocp/4.13:cli AS cli
 COPY --from=cli /usr/bin/oc /usr/bin/
 
 RUN INSTALL_PKGS=" \
