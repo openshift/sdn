@@ -50,7 +50,9 @@ type egressIPWatcher struct {
 
 	monitorNodesLock sync.Mutex
 	monitorNodes     map[string]*egressNode
-	stop             chan struct{}
+	stopMonitorNodes chan struct{}
+
+	stopIPResync chan struct{}
 
 	testModeChan chan string
 }
@@ -85,34 +87,49 @@ func (eip *egressIPWatcher) Start(osdnInformers osdninformers.SharedInformerFact
 	return nil
 }
 
-func (eip *egressIPWatcher) Synced() {
+func (eip *egressIPWatcher) SyncIPAssignments() error {
 	link, _, err := GetLinkDetails(eip.localIP)
 	if err != nil {
-		// shouldn't happen, but obviously there's nothing to clean up...
-		return
+		return fmt.Errorf("could not get %s link details %v", eip.localIP, err)
 	}
 	label, err := egressIPLabel(link)
 	if err != nil {
-		klog.Errorf("Could not check for stale egress IPs: %v", err)
-		return
+		return fmt.Errorf("invalid egress IP label: %v", err)
 	}
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
-		klog.Errorf("Could not check for stale egress IPs: %v", err)
-		return
+		return fmt.Errorf("could not check for egress IPs: %v", err)
 	}
 
+	existingIPs := sets.NewString()
 	for _, addr := range addrs {
 		ip := addr.IP.String()
-		if addr.Label == label && eip.iptablesMark[ip] == "" {
-			klog.Infof("Cleaning up stale egress IP %s", addr.IP.String())
-			err = netlink.AddrDel(link, &addr)
-			if err != nil {
-				klog.Errorf("Could not clean up stale egress IP: %v", err)
+		if addr.Label == label {
+			if eip.iptablesMark[ip] == "" {
+				klog.Infof("Cleaning up stale egress IP %s", addr.IP.String())
+				err = netlink.AddrDel(link, &addr)
+				if err != nil {
+					klog.Errorf("Could not clean up stale egress IP: %v", err)
+				}
+			} else {
+				existingIPs.Insert(ip)
 			}
 		}
 	}
+	for ip, mark := range eip.iptablesMark {
+		if !existingIPs.Has(ip) {
+			klog.Infof("Assigning missing egress IP %s", ip)
+			eip.assignEgressIP(ip, mark)
+		}
+	}
+	return nil
+}
 
+func (eip *egressIPWatcher) Synced() {
+	if err := eip.SyncIPAssignments(); err != nil {
+		klog.Errorf("Failed to sync ip assignments: %v", err)
+		return
+	}
 	eip.iptables.SyncEgressIPRules()
 }
 
@@ -141,12 +158,85 @@ func getMarkForVNID(vnid, masqueradeBit uint32) string {
 	return fmt.Sprintf("0x%08x", vnid)
 }
 
+func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
+	var addrChan chan netlink.AddrUpdate
+	addrSubscribe := func() error {
+		addrChan = make(chan netlink.AddrUpdate)
+		err := netlink.AddrSubscribeWithOptions(addrChan, stopCh, netlink.AddrSubscribeOptions{
+			ErrorCallback: func(err error) {
+				klog.Errorf("Failed during AddrSubscribe callback: %v", err)
+			},
+		})
+		// when AddrSubscribeWithOptions fails it does not close the addrChan
+		if err != nil {
+			close(addrChan)
+		}
+		return err
+	}
+
+	// ~1 sec total
+	syncIPsBackOff := utilwait.Backoff{
+		Duration: 100 * time.Millisecond,
+		Factor:   1.25,
+		Steps:    7,
+	}
+	syncIPs := func() {
+		eip.tracker.Lock()
+		defer eip.tracker.Unlock()
+
+		var lastSyncErr error
+		if err := utilwait.ExponentialBackoff(syncIPsBackOff, func() (bool, error) {
+			if err := eip.SyncIPAssignments(); err != nil {
+				klog.V(5).Infof("Error synchronizing IP assignments: %v", err)
+				lastSyncErr = err
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			klog.Errorf("Failed to sync IP assignments: %v", lastSyncErr)
+		}
+	}
+
+	subscribeErr := addrSubscribe()
+	if subscribeErr != nil {
+		klog.Error("Error during netlink subscribe: %v", subscribeErr)
+	}
+
+	for {
+		select {
+		case <-stopCh:
+			klog.V(5).Infof("Stopping egress IP assignment resync")
+			return
+		case a, ok := <-addrChan:
+			if !ok {
+				if subscribeErr = addrSubscribe(); subscribeErr != nil {
+					klog.Error("Error during netlink re-subscribe due to address channel closing: %v", subscribeErr)
+					// limit the retry attempts
+					time.Sleep(defaultPollInterval)
+				}
+				continue
+			}
+
+			// sync IP assignments on any egress IP removal event
+			if _, ok := eip.iptablesMark[a.LinkAddress.IP.String()]; ok && !a.NewAddr {
+				klog.V(5).Infof("Egress IP %s removed from the interface, syncing assignments", a.LinkAddress.IP.String())
+				syncIPs()
+			}
+		}
+	}
+}
+
 func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
 		if err := eip.assignEgressIP(egressIP, mark); err != nil {
 			klog.Errorf("Error assigning Egress IP %q: %v", egressIP, err)
+		}
+
+		if len(eip.iptablesMark) == 1 {
+			eip.stopIPResync = make(chan struct{})
+			go eip.runIPAssignmentResync(eip.stopIPResync)
 		}
 	} else {
 		eip.addEgressIP(nodeIP, egressIP, sdnIP)
@@ -159,6 +249,11 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 		delete(eip.iptablesMark, egressIP)
 		if err := eip.releaseEgressIP(egressIP, mark); err != nil {
 			klog.Errorf("Error releasing Egress IP %q: %v", egressIP, err)
+		}
+
+		if len(eip.iptablesMark) == 0 && eip.stopIPResync != nil {
+			close(eip.stopIPResync)
+			eip.stopIPResync = nil
 		}
 	} else {
 		eip.removeEgressIP(nodeIP, egressIP)
@@ -181,8 +276,8 @@ func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
 		egressIPs: sets.NewString(egressIP),
 	}
 	if len(eip.monitorNodes) == 1 {
-		eip.stop = make(chan struct{})
-		go utilwait.PollUntil(defaultPollInterval, eip.poll, eip.stop)
+		eip.stopMonitorNodes = make(chan struct{})
+		go utilwait.PollUntil(defaultPollInterval, eip.poll, eip.stopMonitorNodes)
 	}
 }
 
@@ -197,9 +292,9 @@ func (eip *egressIPWatcher) removeEgressIP(nodeIP, egressIP string) {
 	if eip.monitorNodes[nodeIP].egressIPs.Len() == 0 {
 		klog.V(4).Infof("Unmonitoring node %s", nodeIP)
 		delete(eip.monitorNodes, nodeIP)
-		if len(eip.monitorNodes) == 0 && eip.stop != nil {
-			close(eip.stop)
-			eip.stop = nil
+		if len(eip.monitorNodes) == 0 && eip.stopMonitorNodes != nil {
+			close(eip.stopMonitorNodes)
+			eip.stopMonitorNodes = nil
 		}
 	}
 }
