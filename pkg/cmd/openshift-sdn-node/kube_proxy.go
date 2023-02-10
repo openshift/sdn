@@ -2,12 +2,12 @@ package openshift_sdn_node
 
 import (
 	"fmt"
+	"net/http"
+	"time"
+
 	"k8s.io/apimachinery/pkg/fields"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
-	"net"
-	"net/http"
-	"time"
 
 	// In this file we use the import names that the upstream kube-proxy code uses.
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -39,7 +38,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
-	"k8s.io/kubernetes/pkg/proxy/userspace"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	"k8s.io/utils/exec"
 
@@ -56,6 +54,7 @@ const (
 
 // This is a stripped-down copy of ProxyServer from
 // k8s.io/kubernetes/cmd/kube-proxy/app/server.go, and should be kept in sync with that.
+// (rr) definitely not in sync with https://github.com/openshift/kubernetes/blob/sdn-4.13-kubernetes-1.26.0/cmd/kube-proxy/app/server.go#L527
 type ProxyServer struct {
 	Client             clientset.Interface
 	IptInterface       utiliptables.Interface
@@ -120,7 +119,9 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 
 	klog.V(0).Infof("kube-proxy running in single-stack %s mode", iptInterface.Protocol())
 
-	if proxyMode == proxyModeIPTables {
+	if proxyMode == proxyModeIPTables || proxyMode == proxyModeUserspace {
+		// userspace proxy mode was removed upstream in 1.26,
+		// let's fallback to iptables
 		klog.V(0).Info("Using iptables Proxier.")
 		if config.IPTables.MasqueradeBit == nil {
 			// MasqueradeBit must be specified or defaulted.
@@ -136,6 +137,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 			config.IPTables.SyncPeriod.Duration,
 			config.IPTables.MinSyncPeriod.Duration,
 			config.IPTables.MasqueradeAll,
+			*config.IPTables.LocalhostNodePorts,
 			int(*config.IPTables.MasqueradeBit),
 			localDetector,
 			hostname,
@@ -150,30 +152,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		proxymetrics.RegisterMetrics()
 	} else if proxyMode == proxyModeIPVS {
 		// SDNMISSING: NOT REACHED: We don't support IPVS mode. (CNO doesn't
-		// allow you to set "mode: ipvs".)
-	} else {
-		klog.V(0).Info("Using userspace Proxier.")
-
-		proxier, err = userspace.NewProxier(
-			userspace.NewLoadBalancerRR(),
-			net.ParseIP(config.BindAddress),
-			iptInterface,
-			execer,
-			*utilnet.ParsePortRangeOrDie(config.PortRange),
-			config.IPTables.SyncPeriod.Duration,
-			config.IPTables.MinSyncPeriod.Duration,
-			config.UDPIdleTimeout.Duration,
-			config.NodePortAddresses,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create proxier: %v", err)
-		}
-	}
-
-	useEndpointSlices := true
-	if proxyMode == proxyModeUserspace {
-		// userspace mode doesn't support endpointslice.
-		useEndpointSlices = false
+		// allow you to set "mode: ipvs")
 	}
 
 	return &ProxyServer{
@@ -187,7 +166,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		EnableProfiling:    config.EnableProfiling,
 		ConfigSyncPeriod:   config.ConfigSyncPeriod.Duration,
 		HealthzServer:      healthzServer,
-		UseEndpointSlices:  useEndpointSlices,
+		UseEndpointSlices:  true,
 
 		baseProxy:      proxier,
 		enableUnidling: enableUnidling,
