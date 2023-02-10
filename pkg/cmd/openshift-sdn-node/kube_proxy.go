@@ -7,11 +7,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/fields"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/kubernetes/pkg/features"
 
 	// In this file we use the import names that the upstream kube-proxy code uses.
 	// eg, "v1", "wait" rather than "corev1", "utilwait".
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -28,7 +26,9 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/logs"
+	metricsfeatures "k8s.io/component-base/metrics/features"
 	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/component-base/metrics/prometheus/slis"
 	utilsysctl "k8s.io/component-helpers/node/util/sysctl"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/proxy"
@@ -61,11 +61,10 @@ type ProxyServer struct {
 	execer             exec.Interface
 	Broadcaster        events.EventBroadcaster
 	Proxier            proxy.Provider
-	ProxyMode          string
+	ProxyMode          kubeproxyconfig.ProxyMode
 	NodeRef            *v1.ObjectReference
 	MetricsBindAddress string
 	EnableProfiling    bool
-	UseEndpointSlices  bool
 	ConfigSyncPeriod   time.Duration
 	HealthzServer      healthcheck.ProxierHealthUpdater
 
@@ -160,13 +159,12 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		IptInterface:       iptInterface,
 		execer:             execer,
 		Broadcaster:        eventBroadcaster,
-		ProxyMode:          string(proxyMode),
+		ProxyMode:          proxyMode,
 		NodeRef:            nodeRef,
 		MetricsBindAddress: config.MetricsBindAddress,
 		EnableProfiling:    config.EnableProfiling,
 		ConfigSyncPeriod:   config.ConfigSyncPeriod.Duration,
 		HealthzServer:      healthzServer,
-		UseEndpointSlices:  true,
 
 		baseProxy:      proxier,
 		enableUnidling: enableUnidling,
@@ -199,13 +197,17 @@ func serveHealthz(hz healthcheck.ProxierHealthUpdater, errCh chan error) {
 
 // serveMetrics runs the metrics server. This is an exact copy of serveMetrics() from
 // k8s.io/kubernetes/cmd/kube-proxy/app/server.go
-func serveMetrics(bindAddress, proxyMode string, enableProfiling bool, errCh chan error) {
+func serveMetrics(bindAddress string, proxyMode kubeproxyconfig.ProxyMode, enableProfiling bool, errCh chan error) {
 	if len(bindAddress) == 0 {
 		return
 	}
 
 	proxyMux := mux.NewPathRecorderMux("kube-proxy")
 	healthz.InstallHandler(proxyMux)
+	if utilfeature.DefaultFeatureGate.Enabled(metricsfeatures.ComponentSLIs) {
+		slis.SLIMetricsWithReset{}.Install(proxyMux)
+	}
+
 	proxyMux.HandleFunc("/proxyMode", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -281,7 +283,7 @@ func startProxyServer(s *ProxyServer) error {
 			options.LabelSelector = labelSelector.String()
 		}))
 
-	// Create configs (i.e. Watches for Services and Endpoints or EndpointSlices)
+	// Create configs (i.e. Watches for Services and EndpointSlices)
 	// Note: RegisterHandler() calls need to happen before creation of Sources because sources
 	// only notify on changes, and the initial update (on process start) may be lost if no handlers
 	// are registered yet.
@@ -289,36 +291,28 @@ func startProxyServer(s *ProxyServer) error {
 	serviceConfig.RegisterEventHandler(s.Proxier)
 	go serviceConfig.Run(wait.NeverStop)
 
-	if endpointsHandler, ok := s.Proxier.(config.EndpointsHandler); ok && !s.UseEndpointSlices {
-		endpointsConfig := config.NewEndpointsConfig(informerFactory.Core().V1().Endpoints(), s.ConfigSyncPeriod)
-		endpointsConfig.RegisterEventHandler(endpointsHandler)
-		go endpointsConfig.Run(wait.NeverStop)
-	} else {
-		endpointSliceConfig := config.NewEndpointSliceConfig(informerFactory.Discovery().V1().EndpointSlices(), s.ConfigSyncPeriod)
-		endpointSliceConfig.RegisterEventHandler(s.Proxier)
-		go endpointSliceConfig.Run(wait.NeverStop)
-	}
+	endpointSliceConfig := config.NewEndpointSliceConfig(informerFactory.Discovery().V1().EndpointSlices(), s.ConfigSyncPeriod)
+	endpointSliceConfig.RegisterEventHandler(s.Proxier)
+	go endpointSliceConfig.Run(wait.NeverStop)
 
-	// This has to start after the calls to NewServiceConfig and NewEndpointsConfig because those
-	// functions must configure their shared informer event handlers first.
+	// This has to start after the calls to NewServiceConfig because that
+	// function must configure its shared informer event handlers first.
 	informerFactory.Start(wait.NeverStop)
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.TopologyAwareHints) {
-		// Make an informer that selects for our nodename.
-		currentNodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(s.Client, s.ConfigSyncPeriod,
-			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-				options.FieldSelector = fields.OneTermEqualSelector("metadata.name", s.NodeRef.Name).String()
-			}))
-		nodeConfig := config.NewNodeConfig(currentNodeInformerFactory.Core().V1().Nodes(), s.ConfigSyncPeriod)
-		nodeConfig.RegisterEventHandler(s.Proxier)
-		go nodeConfig.Run(wait.NeverStop)
+	// Make an informer that selects for our nodename.
+	currentNodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(s.Client, s.ConfigSyncPeriod,
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", s.NodeRef.Name).String()
+		}))
+	nodeConfig := config.NewNodeConfig(currentNodeInformerFactory.Core().V1().Nodes(), s.ConfigSyncPeriod)
+	nodeConfig.RegisterEventHandler(s.Proxier)
+	go nodeConfig.Run(wait.NeverStop)
 
-		// This has to start after the calls to NewNodeConfig because that must
-		// configure the shared informer event handler first.
-		currentNodeInformerFactory.Start(wait.NeverStop)
-	}
+	// This has to start after the calls to NewNodeConfig because that must
+	// configure the shared informer event handler first.
+	currentNodeInformerFactory.Start(wait.NeverStop)
 
 	go s.Proxier.SyncLoop()
 
-	return nil
+	return <-errCh
 }
