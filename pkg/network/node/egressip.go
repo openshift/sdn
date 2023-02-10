@@ -224,7 +224,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 	}
 }
 
-func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
+func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string, nodeOffline bool) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
@@ -237,7 +237,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP s
 			go eip.runIPAssignmentResync(eip.stopIPResync)
 		}
 	} else {
-		eip.addEgressIP(nodeIP, egressIP, sdnIP)
+		eip.addEgressIP(nodeIP, egressIP, sdnIP, nodeOffline)
 	}
 }
 
@@ -258,7 +258,7 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 	}
 }
 
-func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
+func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string, nodeOffline bool) {
 	eip.monitorNodesLock.Lock()
 	defer eip.monitorNodesLock.Unlock()
 
@@ -272,6 +272,7 @@ func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
 		nodeIP:    nodeIP,
 		sdnIP:     sdnIP,
 		egressIPs: sets.NewString(egressIP),
+		offline:   nodeOffline,
 	}
 	if len(eip.monitorNodes) == 1 {
 		eip.stopMonitorNodes = make(chan struct{})
