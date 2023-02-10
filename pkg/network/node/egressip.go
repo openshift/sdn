@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	defaultPollInterval   = 5 * time.Second
-	repollInterval        = time.Second
 	maxRetries            = 2
 	defaultKubeletDropBit = 1 << uint32(15) // https://github.com/kubernetes/kubelet/blob/release-1.24/config/v1beta1/types.go#L555
 )
@@ -212,7 +210,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 				if subscribeErr = addrSubscribe(); subscribeErr != nil {
 					klog.Error("Error during netlink re-subscribe due to address channel closing: %v", subscribeErr)
 					// limit the retry attempts
-					time.Sleep(defaultPollInterval)
+					time.Sleep(common.DefaultPollInterval)
 				}
 				continue
 			}
@@ -277,7 +275,7 @@ func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
 	}
 	if len(eip.monitorNodes) == 1 {
 		eip.stopMonitorNodes = make(chan struct{})
-		go utilwait.PollUntil(defaultPollInterval, eip.poll, eip.stopMonitorNodes)
+		go utilwait.PollUntil(common.DefaultPollInterval, eip.poll, eip.stopMonitorNodes)
 	}
 }
 
@@ -302,7 +300,7 @@ func (eip *egressIPWatcher) removeEgressIP(nodeIP, egressIP string) {
 func (eip *egressIPWatcher) poll() (bool, error) {
 	retry := eip.check(false)
 	for retry {
-		time.Sleep(repollInterval)
+		time.Sleep(common.RepollInterval)
 		retry = eip.check(true)
 	}
 	return false, nil
@@ -322,9 +320,9 @@ func (eip *egressIPWatcher) getOfflineResult(retrying bool) (map[string]bool, bo
 
 	var timeout time.Duration
 	if retrying {
-		timeout = repollInterval
+		timeout = common.RepollInterval
 	} else {
-		timeout = defaultPollInterval
+		timeout = common.DefaultPollInterval
 	}
 
 	needRetry := false
