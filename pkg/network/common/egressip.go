@@ -101,7 +101,7 @@ type egressIPInfo struct {
 type EgressIPWatcher interface {
 	Synced()
 
-	ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string)
+	ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string, nodeOffline bool)
 	ReleaseEgressIP(egressIP, nodeIP string)
 
 	SetNamespaceEgressNormal(vnid uint32)
@@ -629,7 +629,7 @@ func (eit *EgressIPTracker) syncEgressNodeState(eg *egressIPInfo, active bool) {
 	if active && eg.assignedNodeIP != eg.nodes[0].nodeIP {
 		klog.V(4).Infof("Assigning egress IP %s to node %s", eg.ip, eg.nodes[0].nodeIP)
 		eg.assignedNodeIP = eg.nodes[0].nodeIP
-		eit.watcher.ClaimEgressIP(eg.namespaces[0].vnid, eg.ip, eg.assignedNodeIP, eg.nodes[0].sdnIP)
+		eit.watcher.ClaimEgressIP(eg.namespaces[0].vnid, eg.ip, eg.assignedNodeIP, eg.nodes[0].sdnIP, eg.nodes[0].offline)
 	} else if !active && eg.assignedNodeIP != "" {
 		klog.V(4).Infof("Removing egress IP %s from node %s", eg.ip, eg.assignedNodeIP)
 		eit.watcher.ReleaseEgressIP(eg.ip, eg.assignedNodeIP)
@@ -665,7 +665,7 @@ func (eit *EgressIPTracker) syncEgressNamespaceState(ns *namespaceEgress) {
 		eg.assignedVNID = ns.vnid
 		if eg.assignedNodeIP == "" {
 			klog.V(4).Infof("VNID %d cannot use unassigned egress IP %s", ns.vnid, eg.ip)
-		} else if len(ns.requestedIPs) > 1 && eg.nodes[0].offline {
+		} else if eg.nodes[0].offline {
 			klog.V(4).Infof("VNID %d cannot use egress IP %s on offline node %s", ns.vnid, eg.ip, eg.assignedNodeIP)
 		} else {
 			activeEgressIPs = append(activeEgressIPs, EgressIPAssignment{NodeIP: eg.assignedNodeIP, EgressIP: eg.ip})

@@ -295,7 +295,7 @@ func (eim *egressIPManager) Synced() {
 // until the previous assignment to node A has been fully removed. We thus need
 // to "queue" the create event and execute it once we observe the complete
 // removal of the delete using our informer.
-func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
+func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string, nodeOffline bool) {
 	if !eim.tracker.CloudEgressIP {
 		return
 	}
