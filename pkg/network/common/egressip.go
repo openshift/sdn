@@ -36,6 +36,12 @@ const (
 	// unlimitedNodeCapacity indicates a discarded capacity - useful on
 	// bare-metal where this is ignored.
 	unlimitedNodeCapacity = math.MaxInt32
+
+	// DefaultPollInterval default poll interval used for egress node reachability check
+	DefaultPollInterval = 5 * time.Second
+
+	// RepollInterval poll interval used for egress node reachability check retries
+	RepollInterval = time.Second
 )
 
 type ifAddr struct {
