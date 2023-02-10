@@ -128,7 +128,7 @@ func assertNoOVSChanges(eip *egressIPWatcher, flows *[]string) error {
 	return assertOVSChanges(eip, flows)
 }
 
-//determine if the the groups are the same regardless of order
+// determine if the the groups are the same regardless of order
 func compareGroups(groups []string, expectedGroups []string) (bool, error) {
 	//both groups and expected should be the same size
 	if len(groups) != len(expectedGroups) {
