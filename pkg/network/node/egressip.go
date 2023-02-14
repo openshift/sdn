@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	defaultPollInterval   = 5 * time.Second
-	repollInterval        = time.Second
 	maxRetries            = 2
 	defaultKubeletDropBit = 1 << uint32(15) // https://github.com/kubernetes/kubelet/blob/release-1.24/config/v1beta1/types.go#L555
 )
@@ -212,7 +210,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 				if subscribeErr = addrSubscribe(); subscribeErr != nil {
 					klog.Error("Error during netlink re-subscribe due to address channel closing: %v", subscribeErr)
 					// limit the retry attempts
-					time.Sleep(defaultPollInterval)
+					time.Sleep(common.DefaultPollInterval)
 				}
 				continue
 			}
@@ -226,7 +224,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 	}
 }
 
-func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
+func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string, nodeOffline bool) {
 	if nodeIP == eip.localIP {
 		mark := getMarkForVNID(vnid, eip.masqueradeBit)
 		eip.iptablesMark[egressIP] = mark
@@ -239,7 +237,7 @@ func (eip *egressIPWatcher) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP s
 			go eip.runIPAssignmentResync(eip.stopIPResync)
 		}
 	} else {
-		eip.addEgressIP(nodeIP, egressIP, sdnIP)
+		eip.addEgressIP(nodeIP, egressIP, sdnIP, nodeOffline)
 	}
 }
 
@@ -260,7 +258,7 @@ func (eip *egressIPWatcher) ReleaseEgressIP(egressIP, nodeIP string) {
 	}
 }
 
-func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
+func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string, nodeOffline bool) {
 	eip.monitorNodesLock.Lock()
 	defer eip.monitorNodesLock.Unlock()
 
@@ -274,10 +272,11 @@ func (eip *egressIPWatcher) addEgressIP(nodeIP, egressIP, sdnIP string) {
 		nodeIP:    nodeIP,
 		sdnIP:     sdnIP,
 		egressIPs: sets.NewString(egressIP),
+		offline:   nodeOffline,
 	}
 	if len(eip.monitorNodes) == 1 {
 		eip.stopMonitorNodes = make(chan struct{})
-		go utilwait.PollUntil(defaultPollInterval, eip.poll, eip.stopMonitorNodes)
+		go utilwait.PollUntil(common.DefaultPollInterval, eip.poll, eip.stopMonitorNodes)
 	}
 }
 
@@ -302,7 +301,7 @@ func (eip *egressIPWatcher) removeEgressIP(nodeIP, egressIP string) {
 func (eip *egressIPWatcher) poll() (bool, error) {
 	retry := eip.check(false)
 	for retry {
-		time.Sleep(repollInterval)
+		time.Sleep(common.RepollInterval)
 		retry = eip.check(true)
 	}
 	return false, nil
@@ -322,9 +321,9 @@ func (eip *egressIPWatcher) getOfflineResult(retrying bool) (map[string]bool, bo
 
 	var timeout time.Duration
 	if retrying {
-		timeout = repollInterval
+		timeout = common.RepollInterval
 	} else {
-		timeout = defaultPollInterval
+		timeout = common.DefaultPollInterval
 	}
 
 	needRetry := false
