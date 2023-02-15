@@ -18,7 +18,6 @@ import (
 type NodeIPTables struct {
 	ipt                iptables.Interface
 	clusterNetworkCIDR []string
-	masqueradeServices bool
 	vxlanPort          uint32
 	masqueradeBitHex   string // the masquerade bit as hex value
 
@@ -60,11 +59,10 @@ func isResourceError(err error) bool {
 	return false
 }
 
-func newNodeIPTables(ipt iptables.Interface, clusterNetworkCIDR []string, masqueradeServices bool, vxlanPort uint32, masqueradeBit uint32) *NodeIPTables {
+func newNodeIPTables(ipt iptables.Interface, clusterNetworkCIDR []string, vxlanPort uint32, masqueradeBit uint32) *NodeIPTables {
 	return &NodeIPTables{
 		ipt:                ipt,
 		clusterNetworkCIDR: clusterNetworkCIDR,
-		masqueradeServices: masqueradeServices,
 		vxlanPort:          vxlanPort,
 		masqueradeBitHex:   fmt.Sprintf("%#x", 1<<masqueradeBit),
 		egressIPs:          make(map[string]string),
@@ -209,17 +207,14 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 	var masq2Rules [][]string
 	var filterRules [][]string
 	for _, cidr := range n.clusterNetworkCIDR {
-		if n.masqueradeServices {
-			masqRules = append(masqRules, []string{"-s", cidr, "-m", "comment", "--comment", "masquerade pod-to-service and pod-to-external traffic", "-j", "MASQUERADE"})
-		} else {
-			masqRules = append(masqRules, []string{"-s", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "OPENSHIFT-MASQUERADE-2"})
-			masq2Rules = append(masq2Rules, []string{"-d", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "RETURN"})
-		}
+		masqRules = append(masqRules, []string{"-s", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "OPENSHIFT-MASQUERADE-2"})
+		masq2Rules = append(masq2Rules, []string{"-d", cidr, "-m", "comment", "--comment", "masquerade pod-to-external traffic", "-j", "RETURN"})
 
 		filterRules = append(filterRules, []string{"-s", cidr, "-m", "comment", "--comment", "attempted resend after connection close", "-m", "conntrack", "--ctstate", "INVALID", "-j", "DROP"})
 		filterRules = append(filterRules, []string{"-d", cidr, "-m", "comment", "--comment", "forward traffic from SDN", "-j", "ACCEPT"})
 		filterRules = append(filterRules, []string{"-s", cidr, "-m", "comment", "--comment", "forward traffic to SDN", "-j", "ACCEPT"})
 	}
+	masq2Rules = append(masq2Rules, []string{"-j", "MASQUERADE"})
 
 	chainArray = append(chainArray,
 		Chain{
@@ -230,6 +225,11 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			rules:    masqRules,
 		},
 		Chain{
+			table: "nat",
+			name:  "OPENSHIFT-MASQUERADE-2",
+			rules: masq2Rules,
+		},
+		Chain{
 			table:    "filter",
 			name:     "OPENSHIFT-FIREWALL-FORWARD",
 			srcChain: "FORWARD",
@@ -237,16 +237,6 @@ func (n *NodeIPTables) getNodeIPTablesChains() []Chain {
 			rules:    filterRules,
 		},
 	)
-	if !n.masqueradeServices {
-		masq2Rules = append(masq2Rules, []string{"-j", "MASQUERADE"})
-		chainArray = append(chainArray,
-			Chain{
-				table: "nat",
-				name:  "OPENSHIFT-MASQUERADE-2",
-				rules: masq2Rules,
-			},
-		)
-	}
 
 	// HACK: block access to MCS until we can secure it properly. Note that we share
 	// the same chain between OUTPUT and FORWARD.

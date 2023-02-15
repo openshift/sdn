@@ -1,13 +1,9 @@
 package node
 
 import (
-	"context"
 	"sync"
 
 	"github.com/openshift/library-go/pkg/network/networkutils"
-	"github.com/openshift/sdn/pkg/network/common"
-
-	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 
 	"k8s.io/klog/v2"
 
@@ -71,12 +67,6 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 		klog.Errorf("Could not get list of local pods in namespace %q: %v", namespace, err)
 	}
 
-	services, err := common.ListServicesInNamespace(context.TODO(), mp.node.kClient, namespace)
-	if err != nil {
-		klog.Errorf("Could not get list of services in namespace %q: %v", namespace, err)
-		services = []*corev1.Service{}
-	}
-
 	if oldNetID != netID {
 		// Update OF rules for the existing/old pods in the namespace
 		for _, pod := range pods {
@@ -84,16 +74,6 @@ func (mp *multiTenantPlugin) updatePodNetwork(namespace string, oldNetID, netID 
 			if err != nil {
 				klog.Errorf("Could not update pod %q in namespace %q: %v", pod.Name, namespace, err)
 			}
-		}
-
-		// Update OF rules for the old services in the namespace
-		for _, svc := range services {
-			if !helper.IsServiceIPSet(svc) {
-				continue
-			}
-
-			mp.node.DeleteServiceRules(svc)
-			mp.node.AddServiceRules(svc, netID)
 		}
 
 		mp.EnsureVNIDRules(netID)
