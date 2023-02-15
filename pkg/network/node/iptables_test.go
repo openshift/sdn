@@ -18,7 +18,7 @@ func TestVxlanNoTrackRulesWithCustomVxlanPort(t *testing.T) {
 
 func validateIPTableRuleForVxlanPort(t *testing.T, dstPort uint32) {
 	ipt := iptablestest.NewFake()
-	nodeIpt := newNodeIPTables(ipt, nil, true, dstPort, uint32(0))
+	nodeIpt := newNodeIPTables(ipt, nil, dstPort, uint32(0))
 	err := nodeIpt.syncIPTableRules()
 	if err != nil {
 		t.Fatalf("unexpected error while syncing ip table rules: %v", err)

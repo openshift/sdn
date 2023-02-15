@@ -14,7 +14,6 @@ import (
 	osdnv1 "github.com/openshift/api/network/v1"
 	"github.com/openshift/sdn/pkg/util/ovs"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -23,7 +22,7 @@ import (
 
 func setupOVSController(t *testing.T) (ovs.Interface, *ovsController, []string) {
 	ovsif := ovs.NewFake(Br0)
-	oc := NewOVSController(ovsif, 0, true, "172.17.0.4")
+	oc := NewOVSController(ovsif, 0, "172.17.0.4")
 	oc.tunMAC = "c6:ac:2c:13:48:4b"
 	err := oc.SetupOVS([]string{"10.128.0.0/14"}, "172.30.0.0/16", "10.128.0.0/23", "10.128.0.1", 1450, 4789)
 	if err != nil {
@@ -148,67 +147,6 @@ func diffFlows(origFlows, newFlows []string) string {
 
 	output, _ := exec.Command("diff", "-u", orig.Name(), new.Name()).CombinedOutput()
 	return string(output)
-}
-
-func TestOVSService(t *testing.T) {
-	ovsif, oc, origFlows := setupOVSController(t)
-
-	svc := corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "service",
-		},
-		Spec: corev1.ServiceSpec{
-			ClusterIP: "172.30.99.99",
-			Ports: []corev1.ServicePort{
-				{Protocol: corev1.ProtocolTCP, Port: 80},
-				{Protocol: corev1.ProtocolTCP, Port: 443},
-			},
-		},
-	}
-	err := oc.AddServiceRules(&svc, 42)
-	if err != nil {
-		t.Fatalf("Unexpected error adding service rules: %v", err)
-	}
-
-	flows, err := ovsif.DumpFlows("")
-	if err != nil {
-		t.Fatalf("Unexpected error dumping flows: %v", err)
-	}
-	err = assertFlowChanges(origFlows, flows,
-		flowChange{
-			kind:    flowAdded,
-			match:   []string{"table=60", "ip_frag", "42->NXM_NX_REG1"},
-			noMatch: []string{"tcp"},
-		},
-		flowChange{
-			kind:  flowAdded,
-			match: []string{"table=60", "nw_dst=172.30.99.99", "tcp_dst=80", "42->NXM_NX_REG1"},
-		},
-		flowChange{
-			kind:  flowAdded,
-			match: []string{"table=60", "nw_dst=172.30.99.99", "tcp_dst=443", "42->NXM_NX_REG1"},
-		},
-	)
-	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v", err)
-	}
-
-	err = oc.DeleteServiceRules(&svc)
-	if err != nil {
-		t.Fatalf("Unexpected error deleting service rules: %v", err)
-	}
-	flows, err = ovsif.DumpFlows("")
-	if err != nil {
-		t.Fatalf("Unexpected error dumping flows: %v", err)
-	}
-	err = assertFlowChanges(origFlows, flows) // no changes
-
-	if err != nil {
-		t.Fatalf("Unexpected flow changes: %v", err)
-	}
 }
 
 const (
@@ -848,7 +786,7 @@ func TestAlreadySetUp(t *testing.T) {
 		if err := ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13"); err != nil {
 			t.Fatalf("(%d) unexpected error from AddBridge: %v", i, err)
 		}
-		oc := NewOVSController(ovsif, 0, true, "172.17.0.4")
+		oc := NewOVSController(ovsif, 0, "172.17.0.4")
 		/* In order to test AlreadySetUp the vxlan port has to be added, we are not testing AddPort here */
 		_, err := ovsif.AddPort("vxlan0", 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`, fmt.Sprintf("options:dst_port=%d", 4789))
 		if err != nil {
@@ -873,18 +811,8 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		unused []int
 	}{
 		{
-			/* VNID 0 is never unused, even if there are no table 60/70 rules for it */
+			/* VNID 0 is never unused, even if there are no table 70 rules for it */
 			flows: []string{
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.156.103,nw_frag=later actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.156.103,tp_dst=5454 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
@@ -899,44 +827,9 @@ func TestFindUnusedVNIDs(t *testing.T) {
 			unused: []int{},
 		},
 		{
-			/* Both VNIDs have 1 pod and 1 service, so they stay */
+			/* Both VNIDs have 1 pod, so they stay */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.156.103,nw_frag=later actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.156.103,tp_dst=5454 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
-				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
-				"table=70,priority=0 actions=drop",
-				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=200,reg0=0 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=200,reg1=0 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=100,reg0=0x55fac,reg1=0x55fac actions=output:NXM_NX_REG2[]",
-				"table=80,priority=100,reg0=0xcb81e9,reg1=0xcb81e9 actions=output:NXM_NX_REG2[]",
-				"table=80,priority=0 actions=drop",
-			},
-			policy: []int{0x0, 0x55fac, 0xcb81e9},
-			unused: []int{},
-		},
-		{
-			/* 0xcb81e9 has just a pod, 0x55fac has just a service, both stay */
-			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.3 actions=load:0xcb81e9->NXM_NX_REG1[],load:0x4->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -952,15 +845,6 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		{
 			/* 0xcb81e9 gets GCed, 0x55fac stays */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -976,12 +860,6 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		{
 			/* Both get GCed */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
 				"table=80,priority=200,reg0=0 actions=output:NXM_NX_REG2[]",
@@ -996,15 +874,6 @@ func TestFindUnusedVNIDs(t *testing.T) {
 		{
 			/* Invalid state; we lost the 0x55fac policy rules somehow. But we should still notice that 0xcb81e9 is unused. */
 			flows: []string{
-				"table=60,priority=200,reg0=0 actions=output:2",
-				"table=60,priority=100,ip,nw_dst=172.30.0.1,nw_frag=later actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,ip,nw_dst=172.30.76.192,nw_frag=later actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=443 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,udp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.0.1,tp_dst=53 actions=load:0->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5454 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=100,tcp,nw_dst=172.30.76.192,tp_dst=5455 actions=load:0x55fac->NXM_NX_REG1[],load:0x2->NXM_NX_REG2[],goto_table:80",
-				"table=60,priority=0 actions=drop",
 				"table=70,priority=100,ip,nw_dst=10.129.0.2 actions=load:0x55fac->NXM_NX_REG1[],load:0x3->NXM_NX_REG2[],goto_table:80",
 				"table=70,priority=0 actions=drop",
 				"table=80,priority=300,ip,nw_src=10.129.0.1 actions=output:NXM_NX_REG2[]",
@@ -1168,10 +1037,6 @@ var expectedFlows = []string{
 	" cookie=0x0f46ee1a, table=50, priority=100, arp, arp_tpa=10.128.2.0/23, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1",
 	" cookie=0, table=50, priority=0, actions=drop",
 	" cookie=0, table=60, priority=200, actions=output:2",
-	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, ip_frag=later, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
-	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, tcp, tcp_dst=80, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
-	" cookie=0, table=60, priority=100, ip, nw_dst=172.30.99.99, tcp, tcp_dst=443, actions=load:42->NXM_NX_REG1[],load:2->NXM_NX_REG2[],goto_table:80",
-	" cookie=0, table=60, priority=0, actions=drop",
 	" cookie=0, table=70, priority=100, ip, nw_dst=10.128.0.2, actions=load:42->NXM_NX_REG1[],load:3->NXM_NX_REG2[],goto_table:80",
 	" cookie=0, table=70, priority=0, actions=drop",
 	" cookie=0, table=80, priority=300, ip, nw_src=10.128.0.1/32, actions=output:NXM_NX_REG2[]",
@@ -1206,27 +1071,6 @@ func TestRuleVersion(t *testing.T) {
 	_, err := oc.SetUpPod(sandboxID, "veth1", net.ParseIP("10.128.0.2"), 42)
 	if err != nil {
 		t.Fatalf("Unexpected error adding pod rules: %v", err)
-	}
-
-	// Service-related flows
-	svc := corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "service",
-		},
-		Spec: corev1.ServiceSpec{
-			ClusterIP: "172.30.99.99",
-			Ports: []corev1.ServicePort{
-				{Protocol: corev1.ProtocolTCP, Port: 80},
-				{Protocol: corev1.ProtocolTCP, Port: 443},
-			},
-		},
-	}
-	err = oc.AddServiceRules(&svc, 42)
-	if err != nil {
-		t.Fatalf("Unexpected error adding service rules: %v", err)
 	}
 
 	// VXLAN flows
