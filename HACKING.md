@@ -161,7 +161,7 @@ commits (for ease of review later).
 Much of the above is generic to any module. For the specific case of
 `openshift/sdn`, there are two more things to take care of:
 
-1. [`pkg/openshift-sdn/proxy.go`](./pkg/openshift-sdn/proxy.go) is a
+1. [`pkg/cmd/openshift-sdn-node/kube_proxy.go`](./pkg/cmd/openshift-sdn-node/kube_proxy.go) is a
    fork of kubernetes's
    [`cmd/kube-proxy/app/server.go`](./vendor/k8s.io/kubernetes/cmd/kube-proxy/app/server.go)
    /
@@ -169,8 +169,15 @@ Much of the above is generic to any module. For the specific case of
    You should look through the changes made upstream since the
    previous release and see if any of them need to be copied into our
    fork.
+   A good way to see the deltas between two release for example between 1.25.0 and 1.26.0,
+   run the following command from your upstream kuberenetes repo created at the begining of this
+   process.
 
-   On proxy.go you should also pay special attention to metrics, as we
+   ```bash
+   git diff v1.25.0 v1.26.0 -- cmd/kube-proxy
+   ```
+
+   On kube_proxy.go you should also pay special attention to metrics, as we
    expect to have some problems in the near future with the
    [metrics handler](https://github.com/openshift/sdn/pull/114).
 

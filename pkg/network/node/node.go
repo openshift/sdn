@@ -25,7 +25,6 @@ import (
 	kapi "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
-	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	kexec "k8s.io/utils/exec"
 
@@ -71,7 +70,6 @@ type OsdnNodeConfig struct {
 	OSDNInformers osdninformers.SharedInformerFactory
 
 	IPTables      iptables.Interface
-	ProxyMode     kubeproxyconfig.ProxyMode
 	MasqueradeBit *int32
 
 	OverrideMTU uint32
@@ -134,20 +132,13 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
-		// Userspace proxy is incompatible with conntrack.
-		if c.ProxyMode != kubeproxyconfig.ProxyModeUserspace {
-			useConnTrack = true
-		}
+		useConnTrack = true
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
 		useConnTrack = true
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
-	}
-
-	if useConnTrack && c.ProxyMode == kubeproxyconfig.ProxyModeUserspace {
-		return nil, fmt.Errorf("%q plugin is not compatible with proxy-mode %q", networkInfo.PluginName, c.ProxyMode)
 	}
 
 	klog.Infof("Initializing SDN node %q (%s) of type %q", c.NodeName, c.NodeIP, networkInfo.PluginName)
@@ -447,7 +438,7 @@ func (node *OsdnNode) killFailedPods(failed map[string]*kruntimeapi.PodSandbox) 
 		node.recorder.Eventf(podRef, corev1.EventTypeWarning, "NetworkFailed", "The pod's network interface has been lost and the pod will be stopped.")
 
 		klog.V(5).Infof("Killing pod '%s/%s' sandbox", podRef.Namespace, podRef.Name)
-		if err := node.runtimeService.StopPodSandbox(sandbox.Id); err != nil {
+		if err := node.runtimeService.StopPodSandbox(context.TODO(), sandbox.Id); err != nil {
 			klog.Warningf("Failed to kill pod '%s/%s' sandbox: %v", podRef.Namespace, podRef.Name, err)
 		}
 	}
