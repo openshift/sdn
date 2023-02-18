@@ -185,7 +185,7 @@ const (
 	Vxlan0 = "vxlan0"
 
 	// rule versioning; increment each time flow rules change
-	ruleVersion = 14
+	ruleVersion = 13
 
 	ruleVersionTable = 253
 )
