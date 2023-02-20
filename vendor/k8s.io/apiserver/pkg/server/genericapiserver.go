@@ -26,7 +26,6 @@ import (
 
 	systemd "github.com/coreos/go-systemd/v22/daemon"
 
-	apidiscoveryv2beta1 "k8s.io/api/apidiscovery/v2beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,7 +39,6 @@ import (
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	genericapi "k8s.io/apiserver/pkg/endpoints"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
-	discoveryendpoint "k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
 	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -139,14 +137,8 @@ type GenericAPIServer struct {
 	// listedPathProvider is a lister which provides the set of paths to show at /
 	listedPathProvider routes.ListedPathProvider
 
-	// DiscoveryGroupManager serves /apis in an unaggregated form.
+	// DiscoveryGroupManager serves /apis
 	DiscoveryGroupManager discovery.GroupManager
-
-	// AggregatedDiscoveryGroupManager serves /apis in an aggregated form.
-	AggregatedDiscoveryGroupManager discoveryendpoint.ResourceManager
-
-	// AggregatedLegacyDiscoveryGroupManager serves /api in an aggregated form.
-	AggregatedLegacyDiscoveryGroupManager discoveryendpoint.ResourceManager
 
 	// Enable swagger and/or OpenAPI if these configs are non-nil.
 	openAPIConfig *openapicommon.Config
@@ -426,40 +418,44 @@ func (s *GenericAPIServer) PrepareRun() preparedGenericAPIServer {
 // or the secure port cannot be listened on initially.
 // This is the diagram of what channels/signals are dependent on each other:
 //
-// |                                  stopCh
-// |                                    |
-// |           ---------------------------------------------------------
-// |           |                                                       |
-// |    ShutdownInitiated (shutdownInitiatedCh)                        |
-// |           |                                                       |
-// | (ShutdownDelayDuration)                                    (PreShutdownHooks)
-// |           |                                                       |
-// |  AfterShutdownDelayDuration (delayedStopCh)   PreShutdownHooksStopped (preShutdownHooksHasStoppedCh)
-// |           |                                                       |
-// |           |-------------------------------------------------------|
-// |                                    |
-// |                                    |
-// |               NotAcceptingNewRequest (notAcceptingNewRequestCh)
-// |                                    |
-// |                                    |
-// |           |---------------------------------------------------------|
-// |           |                        |              |                 |
-// |        [without                 [with             |                 |
-// | ShutdownSendRetryAfter]  ShutdownSendRetryAfter]  |                 |
-// |           |                        |              |                 |
-// |           |                        ---------------|                 |
-// |           |                                       |                 |
-// |           |                         (HandlerChainWaitGroup::Wait)   |
-// |           |                                       |                 |
-// |           |                    InFlightRequestsDrained (drainedCh)  |
-// |           |                                       |                 |
-// |           ----------------------------------------|-----------------|
-// |                                 |                 |
-// |                       stopHttpServerCh     (AuditBackend::Shutdown())
-// |                                 |
-// |                       listenerStoppedCh
-// |                                 |
-// |      HTTPServerStoppedListening (httpServerStoppedListeningCh)
+//	                              stopCh
+//	                                |
+//	       ---------------------------------------------------------
+//	       |                                                       |
+//	ShutdownInitiated (shutdownInitiatedCh)                        |
+//	       |                                                       |
+//
+// (ShutdownDelayDuration)                                    (PreShutdownHooks)
+//
+//	         |                                                       |
+//	AfterShutdownDelayDuration (delayedStopCh)   PreShutdownHooksStopped (preShutdownHooksHasStoppedCh)
+//	         |                                                       |
+//	         |-------------------------------------------------------|
+//	                                  |
+//	                                  |
+//	             NotAcceptingNewRequest (notAcceptingNewRequestCh)
+//	                                  |
+//	                                  |
+//	         |---------------------------------------------------------|
+//	         |                        |              |                 |
+//	      [without                 [with             |                 |
+//
+// ShutdownSendRetryAfter]  ShutdownSendRetryAfter]  |                 |
+//
+//	     |                        |              |                 |
+//	     |                        ---------------|                 |
+//	     |                                       |                 |
+//	     |                         (HandlerChainWaitGroup::Wait)   |
+//	     |                                       |                 |
+//	     |                    InFlightRequestsDrained (drainedCh)  |
+//	     |                                       |                 |
+//	     ----------------------------------------|-----------------|
+//	                           |                 |
+//	                 stopHttpServerCh     (AuditBackend::Shutdown())
+//	                           |
+//	                 listenerStoppedCh
+//	                           |
+//	HTTPServerStoppedListening (httpServerStoppedListeningCh)
 func (s preparedGenericAPIServer) Run(stopCh <-chan struct{}) error {
 	delayedStopCh := s.lifecycleSignals.AfterShutdownDelayDuration
 	shutdownInitiatedCh := s.lifecycleSignals.ShutdownInitiated
@@ -670,7 +666,7 @@ func (s *GenericAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *A
 		}
 		apiGroupVersion.OpenAPIModels = openAPIModels
 
-		if openAPIModels != nil {
+		if openAPIModels != nil && utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 			typeConverter, err := fieldmanager.NewTypeConverter(openAPIModels, false)
 			if err != nil {
 				return err
@@ -680,35 +676,11 @@ func (s *GenericAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *A
 
 		apiGroupVersion.MaxRequestBodyBytes = s.maxRequestBodyBytes
 
-		discoveryAPIResources, r, err := apiGroupVersion.InstallREST(s.Handler.GoRestfulContainer)
-
+		r, err := apiGroupVersion.InstallREST(s.Handler.GoRestfulContainer)
 		if err != nil {
 			return fmt.Errorf("unable to setup API %v: %v", apiGroupInfo, err)
 		}
 		resourceInfos = append(resourceInfos, r...)
-
-		if utilfeature.DefaultFeatureGate.Enabled(features.AggregatedDiscoveryEndpoint) {
-			// Aggregated discovery only aggregates resources under /apis
-			if apiPrefix == APIGroupPrefix {
-				s.AggregatedDiscoveryGroupManager.AddGroupVersion(
-					groupVersion.Group,
-					apidiscoveryv2beta1.APIVersionDiscovery{
-						Version:   groupVersion.Version,
-						Resources: discoveryAPIResources,
-					},
-				)
-			} else {
-				// There is only one group version for legacy resources, priority can be defaulted to 0.
-				s.AggregatedLegacyDiscoveryGroupManager.AddGroupVersion(
-					groupVersion.Group,
-					apidiscoveryv2beta1.APIVersionDiscovery{
-						Version:   groupVersion.Version,
-						Resources: discoveryAPIResources,
-					},
-				)
-			}
-		}
-
 	}
 
 	s.RegisterDestroyFunc(apiGroupInfo.destroyStorage)
@@ -743,13 +715,7 @@ func (s *GenericAPIServer) InstallLegacyAPIGroup(apiPrefix string, apiGroupInfo 
 
 	// Install the version handler.
 	// Add a handler at /<apiPrefix> to enumerate the supported api versions.
-	legacyRootAPIHandler := discovery.NewLegacyRootAPIHandler(s.discoveryAddresses, s.Serializer, apiPrefix)
-	if utilfeature.DefaultFeatureGate.Enabled(features.AggregatedDiscoveryEndpoint) {
-		wrapped := discoveryendpoint.WrapAggregatedDiscoveryToHandler(legacyRootAPIHandler, s.AggregatedLegacyDiscoveryGroupManager)
-		s.Handler.GoRestfulContainer.Add(wrapped.GenerateWebService("/api", metav1.APIVersions{}))
-	} else {
-		s.Handler.GoRestfulContainer.Add(legacyRootAPIHandler.WebService())
-	}
+	s.Handler.GoRestfulContainer.Add(discovery.NewLegacyRootAPIHandler(s.discoveryAddresses, s.Serializer, apiPrefix).WebService())
 
 	return nil
 }

@@ -18,8 +18,8 @@ package testing
 
 import (
 	"encoding/json"
-	"io"
 	"io/fs"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,13 +27,14 @@ import (
 	"strings"
 	"sync"
 
+	openapi_v3 "github.com/google/gnostic/openapiv3"
 	"k8s.io/kube-openapi/pkg/handler3"
 	"k8s.io/kube-openapi/pkg/spec3"
 )
 
 type FakeOpenAPIServer struct {
 	HttpServer      *httptest.Server
-	ServedDocuments map[string]*spec3.OpenAPI
+	ServedDocuments map[string]*openapi_v3.Document
 	RequestCounters map[string]int
 }
 
@@ -61,7 +62,7 @@ func NewFakeOpenAPIV3Server(specsPath string) (*FakeOpenAPIServer, error) {
 	}
 
 	grouped := make(map[string][]byte)
-	var testV3Specs = make(map[string]*spec3.OpenAPI)
+	var testV3Specs = make(map[string]*openapi_v3.Document)
 
 	addSpec := func(path string) {
 		file, err := os.Open(path)
@@ -70,7 +71,7 @@ func NewFakeOpenAPIV3Server(specsPath string) (*FakeOpenAPIServer, error) {
 		}
 
 		defer file.Close()
-		vals, err := io.ReadAll(file)
+		vals, err := ioutil.ReadAll(file)
 		if err != nil {
 			panic(err)
 		}
@@ -96,8 +97,11 @@ func NewFakeOpenAPIV3Server(specsPath string) (*FakeOpenAPIServer, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		testV3Specs[gv] = spec
+		gnosticSpec, err := openapi_v3.ParseDocument(jsonSpec)
+		if err != nil {
+			return nil, err
+		}
+		testV3Specs[gv] = gnosticSpec
 		openAPIVersionedService.UpdateGroupVersion(gv, spec)
 	}
 

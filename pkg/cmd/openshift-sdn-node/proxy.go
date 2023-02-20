@@ -2,7 +2,6 @@ package openshift_sdn_node
 
 import (
 	"net"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -82,8 +81,7 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 		unidlingBroadcaster := record.NewBroadcaster()
 		unidlingBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: sdn.informers.kubeClient.CoreV1().Events("")})
 		unidlingRecorder := unidlingBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "kube-proxy", Host: sdn.nodeName})
-		// Starting from Kube 1.26, UDPIdleTimeout is no longer configurable so we will use kube 1.25 default value.
-		unidlingUDPIdleTimeout := 250 * time.Duration(time.Millisecond)
+
 		unidlingProxy, err = unidler.NewUnidlerProxier(
 			net.ParseIP(sdn.proxyConfig.BindAddress),
 			s.IptInterface,
@@ -91,7 +89,7 @@ func (sdn *openShiftSDN) wrapProxy(s *ProxyServer, waitChan chan<- bool) error {
 			*utilnet.ParsePortRangeOrDie(sdn.proxyConfig.PortRange),
 			sdn.proxyConfig.IPTables.SyncPeriod.Duration,
 			sdn.proxyConfig.IPTables.MinSyncPeriod.Duration,
-			unidlingUDPIdleTimeout,
+			sdn.proxyConfig.UDPIdleTimeout.Duration,
 			sdn.proxyConfig.NodePortAddresses,
 			unidlingRecorder)
 		if err != nil {
