@@ -5,7 +5,6 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
-	"net"
 	"net/http"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -39,7 +37,6 @@ import (
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
 	"k8s.io/kubernetes/pkg/proxy/iptables"
 	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
-	"k8s.io/kubernetes/pkg/proxy/userspace"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	"k8s.io/utils/exec"
 
@@ -152,28 +149,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		// SDNMISSING: NOT REACHED: We don't support IPVS mode. (CNO doesn't
 		// allow you to set "mode: ipvs".)
 	} else {
-		klog.V(0).Info("Using userspace Proxier.")
-
-		proxier, err = userspace.NewProxier(
-			userspace.NewLoadBalancerRR(),
-			net.ParseIP(config.BindAddress),
-			iptInterface,
-			execer,
-			*utilnet.ParsePortRangeOrDie(config.PortRange),
-			config.IPTables.SyncPeriod.Duration,
-			config.IPTables.MinSyncPeriod.Duration,
-			config.UDPIdleTimeout.Duration,
-			config.NodePortAddresses,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create proxier: %v", err)
-		}
-	}
-
-	useEndpointSlices := true
-	if proxyMode == proxyModeUserspace {
-		// userspace mode doesn't support endpointslice.
-		useEndpointSlices = false
+		klog.Fatal("userspace proxy mode is no longer available")
 	}
 
 	return &ProxyServer{
@@ -187,7 +163,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		EnableProfiling:    config.EnableProfiling,
 		ConfigSyncPeriod:   config.ConfigSyncPeriod.Duration,
 		HealthzServer:      healthzServer,
-		UseEndpointSlices:  useEndpointSlices,
+		UseEndpointSlices:  true,
 
 		baseProxy:      proxier,
 		enableUnidling: enableUnidling,

@@ -30,7 +30,6 @@ func (sdn *openShiftSDN) initSDN() error {
 		OSDNInformers: sdn.informers.osdnInformers,
 		IPTables:      sdn.ipt,
 		MasqueradeBit: sdn.proxyConfig.IPTables.MasqueradeBit,
-		ProxyMode:     sdn.proxyConfig.Mode,
 		Recorder:      sdn.sdnRecorder,
 		OverrideMTU:   sdn.overrideMTU,
 		RoutableMTU:   sdn.routableMTU,

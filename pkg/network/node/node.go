@@ -25,7 +25,6 @@ import (
 	kapi "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
-	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	kexec "k8s.io/utils/exec"
 
@@ -71,7 +70,6 @@ type OsdnNodeConfig struct {
 	OSDNInformers osdninformers.SharedInformerFactory
 
 	IPTables      iptables.Interface
-	ProxyMode     kubeproxyconfig.ProxyMode
 	MasqueradeBit *int32
 
 	OverrideMTU uint32
@@ -134,20 +132,13 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
-		// Userspace proxy is incompatible with conntrack.
-		if c.ProxyMode != kubeproxyconfig.ProxyModeUserspace {
-			useConnTrack = true
-		}
+		useConnTrack = true
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
 		useConnTrack = true
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
-	}
-
-	if useConnTrack && c.ProxyMode == kubeproxyconfig.ProxyModeUserspace {
-		return nil, fmt.Errorf("%q plugin is not compatible with proxy-mode %q", networkInfo.PluginName, c.ProxyMode)
 	}
 
 	klog.Infof("Initializing SDN node %q (%s) of type %q", c.NodeName, c.NodeIP, networkInfo.PluginName)
