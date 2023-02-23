@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -38,7 +39,7 @@ func (node *OsdnNode) getPodSandboxID(filter *kruntimeapi.PodSandboxFilter) (str
 		return "", err
 	}
 
-	podSandboxList, err := runtimeService.ListPodSandbox(filter)
+	podSandboxList, err := runtimeService.ListPodSandbox(context.TODO(), filter)
 	if err != nil {
 		return "", fmt.Errorf("failed to list pod sandboxes: %v", err)
 	}
@@ -54,16 +55,21 @@ func (node *OsdnNode) getSDNPodSandboxes() (map[string]*kruntimeapi.PodSandbox, 
 		return nil, err
 	}
 
-	podSandboxList, err := runtimeService.ListPodSandbox(&kruntimeapi.PodSandboxFilter{
-		State: &kruntimeapi.PodSandboxStateValue{State: kruntimeapi.PodSandboxState_SANDBOX_READY},
-	})
+	podSandboxList, err := runtimeService.ListPodSandbox(
+		context.TODO(),
+		&kruntimeapi.PodSandboxFilter{
+			State: &kruntimeapi.PodSandboxStateValue{
+				State: kruntimeapi.PodSandboxState_SANDBOX_READY,
+			},
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pod sandboxes: %v", err)
 	}
 
 	podSandboxMap := make(map[string]*kruntimeapi.PodSandbox)
 	for _, sandbox := range podSandboxList {
-		response, err := runtimeService.PodSandboxStatus(sandbox.Id, false)
+		response, err := runtimeService.PodSandboxStatus(context.TODO(), sandbox.Id, false)
 		if err != nil {
 			klog.Warningf("Could not get status of pod %s/%s: %v", sandbox.Metadata.Namespace, sandbox.Metadata.Name, err)
 			continue
