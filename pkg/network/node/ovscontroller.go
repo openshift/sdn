@@ -14,7 +14,6 @@ import (
 	"github.com/openshift/sdn/pkg/network/common"
 	"github.com/openshift/sdn/pkg/util/ovs"
 
-	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -124,12 +123,9 @@ import (
 //   filled in by AddHostSubnetRules()
 //   traffic is output to vxlan0 with correct tun_dst
 
-// Table 60: Multitenant IP to service from pod
-//   filled in by AddServiceRules()
-//   not used by NetworkPolicy or most Multitenant clusters
-//   for legacy Multitenant clusters, this loads VNIDs for service IPs and then
-//     goes to table 80, so that pod-to-service traffic can be validated before
-//     being passed to iptables.
+// Table 60: IP to service from pod
+//   formerly handled Multitenant isolation in non-conntrack mode, but now just
+//   immediately outputs all service traffic to tun0
 
 // Table 70: IP to local container
 //   filled in by setupPodFlows
@@ -172,11 +168,10 @@ import (
 //   per-Namespace rules to output multicast packets to each pod port in that namespace
 
 type ovsController struct {
-	ovs          ovs.Interface
-	pluginId     int
-	useConnTrack bool
-	localIP      string
-	tunMAC       string
+	ovs      ovs.Interface
+	pluginId int
+	localIP  string
+	tunMAC   string
 }
 
 const (
@@ -190,8 +185,8 @@ const (
 	ruleVersionTable = 253
 )
 
-func NewOVSController(ovsif ovs.Interface, pluginId int, useConnTrack bool, localIP string) *ovsController {
-	return &ovsController{ovs: ovsif, pluginId: pluginId, useConnTrack: useConnTrack, localIP: localIP}
+func NewOVSController(ovsif ovs.Interface, pluginId int, localIP string) *ovsController {
+	return &ovsController{ovs: ovsif, pluginId: pluginId, localIP: localIP}
 }
 
 func (oc *ovsController) getVersionNote() string {
@@ -246,9 +241,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	otx := oc.ovs.NewTransaction()
 
 	// Table 0: initial dispatch based on in_port
-	if oc.useConnTrack {
-		otx.AddFlow("table=0, priority=1000, ip, ct_state=-trk, actions=ct(table=0)")
-	}
+	otx.AddFlow("table=0, priority=1000, ip, ct_state=-trk, actions=ct(table=0)")
 	// vxlan0
 	for _, clusterCIDR := range clusterNetworkCIDR {
 		otx.AddFlow("table=0, priority=200, in_port=1, arp, nw_src=%s, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10", clusterCIDR, localSubnetCIDR)
@@ -257,11 +250,9 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	}
 	otx.AddFlow("table=0, priority=150, in_port=1, actions=drop")
 	// tun0
-	if oc.useConnTrack {
-		otx.AddFlow("table=0, priority=400, in_port=2, ip, nw_src=%s, actions=goto_table:30", localSubnetGateway)
-		for _, clusterCIDR := range clusterNetworkCIDR {
-			otx.AddFlow("table=0, priority=300, in_port=2, ip, nw_src=%s, nw_dst=%s, actions=goto_table:25", localSubnetCIDR, clusterCIDR)
-		}
+	otx.AddFlow("table=0, priority=400, in_port=2, ip, nw_src=%s, actions=goto_table:30", localSubnetGateway)
+	for _, clusterCIDR := range clusterNetworkCIDR {
+		otx.AddFlow("table=0, priority=300, in_port=2, ip, nw_src=%s, nw_dst=%s, actions=goto_table:25", localSubnetCIDR, clusterCIDR)
 	}
 	otx.AddFlow("table=0, priority=250, in_port=2, ip, nw_dst=224.0.0.0/4, actions=drop")
 	for _, clusterCIDR := range clusterNetworkCIDR {
@@ -285,11 +276,9 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	otx.AddFlow("table=20, priority=300, udp, udp_dst=%d, actions=drop", vxlanPort)
 	otx.AddFlow("table=20, priority=0, actions=drop")
 
-	if oc.useConnTrack {
-		// Table 25: IP from OpenShift container via Service IP; reload tenant-id; filled in by setupPodFlows
-		// eg, "table=25, priority=100, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:27"
-		otx.AddFlow("table=25, priority=0, actions=drop")
-	}
+	// Table 25: IP from OpenShift container via Service IP; reload tenant-id; filled in by setupPodFlows
+	// eg, "table=25, priority=100, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:30"
+	otx.AddFlow("table=25, priority=0, actions=drop")
 
 	// Table 27: egress NetworkPolicy enforcement (NetworkPolicy plugin only)
 	otx.AddFlow("table=27, priority=0, actions=drop")
@@ -305,9 +294,7 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	}
 	otx.AddFlow("table=31, priority=300, ip, nw_dst=%s, actions=output:2", localSubnetGateway)
 	otx.AddFlow("table=31, priority=100, ip, nw_dst=%s, actions=goto_table:60", serviceNetworkCIDR)
-	if oc.useConnTrack {
-		otx.AddFlow("table=31, priority=250, ip, nw_dst=%s, ct_state=+rpl, actions=ct(nat,table=70)", localSubnetCIDR)
-	}
+	otx.AddFlow("table=31, priority=250, ip, nw_dst=%s, ct_state=+rpl, actions=ct(nat,table=70)", localSubnetCIDR)
 	otx.AddFlow("table=31, priority=200, ip, nw_dst=%s, actions=goto_table:70", localSubnetCIDR)
 	for _, clusterCIDR := range clusterNetworkCIDR {
 		otx.AddFlow("table=31, priority=100, ip, nw_dst=%s, actions=goto_table:90", clusterCIDR)
@@ -329,15 +316,8 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 	// eg, "table=50, priority=100, arp, nw_dst=${remote_subnet_cidr}, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31], set_field:${remote_node_ip}->tun_dst,output:1"
 	otx.AddFlow("table=50, priority=0, actions=drop")
 
-	// Table 60: IP to service from pod
-	if oc.useConnTrack {
-		otx.AddFlow("table=60, priority=200, actions=output:2")
-	} else {
-		otx.AddFlow("table=60, priority=200, reg0=0, actions=output:2")
-		// vnid/port mappings; filled in by AddServiceRules()
-		// eg, "table=60, priority=100, reg0=${tenant_id}, ${service_proto}, nw_dst=${service_ip}, tp_dst=${service_port}, actions=load:${tenant_id}->NXM_NX_REG1[], load:2->NXM_NX_REG2[], goto_table:80"
-	}
-	otx.AddFlow("table=60, priority=0, actions=drop")
+	// Table 60 IP to service from pod. (Used to do multitenant isolation.)
+	otx.AddFlow("table=60, priority=200, actions=output:2")
 
 	// Table 70: IP to local container: vnid/port mappings; filled in by setupPodFlows
 	// eg, "table=70, priority=100, ip, nw_dst=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG1[], load:${ovs_port}->NXM_NX_REG2[], goto_table:80"
@@ -472,9 +452,7 @@ func (oc *ovsController) setupPodFlows(ofport int, podIP net.IP, vnid uint32) er
 	// ARP/IP traffic from container
 	otx.AddFlow("table=20, priority=100, in_port=%d, arp, nw_src=%s, arp_sha=%s, actions=load:%d->NXM_NX_REG0[], goto_table:30", ofport, ipstr, ipmac, vnid)
 	otx.AddFlow("table=20, priority=100, in_port=%d, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:27", ofport, ipstr, vnid)
-	if oc.useConnTrack {
-		otx.AddFlow("table=25, priority=100, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:27", ipstr, vnid)
-	}
+	otx.AddFlow("table=25, priority=100, ip, nw_src=%s, actions=load:%d->NXM_NX_REG0[], goto_table:27", ipstr, vnid)
 
 	// ARP request/response to container (not isolated)
 	otx.AddFlow("table=40, priority=100, arp, nw_dst=%s, actions=output:%d", ipstr, ofport)
@@ -745,49 +723,6 @@ func (oc *ovsController) DeleteHostSubnetRules(subnet *osdnv1.HostSubnet) error 
 	return otx.Commit()
 }
 
-func (oc *ovsController) AddServiceRules(service *corev1.Service, netID uint32) error {
-	otx := oc.ovs.NewTransaction()
-
-	action := fmt.Sprintf(", priority=100, actions=load:%d->NXM_NX_REG1[], load:2->NXM_NX_REG2[], goto_table:80", netID)
-
-	// Add blanket rule allowing subsequent IP fragments
-	otx.AddFlow(generateBaseServiceRule(service.Spec.ClusterIP) + ", ip_frag=later" + action)
-
-	for _, port := range service.Spec.Ports {
-		baseRule, err := generateBaseAddServiceRule(service.Spec.ClusterIP, port.Protocol, int(port.Port))
-		if err != nil {
-			klog.Errorf("Error creating OVS flow for service %v, netid %d: %v", service, netID, err)
-		}
-		otx.AddFlow(baseRule + action)
-	}
-
-	return otx.Commit()
-}
-
-func (oc *ovsController) DeleteServiceRules(service *corev1.Service) error {
-	otx := oc.ovs.NewTransaction()
-	otx.DeleteFlows(generateBaseServiceRule(service.Spec.ClusterIP))
-	return otx.Commit()
-}
-
-func generateBaseServiceRule(IP string) string {
-	return fmt.Sprintf("table=60, ip, nw_dst=%s", IP)
-}
-
-func generateBaseAddServiceRule(IP string, protocol corev1.Protocol, port int) (string, error) {
-	var dst string
-	if protocol == corev1.ProtocolUDP {
-		dst = fmt.Sprintf(", udp, udp_dst=%d", port)
-	} else if protocol == corev1.ProtocolTCP {
-		dst = fmt.Sprintf(", tcp, tcp_dst=%d", port)
-	} else if protocol == corev1.ProtocolSCTP {
-		dst = fmt.Sprintf(", sctp, sctp_dst=%d", port)
-	} else {
-		return "", fmt.Errorf("unhandled protocol %v", protocol)
-	}
-	return generateBaseServiceRule(IP) + dst, nil
-}
-
 func (oc *ovsController) UpdateLocalMulticastFlows(vnid uint32, enabled bool, ofports []int) error {
 	otx := oc.ovs.NewTransaction()
 
@@ -839,14 +774,14 @@ func (oc *ovsController) FindPolicyVNIDs() sets.Int {
 }
 
 // FindUnusedVNIDs returns a list of VNIDs for which there are table 27/80 "policy" rules,
-// but no table 60/70 "load" rules (meaning that there are no longer any pods or services
+// but no table 70 "load" rules (meaning that there are no longer any pods or services
 // on this node with that VNID). There is no locking with respect to other ovsController
 // actions, but as long the "add a pod" and "add a service" codepaths add the
 // pod/service-specific rules before they call policy.EnsureVNIDRules(), then there is no
 // race condition.
 func (oc *ovsController) FindUnusedVNIDs() []int {
 	inUseVNIDs, policyVNIDs := oc.findInUseAndPolicyVNIDs()
-	// VNID 0 is always in use, even if there aren't any flows for it in table 60/70
+	// VNID 0 is always in use, even if there aren't any flows for it in table 70
 	inUseVNIDs.Insert(0)
 	return policyVNIDs.Difference(inUseVNIDs).UnsortedList()
 }
@@ -871,9 +806,9 @@ func (oc *ovsController) findInUseAndPolicyVNIDs() (sets.Int, sets.Int) {
 			continue
 		}
 
-		// A VNID is in use if there is a table 60 (services) or 70 (pods) flow that
+		// A VNID is in use if there is a table 70 (pods) flow that
 		// loads that VNID into reg1 for later comparison.
-		if parsed.Table == 60 || parsed.Table == 70 {
+		if parsed.Table == 70 {
 			// Can't use FindAction here since there may be multiple "load"s
 			for _, action := range parsed.Actions {
 				if action.Name != "load" || strings.Index(action.Value, "REG1") == -1 {
@@ -981,7 +916,7 @@ func (oc *ovsController) SetNamespaceEgressViaEgressIPs(vnid uint32, egressIPsMe
 		// to load balance between the egressIPs
 		otx.AddGroup(vnid, "select", buildBuckets)
 		commit := ""
-		if oc.useConnTrack && !isLocalEgressIP {
+		if !isLocalEgressIP {
 			commit = "ct(commit),"
 		}
 		otx.AddFlow("table=101, priority=100,ip,reg0=%d, actions=%sgroup:%d", vnid, commit, vnid)

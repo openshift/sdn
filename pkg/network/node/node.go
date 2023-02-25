@@ -16,14 +16,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
-	kapi "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	kexec "k8s.io/utils/exec"
@@ -91,7 +88,6 @@ type OsdnNode struct {
 	localGatewayCIDR string
 	localIP          string
 	hostName         string
-	useConnTrack     bool
 	masqueradeBit    uint32
 	platformType     string
 	overlayMTU       uint32
@@ -124,7 +120,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 
 	var policy osdnPolicy
 	var pluginId int
-	var useConnTrack bool
 	switch strings.ToLower(networkInfo.PluginName) {
 	case networkutils.SingleTenantPluginName:
 		policy = NewSingleTenantPlugin()
@@ -132,11 +127,9 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	case networkutils.MultiTenantPluginName:
 		policy = NewMultiTenantPlugin()
 		pluginId = 1
-		useConnTrack = true
 	case networkutils.NetworkPolicyPluginName:
 		policy = NewNetworkPolicyPlugin()
 		pluginId = 2
-		useConnTrack = true
 	default:
 		return nil, fmt.Errorf("Unknown plugin name %q", networkInfo.PluginName)
 	}
@@ -147,7 +140,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	oc := NewOVSController(ovsif, pluginId, useConnTrack, c.NodeIP)
+	oc := NewOVSController(ovsif, pluginId, c.NodeIP)
 
 	masqBit := uint32(0)
 	if c.MasqueradeBit != nil {
@@ -176,7 +169,6 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		podManager:     newPodManager(c.KClient, policy, overlayMTU, routableMTU, oc),
 		localIP:        c.NodeIP,
 		hostName:       c.NodeName,
-		useConnTrack:   useConnTrack,
 		ipt:            c.IPTables,
 		masqueradeBit:  masqBit,
 		egressPolicies: make(map[uint32][]osdnv1.EgressNetworkPolicy),
@@ -315,7 +307,7 @@ func (node *OsdnNode) Start() error {
 		node.clusterCIDRs = append(node.clusterCIDRs, cn.ClusterCIDR.String())
 	}
 
-	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, !node.useConnTrack, node.networkInfo.VXLANPort, node.masqueradeBit)
+	node.nodeIPTables = newNodeIPTables(node.ipt, node.clusterCIDRs, node.networkInfo.VXLANPort, node.masqueradeBit)
 	if err = node.nodeIPTables.Setup(); err != nil {
 		return fmt.Errorf("failed to set up iptables: %v", err)
 	}
@@ -338,9 +330,6 @@ func (node *OsdnNode) Start() error {
 		if err := node.egressIP.Start(node.osdnInformers, node.kubeInformers, node.kClient, node.nodeIPTables); err != nil {
 			return err
 		}
-	}
-	if !node.useConnTrack {
-		node.watchServices()
 	}
 
 	existingPodSandboxes, err := node.getSDNPodSandboxes()
@@ -482,61 +471,6 @@ func (node *OsdnNode) GetRunningPods(namespace string) ([]corev1.Pod, error) {
 		}
 	}
 	return pods, nil
-}
-
-func isServiceChanged(oldsvc, newsvc *corev1.Service) bool {
-	if len(oldsvc.Spec.Ports) == len(newsvc.Spec.Ports) {
-		for i := range oldsvc.Spec.Ports {
-			if oldsvc.Spec.Ports[i].Protocol != newsvc.Spec.Ports[i].Protocol ||
-				oldsvc.Spec.Ports[i].Port != newsvc.Spec.Ports[i].Port {
-				return true
-			}
-		}
-		return false
-	}
-	return true
-}
-
-func (node *OsdnNode) watchServices() {
-	funcs := common.InformerFuncs(&kapi.Service{}, node.handleAddOrUpdateService, node.handleDeleteService)
-	node.kubeInformers.Core().V1().Services().Informer().AddEventHandler(funcs)
-}
-
-func (node *OsdnNode) handleAddOrUpdateService(obj, oldObj interface{}, eventType watch.EventType) {
-	serv := obj.(*corev1.Service)
-	// Ignore headless/external services
-	if !helper.IsServiceIPSet(serv) {
-		return
-	}
-
-	klog.V(5).Infof("Watch %s event for Service %q", eventType, serv.Name)
-	oldServ, exists := oldObj.(*corev1.Service)
-	if exists {
-		if !isServiceChanged(oldServ, serv) {
-			return
-		}
-		node.DeleteServiceRules(oldServ)
-	}
-
-	netid, err := node.policy.GetVNID(serv.Namespace)
-	if err != nil {
-		klog.Errorf("Skipped adding service rules for serviceEvent: %v, Error: %v", eventType, err)
-		return
-	}
-
-	node.AddServiceRules(serv, netid)
-	node.policy.EnsureVNIDRules(netid)
-}
-
-func (node *OsdnNode) handleDeleteService(obj interface{}) {
-	serv := obj.(*corev1.Service)
-	// Ignore headless/external services
-	if !helper.IsServiceIPSet(serv) {
-		return
-	}
-
-	klog.V(5).Infof("Watch %s event for Service %q", watch.Deleted, serv.Name)
-	node.DeleteServiceRules(serv)
 }
 
 func (node *OsdnNode) ReloadIPTables() error {

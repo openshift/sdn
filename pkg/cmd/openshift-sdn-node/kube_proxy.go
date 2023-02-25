@@ -118,7 +118,6 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 	klog.V(0).Infof("kube-proxy running in single-stack %s mode", iptInterface.Protocol())
 
 	if proxyMode == proxyModeIPTables {
-		// userspace proxy mode was removed upstream in 1.26,
 		klog.V(0).Info("Using iptables Proxier.")
 		if config.IPTables.MasqueradeBit == nil {
 			// MasqueradeBit must be specified or defaulted.
