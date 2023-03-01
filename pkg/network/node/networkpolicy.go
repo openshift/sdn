@@ -190,11 +190,11 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 func (np *networkPolicyPlugin) initNamespaces() error {
 	inUseVNIDs := np.node.oc.FindPolicyVNIDs()
 
-	namespaces, err := np.node.kClient.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+	namespaces, err := common.ListAllNamespaces(context.TODO(), np.node.kClient)
 	if err != nil {
 		return err
 	}
-	for _, ns := range namespaces.Items {
+	for _, ns := range namespaces {
 		npns := newNPNamespace(ns.Name)
 		npns.labels = ns.Labels
 		npns.gotNamespace = true
@@ -210,17 +210,17 @@ func (np *networkPolicyPlugin) initNamespaces() error {
 		}
 	}
 
-	policies, err := np.node.kClient.NetworkingV1().NetworkPolicies(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	policies, err := common.ListAllNetworkPolicies(context.TODO(), np.node.kClient)
 	if err != nil {
 		return err
 	}
-	for _, policy := range policies.Items {
+	for _, policy := range policies {
 		vnid, err := np.vnids.getVNID(policy.Namespace)
 		if err != nil {
 			continue
 		}
 		npns := np.namespaces[vnid]
-		np.updateNetworkPolicy(npns, &policy)
+		np.updateNetworkPolicy(npns, policy)
 	}
 
 	return nil

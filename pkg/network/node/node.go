@@ -14,8 +14,6 @@ import (
 	metrics "github.com/openshift/sdn/pkg/network/node/metrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -480,21 +478,16 @@ func (node *OsdnNode) UpdatePod(pod corev1.Pod) error {
 }
 
 func (node *OsdnNode) GetRunningPods(namespace string) ([]corev1.Pod, error) {
-	fieldSelector := fields.Set{"spec.nodeName": node.hostName}.AsSelector()
-	opts := metav1.ListOptions{
-		LabelSelector: labels.Everything().String(),
-		FieldSelector: fieldSelector.String(),
-	}
-	podList, err := node.kClient.CoreV1().Pods(namespace).List(context.TODO(), opts)
+	podList, err := common.ListPodsInNodeAndNamespace(context.TODO(), node.kClient, node.hostName, namespace)
 	if err != nil {
 		return nil, err
 	}
 
 	// Filter running pods
-	pods := make([]corev1.Pod, 0, len(podList.Items))
-	for _, pod := range podList.Items {
+	pods := []corev1.Pod{}
+	for _, pod := range podList {
 		if pod.Status.Phase == corev1.PodRunning {
-			pods = append(pods, pod)
+			pods = append(pods, *pod)
 		}
 	}
 	return pods, nil
