@@ -197,9 +197,7 @@ func (eim *egressIPManager) maybeDoUpdateEgressCIDRs() (bool, error) {
 }
 
 const (
-	pollInterval   = 5 * time.Second
-	repollInterval = time.Second
-	maxRetries     = 2
+	maxRetries = 2
 )
 
 func (eim *egressIPManager) poll(stop chan struct{}) {
@@ -217,8 +215,8 @@ func (eim *egressIPManager) poll(stop chan struct{}) {
 			klog.Warningf("Node may have been deleted or not exist anymore")
 		}
 		if !retry {
-			// If less than pollInterval has passed since start, then sleep until it has
-			time.Sleep(start.Add(pollInterval).Sub(time.Now()))
+			// If less than common.DefaultPollInterval has passed since start, then sleep until it has
+			time.Sleep(start.Add(common.DefaultPollInterval).Sub(time.Now()))
 		}
 	}
 }
@@ -238,9 +236,9 @@ func nodeIsReady(node *corev1.Node) bool {
 func (eim *egressIPManager) check(retrying bool) (bool, error) {
 	var timeout time.Duration
 	if retrying {
-		timeout = repollInterval
+		timeout = common.RepollInterval
 	} else {
-		timeout = pollInterval
+		timeout = common.DefaultPollInterval
 	}
 
 	needRetry := false
@@ -297,7 +295,7 @@ func (eim *egressIPManager) Synced() {
 // until the previous assignment to node A has been fully removed. We thus need
 // to "queue" the create event and execute it once we observe the complete
 // removal of the delete using our informer.
-func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string) {
+func (eim *egressIPManager) ClaimEgressIP(vnid uint32, egressIP, nodeIP, sdnIP string, nodeOffline bool) {
 	if !eim.tracker.CloudEgressIP {
 		return
 	}
