@@ -151,11 +151,11 @@ func NewEgressIPTracker(watcher EgressIPWatcher, cloudEgressIP bool, localIP str
 
 func (eit *EgressIPTracker) Start(kubeClient kubernetes.Interface, hostSubnetInformer osdninformers.HostSubnetInformer, netNamespaceInformer osdninformers.NetNamespaceInformer, nodeInformer kcoreinformers.NodeInformer) {
 
+	eit.kubeClient = kubeClient
 	eit.watchHostSubnets(hostSubnetInformer)
 	eit.watchNetNamespaces(netNamespaceInformer)
 
 	if nodeInformer != nil {
-		eit.kubeClient = kubeClient
 		eit.watchNodes(nodeInformer)
 	}
 
