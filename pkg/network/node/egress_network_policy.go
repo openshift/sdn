@@ -75,10 +75,10 @@ func (plugin *OsdnNode) handleEgressNetworkPolicy(policy *osdnv1.EgressNetworkPo
 	for i, oldPolicy := range policies {
 		if oldPolicy.UID == policy.UID {
 			policies = append(policies[:i], policies[i+1:]...)
+			plugin.egressDNS.Delete(oldPolicy)
 			break
 		}
 	}
-	plugin.egressDNS.Delete(*policy)
 
 	if eventType != watch.Deleted && len(policy.Spec.Egress) > 0 {
 		policies = append(policies, *policy)
