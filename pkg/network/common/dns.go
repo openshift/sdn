@@ -216,6 +216,15 @@ func (d *DNS) doOneQuery(server, domain string, rtype uint16) ([]net.IP, int, er
 	c := new(dns.Client)
 	c.Timeout = d.timeout
 	in, _, err := c.Exchange(msg, server)
+	// check if message truncated
+	if in != nil && in.Truncated {
+		// if it is fall back to TCP
+		c.Net = "tcp"
+		//ensure that the old message is overwritten
+		msg = new(dns.Msg)
+		msg.SetQuestion(dns.Fqdn(domain), rtype)
+		in, _, err = c.Exchange(msg, server)
+	}
 	if in == nil || err != nil {
 		return ips, ttl, err
 	}
