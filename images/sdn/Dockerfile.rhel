@@ -7,6 +7,8 @@ RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build GO_BUILD_PACKAGES
 FROM registry.ci.openshift.org/ocp/4.13:cli AS cli
 FROM registry.ci.openshift.org/ocp/4.13:base
 
+ARG ovsver=2.13
+
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn
@@ -15,7 +17,7 @@ COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osd
 COPY --from=cli /usr/bin/oc /usr/bin/
 
 RUN INSTALL_PKGS=" \
-      openvswitch2.13 container-selinux socat ethtool nmap-ncat \
+      openvswitch${ovsver} container-selinux socat ethtool nmap-ncat \
       libmnl libnetfilter_conntrack conntrack-tools \
       libnfnetlink iproute procps-ng openssl \
       iputils binutils xz util-linux dbus nftables \
