@@ -1015,6 +1015,9 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 	pod := obj.(*corev1.Pod)
 	klog.V(5).Infof("Watch %s event for Pod %q", eventType, getPodFullName(pod))
 
+	np.lock.Lock()
+	defer np.lock.Unlock()
+
 	if !np.isOnPodNetwork(pod) {
 		return
 	}
@@ -1026,8 +1029,6 @@ func (np *networkPolicyPlugin) handleAddOrUpdatePod(obj, old interface{}, eventT
 		}
 	}
 
-	np.lock.Lock()
-	defer np.lock.Unlock()
 	if np.localPodIPs[pod.UID] != "" && pod.Status.PodIP != "" {
 		// cleanup local pod ip once pod.Status.PodIP is set
 		delete(np.localPodIPs, pod.UID)
