@@ -103,12 +103,17 @@ func deleteLocalSubnetRoute(device, localSubnetCIDR string) {
 func (plugin *OsdnNode) SetupSDN() (bool, map[string]podNetworkInfo, error) {
 	// Make sure IPv4 forwarding state is 1
 	sysctl := sysctl.New()
-	val, err := sysctl.GetSysctl("net/ipv4/ip_forward")
+	sysIPForward := "net/ipv4/ip_forward"
+	val, err := sysctl.GetSysctl(sysIPForward)
 	if err != nil {
 		return false, nil, fmt.Errorf("could not get IPv4 forwarding state: %s", err)
 	}
 	if val != 1 {
-		return false, nil, fmt.Errorf("net/ipv4/ip_forward=0, it must be set to 1")
+		klog.Infof("Global IP Forwarding is disabled. Enabling...")
+		err := sysctl.SetSysctl(sysIPForward, 1)
+		if err != nil {
+			return false, nil, fmt.Errorf("cannot enable IP Forwarding via sysctl: %v", err)
+		}
 	}
 
 	localSubnetCIDR := plugin.localSubnetCIDR
