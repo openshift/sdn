@@ -68,6 +68,22 @@ type KubeProxyIPVSConfiguration struct {
 	UDPTimeout metav1.Duration `json:"udpTimeout"`
 }
 
+// KubeProxyNFTablesConfiguration contains nftables-related configuration
+// details for the Kubernetes proxy server.
+type KubeProxyNFTablesConfiguration struct {
+	// masqueradeBit is the bit of the iptables fwmark space to use for SNAT if using
+	// the pure iptables proxy mode. Values must be within the range [0, 31].
+	MasqueradeBit *int32 `json:"masqueradeBit"`
+	// masqueradeAll tells kube-proxy to SNAT everything if using the pure iptables proxy mode.
+	MasqueradeAll bool `json:"masqueradeAll"`
+	// syncPeriod is the period that iptables rules are refreshed (e.g. '5s', '1m',
+	// '2h22m').  Must be greater than 0.
+	SyncPeriod metav1.Duration `json:"syncPeriod"`
+	// minSyncPeriod is the minimum period that iptables rules are refreshed (e.g. '5s', '1m',
+	// '2h22m').
+	MinSyncPeriod metav1.Duration `json:"minSyncPeriod"`
+}
+
 // KubeProxyConntrackConfiguration contains conntrack settings for
 // the Kubernetes proxy server.
 type KubeProxyConntrackConfiguration struct {
@@ -155,6 +171,8 @@ type KubeProxyConfiguration struct {
 	IPTables KubeProxyIPTablesConfiguration `json:"iptables"`
 	// ipvs contains ipvs-related configuration options.
 	IPVS KubeProxyIPVSConfiguration `json:"ipvs"`
+	// nftables contains iptables-related configuration options.
+	NFTables KubeProxyNFTablesConfiguration `json:"nftables"`
 	// oomScoreAdj is the oom-score-adj value for kube-proxy process. Values must be within
 	// the range [-1000, 1000]
 	OOMScoreAdj *int32 `json:"oomScoreAdj"`

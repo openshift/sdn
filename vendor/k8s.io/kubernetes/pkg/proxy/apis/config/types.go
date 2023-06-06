@@ -72,6 +72,25 @@ type KubeProxyIPVSConfiguration struct {
 	UDPTimeout metav1.Duration
 }
 
+// KubeProxyNFTablesConfiguration contains nftables-related configuration
+// details for the Kubernetes proxy server.
+type KubeProxyNFTablesConfiguration struct {
+	// masqueradeBit is the bit of the iptables fwmark space to use for SNAT if using
+	// the pure iptables proxy mode. Values must be within the range [0, 31].
+	MasqueradeBit *int32
+	// masqueradeAll tells kube-proxy to SNAT everything if using the pure iptables proxy mode.
+	MasqueradeAll bool
+	// LocalhostNodePorts tells kube-proxy to allow service NodePorts to be accessed via
+	// localhost (iptables mode only)
+	LocalhostNodePorts *bool
+	// syncPeriod is the period that iptables rules are refreshed (e.g. '5s', '1m',
+	// '2h22m').  Must be greater than 0.
+	SyncPeriod metav1.Duration
+	// minSyncPeriod is the minimum period that iptables rules are refreshed (e.g. '5s', '1m',
+	// '2h22m').
+	MinSyncPeriod metav1.Duration
+}
+
 // KubeProxyConntrackConfiguration contains conntrack settings for
 // the Kubernetes proxy server.
 type KubeProxyConntrackConfiguration struct {
@@ -159,6 +178,8 @@ type KubeProxyConfiguration struct {
 	IPTables KubeProxyIPTablesConfiguration
 	// ipvs contains ipvs-related configuration options.
 	IPVS KubeProxyIPVSConfiguration
+	// nftables contains nftables-related configuration options.
+	NFTables KubeProxyNFTablesConfiguration
 	// oomScoreAdj is the oom-score-adj value for kube-proxy process. Values must be within
 	// the range [-1000, 1000]
 	OOMScoreAdj *int32
@@ -192,8 +213,8 @@ type KubeProxyConfiguration struct {
 
 // ProxyMode represents modes used by the Kubernetes proxy server.
 //
-// Currently, two modes of proxy are available on Linux platforms: 'iptables' and 'ipvs'.
-// One mode of proxy is available on Windows platforms: 'kernelspace'.
+// Currently, three modes of proxy are available on Linux platforms: 'iptables', 'ipvs',
+// and 'nftables'. One mode of proxy is available on Windows platforms: 'kernelspace'.
 //
 // If the proxy mode is unspecified, the best-available proxy mode will be used (currently this
 // is `iptables` on Linux and `kernelspace` on Windows). If the selected proxy mode cannot be
@@ -204,6 +225,7 @@ type ProxyMode string
 const (
 	ProxyModeIPTables    ProxyMode = "iptables"
 	ProxyModeIPVS        ProxyMode = "ipvs"
+	ProxyModeNFTables    ProxyMode = "nftables"
 	ProxyModeKernelspace ProxyMode = "kernelspace"
 )
 
