@@ -36,8 +36,8 @@ import (
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	"k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
-	"k8s.io/kubernetes/pkg/proxy/iptables"
 	proxymetrics "k8s.io/kubernetes/pkg/proxy/metrics"
+	"k8s.io/kubernetes/pkg/proxy/nftables"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	"k8s.io/utils/exec"
 
@@ -117,42 +117,27 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 
 	klog.V(0).Infof("kube-proxy running in single-stack %s mode", iptInterface.Protocol())
 
-	if proxyMode == proxyModeIPTables {
-		klog.V(0).Info("Using iptables Proxier.")
-		if config.IPTables.MasqueradeBit == nil {
-			// MasqueradeBit must be specified or defaulted.
-			return nil, fmt.Errorf("unable to read IPTables MasqueradeBit from config")
-		}
+	klog.InfoS("Using nftables Proxier")
 
-		localDetector := getLocalDetector()
-
-		proxier, err = iptables.NewProxier(
-			v1.IPv4Protocol,
-			iptInterface,
-			utilsysctl.New(),
-			execer,
-			config.IPTables.SyncPeriod.Duration,
-			config.IPTables.MinSyncPeriod.Duration,
-			config.IPTables.MasqueradeAll,
-			*config.IPTables.LocalhostNodePorts,
-			int(*config.IPTables.MasqueradeBit),
-			localDetector,
-			hostname,
-			nodeIP,
-			recorder,
-			healthzServer,
-			config.NodePortAddresses,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create proxier: %v", err)
-		}
-		proxymetrics.RegisterMetrics()
-	} else if proxyMode == proxyModeIPVS {
-		// SDNMISSING: NOT REACHED: We don't support IPVS mode. (CNO doesn't
-		// allow you to set "mode: ipvs".)
-	} else {
-		klog.Fatal("userspace proxy mode is no longer available")
+	proxier, err = nftables.NewProxier(
+		v1.IPv4Protocol,
+		utilsysctl.New(),
+		config.IPTables.SyncPeriod.Duration,
+		config.IPTables.MinSyncPeriod.Duration,
+		config.IPTables.MasqueradeAll,
+		int(*config.IPTables.MasqueradeBit),
+		getLocalDetector(),
+		hostname,
+		nodeIP,
+		recorder,
+		healthzServer,
+		config.NodePortAddresses,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create proxier: %v", err)
 	}
+
+	proxymetrics.RegisterMetrics()
 
 	return &ProxyServer{
 		Client:             client,

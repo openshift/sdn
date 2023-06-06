@@ -134,6 +134,14 @@ func (d *sdnLocalDetector) IfNotLocal() []string {
 	return []string{"!", "-i", sdnnode.Tun0}
 }
 
+func (d *sdnLocalDetector) IfLocalNFT() []string {
+	return []string{"iif", sdnnode.Tun0}
+}
+
+func (d *sdnLocalDetector) IfNotLocalNFT() []string {
+	return []string{"iif", "!=", sdnnode.Tun0}
+}
+
 func getLocalDetector() proxyutiliptables.LocalTrafficDetector {
 	return &sdnLocalDetector{}
 }
