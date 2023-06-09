@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/pkg/proxy/config"
 
 	osdnv1 "github.com/openshift/api/network/v1"
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
@@ -287,9 +286,9 @@ func (proxy *OsdnProxy) updateEgressNetworkPolicy(policy osdnv1.EgressNetworkPol
 		pep.blocked = proxy.endpointsBlocked(ns, pep.endpoints)
 		switch {
 		case wasBlocked && !pep.blocked:
-			proxy.baseProxy.(config.EndpointsHandler).OnEndpointsAdd(pep.endpoints)
+			proxy.baseProxy.(EndpointsHandler).OnEndpointsAdd(pep.endpoints)
 		case !wasBlocked && pep.blocked:
-			proxy.baseProxy.(config.EndpointsHandler).OnEndpointsDelete(pep.endpoints)
+			proxy.baseProxy.(EndpointsHandler).OnEndpointsDelete(pep.endpoints)
 		}
 	}
 	for _, pes := range ns.blockableEndpointSlices {
@@ -411,7 +410,7 @@ func (proxy *OsdnProxy) OnEndpointsAdd(ep *corev1.Endpoints) {
 		}
 	}
 
-	proxy.baseProxy.(config.EndpointsHandler).OnEndpointsAdd(ep)
+	proxy.baseProxy.(EndpointsHandler).OnEndpointsAdd(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
@@ -426,7 +425,7 @@ func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 	if pep == nil {
 		if !isBlockable {
 			// Wasn't blockable before, still isn't
-			proxy.baseProxy.(config.EndpointsHandler).OnEndpointsUpdate(old, ep)
+			proxy.baseProxy.(EndpointsHandler).OnEndpointsUpdate(old, ep)
 			return
 		}
 		// Wasn't blockable before, but is now
@@ -440,11 +439,11 @@ func (proxy *OsdnProxy) OnEndpointsUpdate(old, ep *corev1.Endpoints) {
 
 	switch {
 	case wasBlocked && !isBlocked:
-		proxy.baseProxy.(config.EndpointsHandler).OnEndpointsAdd(ep)
+		proxy.baseProxy.(EndpointsHandler).OnEndpointsAdd(ep)
 	case !wasBlocked && !isBlocked:
-		proxy.baseProxy.(config.EndpointsHandler).OnEndpointsUpdate(old, ep)
+		proxy.baseProxy.(EndpointsHandler).OnEndpointsUpdate(old, ep)
 	case !wasBlocked && isBlocked:
-		proxy.baseProxy.(config.EndpointsHandler).OnEndpointsDelete(old)
+		proxy.baseProxy.(EndpointsHandler).OnEndpointsDelete(old)
 	}
 
 	if !isBlockable {
@@ -469,11 +468,11 @@ func (proxy *OsdnProxy) OnEndpointsDelete(ep *corev1.Endpoints) {
 		}
 	}
 
-	proxy.baseProxy.(config.EndpointsHandler).OnEndpointsDelete(ep)
+	proxy.baseProxy.(EndpointsHandler).OnEndpointsDelete(ep)
 }
 
 func (proxy *OsdnProxy) OnEndpointsSynced() {
-	proxy.baseProxy.(config.EndpointsHandler).OnEndpointsSynced()
+	proxy.baseProxy.(EndpointsHandler).OnEndpointsSynced()
 
 	proxy.Lock()
 	defer proxy.Unlock()

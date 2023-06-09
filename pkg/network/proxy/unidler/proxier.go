@@ -30,6 +30,7 @@ import (
 
 	libcontaineruserns "github.com/opencontainers/runc/libcontainer/userns"
 	v1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -137,8 +138,6 @@ type asyncRunnerInterface interface {
 // Proxier is a simple proxy for TCP connections between a localhost:lport
 // and services that provide the actual implementations.
 type Proxier struct {
-	// EndpointSlice support has not been added for this proxier yet.
-	config.NoopEndpointSliceHandler
 	// TODO(imroc): implement node handler for userspace proxier.
 	config.NoopNodeHandler
 
@@ -617,6 +616,17 @@ func (proxier *Proxier) OnEndpointsSynced() {
 	// service event handler on startup with large numbers
 	// of initial objects
 	go proxier.syncProxyRules()
+}
+
+// These functions never get called on the unidling proxy, but are needed to satisfy the
+// interface
+func (p *Proxier) OnEndpointSliceAdd(slice *discoveryv1.EndpointSlice) {
+}
+func (p *Proxier) OnEndpointSliceUpdate(oldSlice, slice *discoveryv1.EndpointSlice) {
+}
+func (p *Proxier) OnEndpointSliceDelete(slice *discoveryv1.EndpointSlice) {
+}
+func (p *Proxier) OnEndpointSlicesSynced() {
 }
 
 // SyncProxyRules is part of sdnproxy.HybridizableProxy
