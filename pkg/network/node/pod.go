@@ -22,7 +22,6 @@ import (
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
 	kcontainer "k8s.io/kubernetes/pkg/kubelet/container"
-	kbandwidth "k8s.io/kubernetes/pkg/util/bandwidth"
 
 	"github.com/containernetworking/cni/pkg/invoke"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
@@ -442,7 +441,7 @@ func (m *podManager) ipamDel(id string) error {
 }
 
 func setupPodBandwidth(ovs *ovsController, pod *corev1.Pod, hostVeth, sandboxID string) error {
-	ingressVal, egressVal, err := kbandwidth.ExtractPodBandwidthResources(pod.Annotations)
+	ingressVal, egressVal, err := extractPodBandwidthResources(pod.Annotations)
 	if err != nil {
 		return fmt.Errorf("failed to parse pod bandwidth: %v", err)
 	}

@@ -127,6 +127,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		localDetector := getLocalDetector()
 
 		proxier, err = iptables.NewProxier(
+			v1.IPv4Protocol,
 			iptInterface,
 			utilsysctl.New(),
 			execer,
