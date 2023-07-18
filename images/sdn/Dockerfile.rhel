@@ -1,18 +1,29 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.14 AS rhel9-builder
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables
-RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
+RUN CGO_ENABLED=1 make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
+
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS rhel8-builder
+WORKDIR /go/src/github.com/openshift/sdn
+COPY . .
+RUN make build --warn-undefined-variables
+RUN CGO_ENABLED=1 make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
 
 FROM registry.ci.openshift.org/ocp/4.14:cli AS cli
 FROM registry.ci.openshift.org/ocp/4.14:base
 
 ARG ovsver=2.13
 
-COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
-COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
-COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn
-COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
+RUN mkdir -p /opt/cni/bin/rhel9
+COPY --from=rhel9-builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/rhel9/openshift-sdn
+
+RUN mkdir -p /opt/cni/bin/rhel8
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn-controller /usr/bin/
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/openshift-sdn
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/rhel8/openshift-sdn
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
 
 COPY --from=cli /usr/bin/oc /usr/bin/
 
