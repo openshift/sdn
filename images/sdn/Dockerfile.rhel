@@ -1,14 +1,25 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS rhel8-builder
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables
-RUN CGO_ENABLED=0 GO_BUILD_FLAGS="-tags no_openssl" make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/sdn-cni-plugin" --warn-undefined-variables
+RUN CGO_ENABLED=1 make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/sdn-cni-plugin" --warn-undefined-variables
+
+FROM registry.ci.openshift.org/ocp/builder:rhel-7-golang-1.15-openshift-4.7 AS rhel7-builder
+WORKDIR /go/src/github.com/openshift/sdn
+COPY . .
+RUN make build --warn-undefined-variables
+RUN CGO_ENABLED=1 make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/sdn-cni-plugin" --warn-undefined-variables
 
 FROM registry.ci.openshift.org/ocp/4.7:base
-COPY --from=builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node
-COPY --from=builder /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller
-COPY --from=builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
-COPY --from=builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
+RUN mkdir -p /opt/cni/bin/rhel8
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn /usr/bin/openshift-sdn-node
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/network-controller /usr/bin/openshift-sdn-controller
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/openshift-sdn
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/rhel8/openshift-sdn
+COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/host-local /usr/bin/cni/osdn-host-local
+
+RUN mkdir -p /opt/cni/bin/rhel7
+COPY --from=rhel7-builder /go/src/github.com/openshift/sdn/sdn-cni-plugin /opt/cni/bin/rhel7/openshift-sdn
 
 RUN INSTALL_PKGS=" \
       openvswitch2.13 container-selinux socat ethtool nmap-ncat \
