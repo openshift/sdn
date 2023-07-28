@@ -10,6 +10,7 @@ COPY . .
 RUN make build --warn-undefined-variables
 RUN CGO_ENABLED=1 make build GO_BUILD_PACKAGES="github.com/openshift/sdn/cmd/openshift-sdn-cni" --warn-undefined-variables
 
+FROM registry.ci.openshift.org/ocp/4.9:cli AS cli
 FROM registry.ci.openshift.org/ocp/4.9:base
 RUN mkdir -p /opt/cni/bin/rhel8
 COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/openshift-sdn-node /usr/bin/
@@ -20,6 +21,8 @@ COPY --from=rhel8-builder /go/src/github.com/openshift/sdn/host-local /usr/bin/c
 
 RUN mkdir -p /opt/cni/bin/rhel7
 COPY --from=rhel7-builder /go/src/github.com/openshift/sdn/openshift-sdn-cni /opt/cni/bin/rhel7/openshift-sdn
+
+COPY --from=cli /usr/bin/oc /usr/bin/
 
 RUN INSTALL_PKGS=" \
       openvswitch2.13 container-selinux socat ethtool nmap-ncat \
