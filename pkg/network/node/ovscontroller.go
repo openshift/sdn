@@ -80,9 +80,11 @@ import (
 //   acceptable incoming tun0 traffic (in_port=2) goes to table 30 (general routing)
 //   traffic from any other port is assumed to be from a container and goes to table 20
 
-// Table 10: VXLAN ingress filtering
+// Table 10: Inbound VXLAN packet handling
 //   per-remote-node rules are filled in by AddHostSubnetRules()
 //   any VXLAN traffic from a non-node IP is dropped
+//   when doing SDN live migration, the node is connected to OVN-K as a hybrid-overlay node,
+//   swap overlay dst MAC for ingress traffic from OVN-K nodes
 
 // Table 20: from OpenShift container
 //   mostly filled in by setupPodFlows
@@ -172,6 +174,7 @@ type ovsController struct {
 	pluginId int
 	localIP  string
 	tunMAC   string
+	localMAC string
 }
 
 const (
@@ -185,8 +188,8 @@ const (
 	ruleVersionTable = 253
 )
 
-func NewOVSController(ovsif ovs.Interface, pluginId int, localIP string) *ovsController {
-	return &ovsController{ovs: ovsif, pluginId: pluginId, localIP: localIP}
+func NewOVSController(ovsif ovs.Interface, pluginId int, localIP string, localMAC string) *ovsController {
+	return &ovsController{ovs: ovsif, pluginId: pluginId, localIP: localIP, localMAC: localMAC}
 }
 
 func (oc *ovsController) getVersionNote() string {
@@ -238,6 +241,13 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 		return err
 	}
 
+	if oc.localMAC == "" {
+		return fmt.Errorf("failed to find the MAC address for local IP %s", oc.localIP)
+	}
+	if err := oc.ensureTunMAC(); err != nil {
+		return err
+	}
+
 	otx := oc.ovs.NewTransaction()
 
 	// Table 0: initial dispatch based on in_port
@@ -267,6 +277,12 @@ func (oc *ovsController) SetupOVS(clusterNetworkCIDR []string, serviceNetworkCID
 
 	// Table 10: VXLAN ingress filtering; filled in by AddHostSubnetRules()
 	// eg, "table=10, priority=100, tun_src=${remote_node_ip}, actions=goto_table:30"
+	// Swap overlay dst MAC for ingress OVN-K hybrid overlay traffic, then resubmit to
+	// table 10, so that these packets can be process as normal.
+	// set the dst MAC for traffic from OVN-K nodes to local node
+	otx.AddFlow("table=10, priority=210, ip, nw_dst=%s, eth_dst=%s, actions=set_field:%s->eth_dst, resubmit:10", localSubnetGateway, oc.localMAC, oc.tunMAC)
+	// set the dst MAC for traffic from OVN-K nodes to local pods
+	otx.AddFlow("table=10, priority=200, ip, nw_dst=%s, eth_dst=%s, actions=move:nw_dst->eth_dst[0..31], set_field:0a:58:00:00:00:00/ff:ff:00:00:00:00->eth_dst, resubmit:10", localSubnetCIDR, oc.localMAC)
 	otx.AddFlow("table=10, priority=0, actions=drop")
 
 	// Table 20: from OpenShift container; validate IP/MAC, assign tenant-id; filled in by setupPodFlows
