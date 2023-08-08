@@ -54,5 +54,5 @@ func (sdn *openShiftSDN) writeConfigFile() error {
   "name": "openshift-sdn",
   "type": "openshift-sdn"
 }
-`), 0644)
+`), 0600)
 }
