@@ -33,8 +33,12 @@ const (
 	OVSOperationSuccess = "success"
 	OVSOperationFailure = "failure"
 	// Pod Operation types
-	PodOperationSetup    = "setup"
-	PodOperationTeardown = "teardown"
+	PodOperationSetup       = "setup"
+	PodOperationE2ESetup    = "e2esetup"
+	PodOperationTeardown    = "teardown"
+	PodOperationE2ETeardown = "e2eteardown"
+	PodOperationUpdate      = "update"
+	PodOperationE2EUpdate   = "e2eupdate"
 )
 
 var (
