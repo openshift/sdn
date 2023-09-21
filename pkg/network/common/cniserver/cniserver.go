@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/openshift/sdn/pkg/network/node/metrics"
 	"k8s.io/klog/v2"
 
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
@@ -288,6 +290,7 @@ func cniRequestToPodRequest(r *http.Request) (*PodRequest, error) {
 // Dispatch a pod request to the request handler and return the result to the
 // CNI server client
 func (s *CNIServer) handleCNIRequest(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	req, err := cniRequestToPodRequest(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
@@ -304,5 +307,14 @@ func (s *CNIServer) handleCNIRequest(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write(result); err != nil {
 			klog.Warningf("Error writing %s HTTP response: %v", req.Command, err)
 		}
+	}
+
+	switch req.Command {
+	case CNI_ADD:
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationE2ESetup).Observe(metrics.SinceInMicroseconds(start))
+	case CNI_DEL:
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationE2ETeardown).Observe(metrics.SinceInMicroseconds(start))
+	case CNI_UPDATE:
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationE2EUpdate).Observe(metrics.SinceInMicroseconds(start))
 	}
 }

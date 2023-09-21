@@ -483,7 +483,10 @@ func podIsExited(p *kcontainer.Pod) bool {
 
 // Set up all networking (host/container veth, OVS flows, IPAM, loopback, etc)
 func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *runningPod, error) {
-	defer metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationSetup).Observe(metrics.SinceInMicroseconds(time.Now()))
+	start := time.Now()
+	defer func() {
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationSetup).Observe(metrics.SinceInMicroseconds(start))
+	}()
 	var v1Pod *corev1.Pod
 	var err error
 	// Release any IPAM allocations if the setup failed
@@ -537,6 +540,10 @@ func (m *podManager) setup(req *cniserver.PodRequest) (cnitypes.Result, *running
 
 // Update OVS flows when something (like the pod's namespace VNID) changes
 func (m *podManager) update(req *cniserver.PodRequest) (uint32, error) {
+	start := time.Now()
+	defer func() {
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationUpdate).Observe(metrics.SinceInMicroseconds(start))
+	}()
 	vnid, err := m.policy.GetVNID(req.PodNamespace)
 	if err != nil {
 		return 0, err
@@ -551,7 +558,10 @@ func (m *podManager) update(req *cniserver.PodRequest) (uint32, error) {
 
 // Clean up all pod networking (clear OVS flows, release IPAM lease, remove host/container veth)
 func (m *podManager) teardown(req *cniserver.PodRequest) error {
-	defer metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationTeardown).Observe(metrics.SinceInMicroseconds(time.Now()))
+	start := time.Now()
+	defer func() {
+		metrics.PodOperationsLatency.WithLabelValues(metrics.PodOperationTeardown).Observe(metrics.SinceInMicroseconds(start))
+	}()
 
 	errList := []error{}
 
