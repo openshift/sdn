@@ -10,6 +10,7 @@ import (
 
 type OpenShiftNetworkController struct {
 	platformType string
+	nodeName     string
 }
 
 func NewOpenShiftNetworkControllerCommand(name string) *cobra.Command {
@@ -33,6 +34,7 @@ func NewOpenShiftNetworkControllerCommand(name string) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
+	flags.StringVar(&options.nodeName, "node-name", "", "The node name that openshift-sdn controller resides on")
 	flags.StringVar(&options.platformType, "platform-type", "", "The cloud provider platform type openshift-sdn is deployed on")
 	return cmd
 }
@@ -43,7 +45,7 @@ func (o *OpenShiftNetworkController) Validate() error {
 
 // StartNetworkController calls RunOpenShiftNetworkController and then waits forever
 func (o *OpenShiftNetworkController) StartNetworkController() error {
-	if err := RunOpenShiftNetworkController(o.platformType); err != nil {
+	if err := RunOpenShiftNetworkController(o.platformType, o.nodeName); err != nil {
 		return err
 	}
 
