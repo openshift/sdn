@@ -2,6 +2,7 @@ package openshift_sdn_controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -25,7 +26,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/version"
 )
 
-func RunOpenShiftNetworkController(platformType string) error {
+func RunOpenShiftNetworkController(platformType, nodeName string) error {
 	serviceability.InitLogrusFromKlog()
 
 	clientConfig, err := rest.InClusterConfig()
@@ -61,9 +62,12 @@ func RunOpenShiftNetworkController(platformType string) error {
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, corev1.EventSource{Component: "openshift-network-controller"})
-	id, err := os.Hostname()
-	if err != nil {
-		return err
+
+	if nodeName == "" {
+		nodeName, err = os.Hostname()
+		if err != nil {
+			return fmt.Errorf("failed to get hostname: %v", err)
+		}
 	}
 
 	leaderConfig := leaderelectionconverter.LeaderElectionDefaulting(configv1.LeaderElection{}, "openshift-sdn", "openshift-network-controller")
@@ -74,7 +78,7 @@ func RunOpenShiftNetworkController(platformType string) error {
 		kubeClient.CoreV1(),
 		kubeClient.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
-			Identity:      id,
+			Identity:      nodeName,
 			EventRecorder: eventRecorder,
 		})
 	if err != nil {
