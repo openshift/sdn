@@ -254,7 +254,7 @@ func NewProxier(ipFamily v1.IPFamily,
 	healthzServer healthcheck.ProxierHealthUpdater,
 	nodePortAddressStrings []string,
 ) (*Proxier, error) {
-	nodePortAddresses := utilproxy.NewNodePortAddresses(nodePortAddressStrings)
+	nodePortAddresses := utilproxy.NewNodePortAddresses(ipFamily, nodePortAddressStrings)
 
 	if !nodePortAddresses.ContainsIPv4Loopback() {
 		localhostNodePorts = false
@@ -1498,6 +1498,7 @@ func (proxier *Proxier) syncProxyRules() {
 
 	// Finally, tail-call to the nodePorts chain.  This needs to be after all
 	// other service portal rules.
+/*
 	nodeAddresses, err := proxier.nodePortAddresses.GetNodeAddresses(proxier.networkInterfacer)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get node ip address matching nodeport cidrs, services with nodeport may not work as intended", "CIDRs", proxier.nodePortAddresses)
@@ -1563,6 +1564,7 @@ func (proxier *Proxier) syncProxyRules() {
 			"-d", address,
 			"-j", string(kubeNodePortsChain))
 	}
+*/
 
 	// Drop the packets in INVALID state, which would potentially cause
 	// unexpected connection reset.
@@ -1619,7 +1621,7 @@ func (proxier *Proxier) syncProxyRules() {
 	klog.V(9).InfoS("Restoring iptables", "rules", proxier.iptablesData.Bytes())
 
 	// NOTE: NoFlushTables is used so we don't flush non-kubernetes chains in the table
-	err = proxier.iptables.RestoreAll(proxier.iptablesData.Bytes(), utiliptables.NoFlushTables, utiliptables.RestoreCounters)
+	err := proxier.iptables.RestoreAll(proxier.iptablesData.Bytes(), utiliptables.NoFlushTables, utiliptables.RestoreCounters)
 	if err != nil {
 		if pErr, ok := err.(utiliptables.ParseError); ok {
 			lines := utiliptables.ExtractLines(proxier.iptablesData.Bytes(), pErr.Line(), 3)

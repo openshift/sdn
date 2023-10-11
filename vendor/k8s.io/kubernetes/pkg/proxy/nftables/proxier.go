@@ -143,7 +143,7 @@ type Proxier struct {
 	// services that happened since nftables was synced. For a single object,
 	// changes are accumulated, i.e. previous is state from before all of them,
 	// current is state after applying all of those.
-	endpointsChanges *proxy.EndpointsChangeTracker
+	endpointsChanges *proxy.EndpointChangeTracker
 	serviceChanges   *proxy.ServiceChangeTracker
 
 	mu           sync.Mutex // protects the following fields
@@ -237,7 +237,7 @@ func NewProxier(ipFamily v1.IPFamily,
 		svcPortMap:          make(proxy.ServicePortMap),
 		serviceChanges:      proxy.NewServiceChangeTracker(newServiceInfo, ipFamily, recorder, nil),
 		endpointsMap:        make(proxy.EndpointsMap),
-		endpointsChanges:    proxy.NewEndpointsChangeTracker(hostname, newEndpointInfo, ipFamily, recorder, nil),
+		endpointsChanges:    proxy.NewEndpointChangeTracker(hostname, newEndpointInfo, ipFamily, recorder, nil),
 		syncPeriod:          syncPeriod,
 		nftables:            nft,
 		masqueradeAll:       masqueradeAll,
@@ -1187,7 +1187,7 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		// Capture load-balancer ingress.
-		for _, lbip := range svcInfo.LoadBalancerVIPStrings() {
+		for _, lbip := range svcInfo.LoadBalancerIPStrings() {
 			if hasEndpoints {
 				tx.Add(&nftables.Element{
 					Map: kubeServiceIPsMap,
@@ -1255,7 +1255,7 @@ func (proxier *Proxier) syncProxyRules() {
 			// Either no endpoints at all (REJECT) or no endpoints for
 			// external traffic (DROP anything that didn't get short-circuited
 			// by the EXT chain.)
-			for _, lbip := range svcInfo.LoadBalancerVIPStrings() {
+			for _, lbip := range svcInfo.LoadBalancerIPStrings() {
 				tx.Add(&nftables.Element{
 					Map: kubeNoEndpointServicesMap,
 					Key: []string{

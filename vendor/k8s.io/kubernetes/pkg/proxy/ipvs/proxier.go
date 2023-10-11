@@ -409,7 +409,7 @@ func NewProxier(ipFamily v1.IPFamily,
 		scheduler = defaultScheduler
 	}
 
-	nodePortAddresses := utilproxy.NewNodePortAddresses(nodePortAddressStrings)
+	nodePortAddresses := utilproxy.NewNodePortAddresses(ipFamily, nodePortAddressStrings)
 
 	serviceHealthServer := healthcheck.NewServiceHealthServer(hostname, recorder, nodePortAddresses, healthzServer)
 
@@ -1038,6 +1038,7 @@ func (proxier *Proxier) syncProxyRules() {
 	)
 
 	if hasNodePort {
+/*
 		nodeAddrSet, err := proxier.nodePortAddresses.GetNodeAddresses(proxier.networkInterfacer)
 		if err != nil {
 			klog.ErrorS(err, "Failed to get node IP address matching nodeport cidr")
@@ -1060,6 +1061,7 @@ func (proxier *Proxier) syncProxyRules() {
 				}
 			}
 		}
+*/
 	}
 
 	// Build IPVS rules for each service.
