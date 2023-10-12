@@ -1569,11 +1569,19 @@ func (proxier *Proxier) syncProxyRules() {
 	)
 
 	// FIXME
-	klog.InfoS("Running nftables transaction", "transaction", tx.String())
+	// klog.InfoS("Running nftables transaction", "transaction", tx.String())
 
 	err = proxier.nftables.Run(context.TODO(), tx)
 	if err != nil {
-		klog.ErrorS(err, "nftables sync failed")
+		klog.ErrorS(err, "nftables sync failed", "transaction", tx.String())
+
+		out, err := proxier.exec.Command("nft", "list", "ruleset").CombinedOutput()
+		if err != nil {
+			klog.ErrorS(err, "could not nft list ruleset")
+		} else {
+			klog.InfoS("nft list ruleset", out, string(out))
+		}
+
 		metrics.IptablesRestoreFailuresTotal.Inc()
 		return
 	}
