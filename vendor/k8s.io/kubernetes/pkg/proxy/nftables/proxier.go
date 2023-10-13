@@ -98,7 +98,11 @@ type servicePortInfo struct {
 	clusterPolicyChainName string
 	localPolicyChainName   string
 	externalChainName      string
+
+	localWithFallback bool
 }
+
+const localWithFallbackAnnotation = "traffic-policy.network.alpha.openshift.io/local-with-fallback"
 
 // returns a new proxy.ServicePort which abstracts a serviceInfo
 func newServiceInfo(port *v1.ServicePort, service *v1.Service, bsvcPortInfo *proxy.BaseServicePortInfo) proxy.ServicePort {
@@ -113,6 +117,14 @@ func newServiceInfo(port *v1.ServicePort, service *v1.Service, bsvcPortInfo *pro
 	svcPort.clusterPolicyChainName = servicePortPolicyClusterChainNamePrefix + chainNameBase
 	svcPort.localPolicyChainName = servicePortPolicyLocalChainNamePrefix + chainNameBase
 	svcPort.externalChainName = serviceExternalChainNamePrefix + chainNameBase
+
+	if _, set := service.Annotations[localWithFallbackAnnotation]; set {
+		if svcPort.ExternalPolicyLocal() {
+			svcPort.localWithFallback = true
+		} else {
+			klog.Warningf("Ignoring annotation %q on Service %s which does not have Local ExternalTrafficPolicy", localWithFallbackAnnotation, svcName)
+		}
+	}
 
 	return svcPort
 }
@@ -1053,6 +1065,10 @@ func (proxier *Proxier) syncProxyRules() {
 			}
 		}
 
+		// If "local-with-fallback" is in effect and there are no local endpoints,
+		// then we will force cluster behavior
+		localWithFallback := svcInfo.localWithFallback && len(localEndpoints) == 0
+
 		// clusterPolicyChain contains the endpoints used with "Cluster" traffic policy
 		clusterPolicyChain := svcInfo.clusterPolicyChainName
 		usesClusterPolicyChain := len(clusterEndpoints) > 0 && svcInfo.UsesClusterEndpoints()
@@ -1093,7 +1109,7 @@ func (proxier *Proxier) syncProxyRules() {
 		// local traffic are set up.)
 		externalPolicyChain := clusterPolicyChain
 		hasExternalEndpoints := hasEndpoints
-		if svcInfo.ExternalPolicyLocal() {
+		if svcInfo.ExternalPolicyLocal() && !localWithFallback {
 			externalPolicyChain = localPolicyChain
 			if len(localEndpoints) == 0 {
 				hasExternalEndpoints = false
@@ -1355,7 +1371,16 @@ func (proxier *Proxier) syncProxyRules() {
 		// jump to externalTrafficChain, which will handle some special cases and
 		// then jump to externalPolicyChain.
 		if usesExternalTrafficChain {
-			if !svcInfo.ExternalPolicyLocal() {
+			if localWithFallback {
+				// Masquerade external traffic but not internal
+				tx.Add(&nftables.Rule{
+					Chain: externalTrafficChain,
+					Rule: nftables.Concat(
+						proxier.localDetector.IfNotLocalNFT(),
+						"jump", kubeMarkMasqChain,
+					),
+				})
+			} else if !svcInfo.ExternalPolicyLocal() {
 				// If we are using non-local endpoints we need to masquerade,
 				// in case we cross nodes.
 				tx.Add(&nftables.Rule{
