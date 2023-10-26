@@ -39,3 +39,14 @@ func AddHostRoute(ipn *net.IPNet, gw net.IP, dev netlink.Link) error {
 		Gw:        gw,
 	})
 }
+
+// AddDefaultRoute sets the default route on the given gateway.
+func AddDefaultRoute(gw net.IP, dev netlink.Link) error {
+	var defNet *net.IPNet
+	if gw.To4() != nil {
+		_, defNet, _ = net.ParseCIDR("0.0.0.0/0")
+	} else {
+		_, defNet, _ = net.ParseCIDR("::/0")
+	}
+	return AddRoute(defNet, gw, dev)
+}
