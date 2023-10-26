@@ -30,6 +30,7 @@ require (
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubernetes v1.28.3 // actual branch sdn-4.15-kubernetes-1.28.3 in openshift/kubernetes
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
+	sigs.k8s.io/knftables v0.0.16
 	sigs.k8s.io/yaml v1.3.0
 )
 
