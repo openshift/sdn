@@ -13,7 +13,8 @@ import (
 	cniskel "github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	cni020 "github.com/containernetworking/cni/pkg/types/020"
-	cni030 "github.com/containernetworking/cni/pkg/types/current"
+	cni040 "github.com/containernetworking/cni/pkg/types/040"
+	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/plugins/pkg/ns"
 
 	"github.com/openshift/sdn/pkg/network/common/cniserver"
@@ -91,9 +92,9 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 
 	expectedIP, expectedNet, _ := net.ParseCIDR("10.0.0.2/24")
 	expectedGateway := net.ParseIP("10.0.0.1")
-	resultFromServer = &cni030.Result{
-		CNIVersion: "0.3.1",
-		IPs: []*cni030.IPConfig{
+	resultFromServer = &cni100.Result{
+		CNIVersion: "1.0.0",
+		IPs: []*cni100.IPConfig{
 			{
 				Version: "4",
 				Address: net.IPNet{
@@ -136,7 +137,7 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				StdinData:   []byte("{\"cniVersion\": \"0.1.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
 			},
 			result: &cni020.Result{
-				CNIVersion: "0.2.0",
+				CNIVersion: "0.1.0",
 				IP4: &cni020.IPConfig{
 					IP: net.IPNet{
 						IP:   expectedIP,
@@ -154,9 +155,9 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				},
 			},
 		},
-		// ADD request using cniVersion 0.3.0
+		// ADD request using cniVersion 0.3.1
 		{
-			name:    "ADD-0.3.0",
+			name:    "ADD-0.3.1",
 			reqType: cniserver.CNI_ADD,
 			skelArgs: &cniskel.CmdArgs{
 				ContainerID: "adsfadsfasfdasdfasf",
@@ -164,11 +165,11 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				IfName:      "eth0",
 				Args:        "K8S_POD_NAMESPACE=awesome-namespace;K8S_POD_NAME=awesome-name",
 				Path:        "/some/path",
-				StdinData:   []byte("{\"cniVersion\": \"0.3.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
+				StdinData:   []byte("{\"cniVersion\": \"0.3.1\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
 			},
-			result: &cni030.Result{
-				CNIVersion: "0.3.0",
-				IPs: []*cni030.IPConfig{
+			result: &cni040.Result{
+				CNIVersion: "0.3.1",
+				IPs: []*cni040.IPConfig{
 					{
 						Version: "4",
 						Address: net.IPNet{
@@ -189,9 +190,9 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				},
 			},
 		},
-		// ADD request using cniVersion 0.3.1
+		// ADD request using cniVersion 0.4.0
 		{
-			name:    "ADD-0.3.1",
+			name:    "ADD-0.4.0",
 			reqType: cniserver.CNI_ADD,
 			skelArgs: &cniskel.CmdArgs{
 				ContainerID: "adsfadsfasfdasdfasf",
@@ -199,11 +200,46 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				IfName:      "eth0",
 				Args:        "K8S_POD_NAMESPACE=awesome-namespace;K8S_POD_NAME=awesome-name",
 				Path:        "/some/path",
-				StdinData:   []byte("{\"cniVersion\": \"0.3.1\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
+				StdinData:   []byte("{\"cniVersion\": \"0.4.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
 			},
-			result: &cni030.Result{
-				CNIVersion: "0.3.1",
-				IPs: []*cni030.IPConfig{
+			result: &cni040.Result{
+				CNIVersion: "0.4.0",
+				IPs: []*cni040.IPConfig{
+					{
+						Version: "4",
+						Address: net.IPNet{
+							IP:   expectedIP,
+							Mask: expectedNet.Mask,
+						},
+						Gateway: expectedGateway,
+					},
+				},
+				Routes: []*cnitypes.Route{
+					{
+						Dst: net.IPNet{
+							IP:   expectedIP,
+							Mask: expectedNet.Mask,
+						},
+						GW: nil,
+					},
+				},
+			},
+		},
+		// ADD request using cniVersion 1.0.0
+		{
+			name:    "ADD-1.0.0",
+			reqType: cniserver.CNI_ADD,
+			skelArgs: &cniskel.CmdArgs{
+				ContainerID: "adsfadsfasfdasdfasf",
+				Netns:       "/path/to/something",
+				IfName:      "eth0",
+				Args:        "K8S_POD_NAMESPACE=awesome-namespace;K8S_POD_NAME=awesome-name",
+				Path:        "/some/path",
+				StdinData:   []byte("{\"cniVersion\": \"1.0.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
+			},
+			result: &cni100.Result{
+				CNIVersion: "1.0.0",
+				IPs: []*cni100.IPConfig{
 					{
 						Version: "4",
 						Address: net.IPNet{
