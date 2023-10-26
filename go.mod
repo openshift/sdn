@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/containernetworking/cni v0.8.1
 	github.com/containernetworking/plugins v0.6.0
+	github.com/danwinship/knftables v0.0.12
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
