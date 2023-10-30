@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/openshift/sdn/pkg/cmd/openshift-sdn-cni"
+	openshift_sdn_cni "github.com/openshift/sdn/pkg/cmd/openshift-sdn-cni"
 	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
 	"github.com/containernetworking/cni/pkg/skel"
@@ -23,5 +23,5 @@ func main() {
 	defer hostNS.Close()
 
 	p := openshift_sdn_cni.NewCNIPlugin(cniserver.CNIServerSocketPath, hostNS)
-	skel.PluginMain(p.CmdAdd, p.CmdDel, version.All)
+	skel.PluginMain(p.CmdAdd, p.CmdDel, version.All, "CNI plugin openshift/sdn")
 }

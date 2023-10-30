@@ -11,6 +11,9 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/openshift/sdn/pkg/util/hwaddr"
+	utilip "github.com/openshift/sdn/pkg/util/ip"
+
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/sdn/pkg/network/common/cniserver"
 
@@ -145,7 +148,7 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 
 	var hostVeth, contVeth net.Interface
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
-		hostVeth, contVeth, err = ip.SetupVeth(args.IfName, int(config.OverlayMTU), hostNS)
+		hostVeth, contVeth, err = ip.SetupVeth(args.IfName, int(config.OverlayMTU), "", hostNS)
 		if err != nil {
 			return fmt.Errorf("failed to create container veth: %v", err)
 		}
@@ -159,8 +162,16 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	if err != nil || len(result.IPs) != 1 || result.IPs[0].Version != "4" {
-		return fmt.Errorf("Unexpected IPAM result: %v", err)
+	if err != nil || len(result.IPs) != 1 || result.IPs[0].Address.IP.To4() == nil {
+		var errorMessage string
+		if err != nil {
+			errorMessage = fmt.Sprintf("err=%v", err)
+		} else if len(result.IPs) != 1 {
+			errorMessage = fmt.Sprintf("did not receive exactly 1 IP (got %d: %v)", len(result.IPs), result.IPs)
+		} else if result.IPs[0].Address.IP.To4() == nil {
+			errorMessage = fmt.Sprintf("received IP address is not IPv4 (%s)", result.IPs[0].Address.IP.String())
+		}
+		return fmt.Errorf("Unexpected IPAM result: %s", errorMessage)
 	}
 
 	// ipam.ConfigureIface handles the Routes "incorrectly" (if there is no gateway
@@ -184,7 +195,7 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
 		// Set up eth0
-		if err := ip.SetHWAddrByIP(args.IfName, result.IPs[0].Address.IP, nil); err != nil {
+		if err := utilip.SetHWAddrByIP(args.IfName, result.IPs[0].Address.IP, nil); err != nil {
 			return fmt.Errorf("failed to set pod interface MAC address: %v", err)
 		}
 		if err := ipam.ConfigureIface(args.IfName, result); err != nil {
@@ -291,4 +302,32 @@ func convertToRequestedVersion(stdinData []byte, result *current.Result) (types.
 func (p *cniPlugin) CmdDel(args *skel.CmdArgs) error {
 	_, err := p.doCNI("http://dummy/", newCNIRequest(args))
 	return err
+}
+
+// Copy of SetHWAddrByIP, removed from containernetworking/plugins in https://github.com/containernetworking/plugins/pull/635
+func SetHWAddrByIP(ifName string, ip4 net.IP, ip6 net.IP) error {
+	iface, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("failed to lookup %q: %v", ifName, err)
+	}
+
+	switch {
+	case ip4 == nil && ip6 == nil:
+		return fmt.Errorf("neither ip4 or ip6 specified")
+
+	case ip4 != nil:
+		{
+			hwAddr, err := hwaddr.GenerateHardwareAddr4(ip4, hwaddr.PrivateMACPrefix)
+			if err != nil {
+				return fmt.Errorf("failed to generate hardware addr: %v", err)
+			}
+			if err = netlink.LinkSetHardwareAddr(iface, hwAddr); err != nil {
+				return fmt.Errorf("failed to add hardware addr to %q: %v", ifName, err)
+			}
+		}
+	case ip6 != nil:
+		// TODO: IPv6
+	}
+
+	return nil
 }

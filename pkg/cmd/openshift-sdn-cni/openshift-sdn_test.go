@@ -96,7 +96,6 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 		CNIVersion: "1.0.0",
 		IPs: []*cni100.IPConfig{
 			{
-				Version: "4",
 				Address: net.IPNet{
 					IP:   expectedIP,
 					Mask: expectedNet.Mask,
@@ -241,7 +240,6 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				CNIVersion: "1.0.0",
 				IPs: []*cni100.IPConfig{
 					{
-						Version: "4",
 						Address: net.IPNet{
 							IP:   expectedIP,
 							Mask: expectedNet.Mask,

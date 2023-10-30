@@ -9,6 +9,8 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
+	github.com/onsi/ginkgo v1.16.5
+	github.com/onsi/gomega v1.27.8
 	github.com/opencontainers/runc v1.1.4
 	github.com/openshift/api v0.0.0-20220613185440-63b58097a95d
 	github.com/openshift/build-machinery-go v0.0.0-20211213093930-7e33a7eb4ce3
@@ -84,6 +86,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
@@ -128,6 +131,7 @@ require (
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/controller-manager v0.0.0 // indirect
@@ -142,8 +146,8 @@ require (
 )
 
 replace (
-	github.com/containernetworking/cni => github.com/containernetworking/cni v1.1.2
-	github.com/containernetworking/plugins => github.com/containernetworking/plugins v1.3.1-0.20231002095931-33ccedc66fc3
+	// github.com/containernetworking/cni => github.com/containernetworking/cni v1.1.2
+	// github.com/containernetworking/plugins => github.com/containernetworking/plugins v1.3.1-0.20231002095931-33ccedc66fc3
 	github.com/coreos/go-systemd => github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/gorilla/mux => github.com/gorilla/mux v1.7.4-0.20190830121156-884b5ffcbd3a
@@ -168,7 +172,6 @@ replace (
 	github.com/prometheus/procfs => github.com/prometheus/procfs v0.1.3
 	github.com/spf13/cobra => github.com/spf13/cobra v0.0.4
 	github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
-	github.com/vishvananda/netlink => github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns => github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 	golang.org/x/net => golang.org/x/net v0.14.0
 	k8s.io/api => github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20230610155013-70821f718798

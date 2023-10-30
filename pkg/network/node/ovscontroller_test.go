@@ -12,12 +12,12 @@ import (
 	"testing"
 
 	osdnv1 "github.com/openshift/api/network/v1"
+	"github.com/openshift/sdn/pkg/util/hwaddr"
+
 	"github.com/openshift/sdn/pkg/util/ovs"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-
-	"github.com/containernetworking/plugins/pkg/utils/hwaddr"
 )
 
 func setupOVSController(t *testing.T) (ovs.Interface, *ovsController, []string) {
@@ -990,7 +990,7 @@ func TestSetHWAddrByIP(t *testing.T) {
 	}
 	expectedHWAddr := net.HardwareAddr(append(hwaddr.PrivateMACPrefix, ip.To4()...))
 	if !reflect.DeepEqual(hwAddr, expectedHWAddr) {
-		t.Fatalf("hwaddr.GenerateHardwareAddr4 changed behavior! (%#v != %#v)", hwAddr, expectedHWAddr)
+		t.Fatalf("generateHardwareAddr4 changed behavior! (%#v != %#v)", hwAddr, expectedHWAddr)
 	}
 }
 
