@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.3.1-0.20231002095931-33ccedc66fc3
+	github.com/coreos/go-iptables v0.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/miekg/dns v1.1.35
@@ -44,7 +45,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
-	github.com/coreos/go-iptables v0.6.0 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.3 // indirect
@@ -144,7 +144,6 @@ require (
 replace (
 	github.com/containernetworking/cni => github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins => github.com/containernetworking/plugins v1.3.1-0.20231002095931-33ccedc66fc3
-	github.com/coreos/go-iptables => github.com/coreos/go-iptables v0.2.0
 	github.com/coreos/go-systemd => github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/gorilla/mux => github.com/gorilla/mux v1.7.4-0.20190830121156-884b5ffcbd3a
