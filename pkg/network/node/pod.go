@@ -412,7 +412,7 @@ func (m *podManager) ipamAdd(netnsPath string, id string) (*current.Result, net.
 	}
 
 	args := createIPAMArgs(netnsPath, cniserver.CNI_ADD, id)
-	r, err := invoke.ExecPluginWithResult(containerLocalCniPluginsBinDir+"/osdn-host-local", m.ipamConfig, args)
+	r, err := invoke.ExecPluginWithResult(context.TODO(), containerLocalCniPluginsBinDir+"/osdn-host-local", m.ipamConfig, args, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run CNI IPAM ADD: %v", err)
 	}
@@ -432,7 +432,7 @@ func (m *podManager) ipamAdd(netnsPath string, id string) (*current.Result, net.
 // Run CNI IPAM release for the container
 func (m *podManager) ipamDel(id string) error {
 	args := createIPAMArgs("", cniserver.CNI_DEL, id)
-	err := invoke.ExecPluginWithoutResult(containerLocalCniPluginsBinDir+"/osdn-host-local", m.ipamConfig, args)
+	err := invoke.ExecPluginWithoutResult(context.TODO(), containerLocalCniPluginsBinDir+"/osdn-host-local", m.ipamConfig, args, nil)
 	if err != nil {
 		return fmt.Errorf("failed to run CNI IPAM DEL: %v", err)
 	}

@@ -23,5 +23,5 @@ func main() {
 	defer hostNS.Close()
 
 	p := openshift_sdn_cni.NewCNIPlugin(cniserver.CNIServerSocketPath, hostNS)
-	skel.PluginMain(p.CmdAdd, p.CmdDel, version.All, "CNI plugin openshift/sdn")
+	skel.PluginMain(p.CmdAdd, p.CmdCheck, p.CmdDel, version.All, "CNI plugin openshift/sdn")
 }

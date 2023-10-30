@@ -304,6 +304,13 @@ func (p *cniPlugin) CmdDel(args *skel.CmdArgs) error {
 	return err
 }
 
+func (p *cniPlugin) CmdCheck(args *skel.CmdArgs) error {
+	// noop...CMD check is not considered useful, and has a considerable performance impact
+	// to pod bring up times with CRIO. This is due to the fact that CRIO currently calls check
+	// after CNI ADD before it finishes bringing the container up
+	return nil
+}
+
 // Copy of SetHWAddrByIP, removed from containernetworking/plugins in https://github.com/containernetworking/plugins/pull/635
 func SetHWAddrByIP(ifName string, ip4 net.IP, ip6 net.IP) error {
 	iface, err := netlink.LinkByName(ifName)
