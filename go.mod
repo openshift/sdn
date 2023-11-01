@@ -15,6 +15,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20231101160200-9e6e65ed2a52
 	github.com/prometheus/client_golang v1.16.0
 	github.com/spf13/cobra v1.7.0
+	github.com/spf13/pflag v1.0.5
 	github.com/vishvananda/netlink v1.1.0
 	go.opentelemetry.io/otel/trace v1.10.0
 	golang.org/x/sys v0.13.0
@@ -93,7 +94,6 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.9 // indirect

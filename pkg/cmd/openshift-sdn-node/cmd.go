@@ -2,6 +2,7 @@ package openshift_sdn_node
 
 import (
 	"fmt"
+	"github.com/spf13/pflag"
 	"io"
 	"os"
 	"path/filepath"
@@ -87,7 +88,7 @@ func NewOpenShiftSDNCommand(basename string, errout io.Writer) *cobra.Command {
 // run starts the network process. Does not return.
 func (sdn *openShiftSDN) run(c *cobra.Command, errout io.Writer, stopCh chan struct{}) {
 	// Parse config file, build config objects
-	err := sdn.validateAndParse()
+	err := sdn.validateAndParse(c.Flags())
 	if err != nil {
 		if kerrors.IsInvalid(err) {
 			if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
@@ -124,10 +125,10 @@ func (sdn *openShiftSDN) run(c *cobra.Command, errout io.Writer, stopCh chan str
 
 // validateAndParse validates the command line options, parses the node
 // configuration, and builds the upstream proxy configuration.
-func (sdn *openShiftSDN) validateAndParse() error {
+func (sdn *openShiftSDN) validateAndParse(fs *pflag.FlagSet) error {
 	klog.V(2).Infof("Reading proxy configuration from %s", sdn.proxyConfigFilePath)
 	var err error
-	sdn.proxyConfig, err = readProxyConfig(sdn.proxyConfigFilePath)
+	sdn.proxyConfig, err = readProxyConfig(sdn.proxyConfigFilePath, fs)
 	if err != nil {
 		return err
 	}
