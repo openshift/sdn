@@ -1,6 +1,7 @@
 package openshift_sdn_node
 
 import (
+	"github.com/spf13/pflag"
 	"net"
 	"time"
 
@@ -20,10 +21,10 @@ import (
 )
 
 // readProxyConfig reads the proxy config from a file
-func readProxyConfig(filename string) (*kubeproxyconfig.KubeProxyConfiguration, error) {
+func readProxyConfig(filename string, fs *pflag.FlagSet) (*kubeproxyconfig.KubeProxyConfiguration, error) {
 	o := kubeproxyoptions.NewOptions()
 	o.ConfigFile = filename
-	if err := o.Complete(); err != nil {
+	if err := o.Complete(fs); err != nil {
 		return nil, err
 	}
 	return o.GetConfig(), nil

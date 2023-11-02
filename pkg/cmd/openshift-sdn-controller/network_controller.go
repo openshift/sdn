@@ -72,7 +72,7 @@ func RunOpenShiftNetworkController(platformType, nodeName string) error {
 
 	leaderConfig := leaderelectionconverter.LeaderElectionDefaulting(configv1.LeaderElection{}, "openshift-sdn", "openshift-network-controller")
 	rl, err := resourcelock.New(
-		resourcelock.ConfigMapsLeasesResourceLock,
+		resourcelock.LeasesResourceLock,
 		leaderConfig.Namespace,
 		leaderConfig.Name,
 		kubeClient.CoreV1(),
