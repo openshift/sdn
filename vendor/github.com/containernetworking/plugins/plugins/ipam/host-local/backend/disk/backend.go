@@ -56,7 +56,7 @@ func New(network, dataDir string) (*Store, error) {
 
 func (s *Store) Reserve(id string, ip net.IP, rangeID string) (bool, error) {
 	fname := filepath.Join(s.dataDir, ip.String())
-	f, err := os.OpenFile(fname, os.O_RDWR|os.O_EXCL|os.O_CREATE, 0644)
+	f, err := os.OpenFile(fname, os.O_RDWR|os.O_EXCL|os.O_CREATE, 0600)
 	if os.IsExist(err) {
 		return false, nil
 	}
@@ -74,7 +74,7 @@ func (s *Store) Reserve(id string, ip net.IP, rangeID string) (bool, error) {
 	}
 	// store the reserved ip in lastIPFile
 	ipfile := filepath.Join(s.dataDir, lastIPFilePrefix+rangeID)
-	err = ioutil.WriteFile(ipfile, []byte(ip.String()), 0644)
+	err = ioutil.WriteFile(ipfile, []byte(ip.String()), 0600)
 	if err != nil {
 		return false, err
 	}
