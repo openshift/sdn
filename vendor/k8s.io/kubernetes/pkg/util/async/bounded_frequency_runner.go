@@ -198,8 +198,10 @@ func (bfr *BoundedFrequencyRunner) Loop(stop <-chan struct{}) {
 			klog.V(3).Infof("%s Loop stopping", bfr.name)
 			return
 		case <-bfr.timer.C():
+			klog.Infof("BFR %s timeout", bfr.name)
 			bfr.tryRun()
 		case <-bfr.run:
+			klog.Infof("BFR %s run", bfr.name)
 			bfr.tryRun()
 		case <-bfr.retry:
 			bfr.doRetry()

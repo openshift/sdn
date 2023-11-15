@@ -537,22 +537,34 @@ func (proxier *Proxier) isInitialized() bool {
 // OnServiceAdd is called whenever creation of new service object
 // is observed.
 func (proxier *Proxier) OnServiceAdd(service *v1.Service) {
-	proxier.OnServiceUpdate(nil, service)
+	if proxier.serviceChanges.Update(nil, service) && proxier.isInitialized() {
+		klog.InfoS("OnServiceAdd -> Sync", "service", klog.KObj(service))
+		proxier.Sync()
+	} else {
+		klog.InfoS("OnServiceAdd -> no Sync", "service", klog.KObj(service))
+	}
 }
 
 // OnServiceUpdate is called whenever modification of an existing
 // service object is observed.
 func (proxier *Proxier) OnServiceUpdate(oldService, service *v1.Service) {
 	if proxier.serviceChanges.Update(oldService, service) && proxier.isInitialized() {
+		klog.InfoS("OnServiceUpdate -> Sync", "service", klog.KObj(service))
 		proxier.Sync()
+	} else {
+		klog.InfoS("OnServiceUpdate -> no Sync", "service", klog.KObj(service))
 	}
 }
 
 // OnServiceDelete is called whenever deletion of an existing service
 // object is observed.
 func (proxier *Proxier) OnServiceDelete(service *v1.Service) {
-	proxier.OnServiceUpdate(service, nil)
-
+	if proxier.serviceChanges.Update(service, nil) && proxier.isInitialized() {
+		klog.InfoS("OnServiceDelete -> Sync", "service", klog.KObj(service))
+		proxier.Sync()
+	} else {
+		klog.InfoS("OnServiceDelete -> no Sync", "service", klog.KObj(service))
+	}
 }
 
 // OnServiceSynced is called once all the initial event handlers were
@@ -571,7 +583,10 @@ func (proxier *Proxier) OnServiceSynced() {
 // is observed.
 func (proxier *Proxier) OnEndpointSliceAdd(endpointSlice *discovery.EndpointSlice) {
 	if proxier.endpointsChanges.EndpointSliceUpdate(endpointSlice, false) && proxier.isInitialized() {
+		klog.InfoS("OnEndpointSliceAdd -> Sync", "slice", klog.KObj(endpointSlice))
 		proxier.Sync()
+	} else {
+		klog.InfoS("OnEndpointSliceAdd -> no Sync", "slice", klog.KObj(endpointSlice))
 	}
 }
 
@@ -579,7 +594,10 @@ func (proxier *Proxier) OnEndpointSliceAdd(endpointSlice *discovery.EndpointSlic
 // slice object is observed.
 func (proxier *Proxier) OnEndpointSliceUpdate(_, endpointSlice *discovery.EndpointSlice) {
 	if proxier.endpointsChanges.EndpointSliceUpdate(endpointSlice, false) && proxier.isInitialized() {
+		klog.InfoS("OnEndpointSliceUpdate -> Sync", "slice", klog.KObj(endpointSlice))
 		proxier.Sync()
+	} else {
+		klog.InfoS("OnEndpointSliceUpdate -> no Sync", "slice", klog.KObj(endpointSlice))
 	}
 }
 
@@ -587,7 +605,10 @@ func (proxier *Proxier) OnEndpointSliceUpdate(_, endpointSlice *discovery.Endpoi
 // object is observed.
 func (proxier *Proxier) OnEndpointSliceDelete(endpointSlice *discovery.EndpointSlice) {
 	if proxier.endpointsChanges.EndpointSliceUpdate(endpointSlice, true) && proxier.isInitialized() {
+		klog.InfoS("OnEndpointSliceDelete -> Sync", "slice", klog.KObj(endpointSlice))
 		proxier.Sync()
+	} else {
+		klog.InfoS("OnEndpointSliceDelete -> no Sync", "slice", klog.KObj(endpointSlice))
 	}
 }
 
@@ -623,7 +644,7 @@ func (proxier *Proxier) OnNodeAdd(node *v1.Node) {
 	}
 	proxier.needFullSync = true
 	proxier.mu.Unlock()
-	klog.V(4).InfoS("Updated proxier node labels", "labels", node.Labels)
+	klog.V(2).InfoS("Updated proxier node labels", "labels", node.Labels)
 
 	proxier.Sync()
 }
@@ -648,7 +669,7 @@ func (proxier *Proxier) OnNodeUpdate(oldNode, node *v1.Node) {
 	}
 	proxier.needFullSync = true
 	proxier.mu.Unlock()
-	klog.V(4).InfoS("Updated proxier node labels", "labels", node.Labels)
+	klog.V(2).InfoS("Updated proxier node labels", "labels", node.Labels)
 
 	proxier.Sync()
 }
