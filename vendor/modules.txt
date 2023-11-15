@@ -487,7 +487,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.10.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.17.0 => golang.org/x/net v0.14.0
+# golang.org/x/net v0.17.0
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1525,7 +1525,6 @@ sigs.k8s.io/yaml
 # github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
 # github.com/vishvananda/netlink => github.com/vishvananda/netlink v1.1.0
 # github.com/vishvananda/netns => github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
-# golang.org/x/net => golang.org/x/net v0.14.0
 # k8s.io/api => github.com/openshift/kubernetes/staging/src/k8s.io/api v0.0.0-20231101140735-402e202b90b2
 # k8s.io/apiextensions-apiserver => github.com/openshift/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20231101140735-402e202b90b2
 # k8s.io/apimachinery => github.com/openshift/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20231101140735-402e202b90b2
