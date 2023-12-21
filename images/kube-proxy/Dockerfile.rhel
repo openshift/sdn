@@ -2,11 +2,13 @@ FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.16 AS 
 WORKDIR /go/src/github.com/openshift/sdn
 COPY . .
 RUN make build --warn-undefined-variables
+RUN ls -1 /root/buildinfo/
 
 FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
 RUN INSTALL_PKGS="conntrack-tools iptables" && \
     yum install -y --setopt=tsflags=nodocs $INSTALL_PKGS && \
     yum clean all && rm -rf /var/cache/*
+RUN ls -1 /root/buildinfo/
 
 COPY --from=builder /go/src/github.com/openshift/sdn/kube-proxy /usr/bin/
 
