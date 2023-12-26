@@ -16,6 +16,7 @@ import (
 	osdnclient "github.com/openshift/client-go/network/clientset/versioned"
 	osdnapihelpers "github.com/openshift/library-go/pkg/network/networkapihelpers"
 	"github.com/openshift/sdn/pkg/network/common"
+	metrics "github.com/openshift/sdn/pkg/network/master/metrics"
 	pnetid "github.com/openshift/sdn/pkg/network/master/netid"
 )
 
@@ -23,6 +24,7 @@ type masterVNIDMap struct {
 	// Synchronizes assign, revoke and update VNID
 	lock         sync.Mutex
 	ids          map[string]uint32
+	mcEnabled    map[string]bool
 	netIDManager *pnetid.Allocator
 
 	allowRenumbering bool
@@ -37,6 +39,7 @@ func newMasterVNIDMap(allowRenumbering bool) *masterVNIDMap {
 	return &masterVNIDMap{
 		netIDManager:     pnetid.NewInMemory(netIDRange),
 		ids:              make(map[string]uint32),
+		mcEnabled:        make(map[string]bool),
 		allowRenumbering: allowRenumbering,
 	}
 }
@@ -215,6 +218,7 @@ func (vmap *masterVNIDMap) assignVNID(osdnClient osdnclient.Interface, nsName st
 func (vmap *masterVNIDMap) revokeVNID(osdnClient osdnclient.Interface, nsName string) error {
 	vmap.lock.Lock()
 	defer vmap.lock.Unlock()
+	delete(vmap.mcEnabled, nsName)
 
 	// Delete NetNamespace object
 	if err := osdnClient.NetworkV1().NetNamespaces().Delete(context.TODO(), nsName, metav1.DeleteOptions{}); err != nil {
@@ -235,6 +239,8 @@ func (vmap *masterVNIDMap) revokeVNID(osdnClient osdnclient.Interface, nsName st
 func (vmap *masterVNIDMap) updateVNID(osdnClient osdnclient.Interface, origNetns *osdnv1.NetNamespace) error {
 	// Informer cache should not be mutated, so get a copy of the object
 	netns := origNetns.DeepCopy()
+
+	vmap.mcEnabled[netns.Name] = common.NetnsIsMulticastEnabled(netns)
 
 	action, args, err := osdnapihelpers.GetChangePodNetworkAnnotation(netns)
 	if err == osdnapihelpers.ErrorPodNetworkAnnotationNotFound {
@@ -311,6 +317,7 @@ func (master *OsdnMaster) handleDeleteNamespace(obj interface{}) {
 	if err := master.vnids.revokeVNID(master.osdnClient, ns.Name); err != nil {
 		klog.Errorf("Error revoking netid: %v", err)
 	}
+	master.recordMetrics()
 }
 
 func (master *OsdnMaster) watchNetNamespaces() {
@@ -325,4 +332,16 @@ func (master *OsdnMaster) handleAddOrUpdateNetNamespace(obj, _ interface{}, even
 	if err := master.vnids.updateVNID(master.osdnClient, netns); err != nil {
 		klog.Errorf("Error updating netid: %v", err)
 	}
+	master.recordMetrics()
+}
+
+// recordMetrics records prometheus metrics
+func (master *OsdnMaster) recordMetrics() {
+	mcEnabledNamespaceCount := 0.0
+	for _, enabled := range master.vnids.mcEnabled {
+		if enabled {
+			mcEnabledNamespaceCount += 1
+		}
+	}
+	metrics.RecordMulticastEnabledNamespaceCount(float64(mcEnabledNamespaceCount))
 }
