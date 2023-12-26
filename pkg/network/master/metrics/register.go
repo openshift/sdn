@@ -32,10 +32,19 @@ var metricEgressFirewallCount = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help:      "The number of egress firewall policies",
 })
 
+// represents the count of multicast enabled namespaces
+var metricMulticastEnabledNamespaceCount = prometheus.NewGauge(prometheus.GaugeOpts{
+	Namespace: metricSDNNamespace,
+	Subsystem: metricSDNSubsystemController,
+	Name:      "num_multicast_enabled_namespaces",
+	Help:      "The number of multicast enabled namespaces",
+})
+
 var registry = prometheus.NewRegistry()
 
 func Register() {
 	registry.MustRegister(metricEgressIPCount)
 	registry.MustRegister(metricEgressFirewallRuleCount)
 	registry.MustRegister(metricEgressFirewallCount)
+	registry.MustRegister(metricMulticastEnabledNamespaceCount)
 }
