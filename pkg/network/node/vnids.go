@@ -178,11 +178,6 @@ func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
 	return id, nil
 }
 
-func netnsIsMulticastEnabled(netns *osdnv1.NetNamespace) bool {
-	enabled, ok := netns.Annotations[osdnv1.MulticastEnabledAnnotation]
-	return enabled == "true" && ok
-}
-
 func (vmap *nodeVNIDMap) populateVNIDs() error {
 	nets, err := common.ListAllNetNamespaces(context.TODO(), vmap.osdnClient)
 	if err != nil {
@@ -190,7 +185,7 @@ func (vmap *nodeVNIDMap) populateVNIDs() error {
 	}
 
 	for _, net := range nets {
-		vmap.setVNID(net.Name, net.NetID, netnsIsMulticastEnabled(net))
+		vmap.setVNID(net.Name, net.NetID, common.NetnsIsMulticastEnabled(net))
 	}
 	return nil
 }
@@ -227,7 +222,7 @@ func (vmap *nodeVNIDMap) handleAddOrUpdateNetNamespace(obj, _ interface{}, event
 	// Skip this event if nothing has changed
 	oldNetID, err := vmap.getVNID(netns.NetName)
 	oldMCEnabled := vmap.mcEnabled[netns.NetName]
-	mcEnabled := netnsIsMulticastEnabled(netns)
+	mcEnabled := common.NetnsIsMulticastEnabled(netns)
 	if err == nil && oldNetID == netns.NetID && oldMCEnabled == mcEnabled {
 		return
 	}

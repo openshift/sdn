@@ -18,3 +18,8 @@ func RecordEgressFirewallRuleCount(count float64) {
 func RecordEgressIPCount(count float64) {
 	metricEgressIPCount.Set(count)
 }
+
+// RecordMulticastEnabledNamespaceCount records the number of namespaces with multicast enabled.
+func RecordMulticastEnabledNamespaceCount(count float64) {
+	metricMulticastEnabledNamespaceCount.Set(count)
+}

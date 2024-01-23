@@ -279,3 +279,8 @@ func GetNodeInternalIP(node *corev1.Node) string {
 	}
 	return nodeIP
 }
+
+func NetnsIsMulticastEnabled(netns *osdnv1.NetNamespace) bool {
+	enabled, ok := netns.Annotations[osdnv1.MulticastEnabledAnnotation]
+	return enabled == "true" && ok
+}
