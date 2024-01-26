@@ -1,8 +1,14 @@
 # OpenShift SDN
 
-This is openshift-sdn, the default network plugin for OpenShift (both
-OKD and OCP). It uses Open vSwitch to connect pods locally, with VXLAN
-tunnels to connect different nodes.
+**Note:** OpenShift SDN is deprecated and is no longer being
+developed. Current releases of OpenShift use
+[OVN Kubernetes](https://github.com/ovn-org/ovn-kubernetes).
+
+----
+
+This is openshift-sdn, the original network plugin for OpenShift. It
+uses Open vSwitch to connect pods locally, with VXLAN tunnels to
+connect different nodes.
 
 OpenShift SDN is designed to be installed by the [OpenShift Network
 Operator](https://github.com/openshift/cluster-network-operator), and
