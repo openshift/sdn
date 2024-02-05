@@ -21,7 +21,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	kubeletapi "k8s.io/cri-api/pkg/apis"
 	kruntimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
-	ktypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	kexec "k8s.io/utils/exec"
 
@@ -439,7 +438,7 @@ func (node *OsdnNode) killFailedPods(failed map[string]*kruntimeapi.PodSandbox) 
 // See https://github.com/containernetworking/cni/issues/89
 func (node *OsdnNode) UpdatePod(pod corev1.Pod) error {
 	filter := &kruntimeapi.PodSandboxFilter{
-		LabelSelector: map[string]string{ktypes.KubernetesPodUIDLabel: string(pod.UID)},
+		LabelSelector: map[string]string{"io.kubernetes.pod.uid": string(pod.UID)},
 	}
 	sandboxID, err := node.getPodSandboxID(filter)
 	if err != nil {
