@@ -65,7 +65,7 @@ type ProxyServer struct {
 	MetricsBindAddress string
 	EnableProfiling    bool
 	ConfigSyncPeriod   time.Duration
-	HealthzServer      healthcheck.ProxierHealthUpdater
+	HealthzServer      *healthcheck.ProxierHealthServer
 
 	// Not in the upstream version
 	baseProxy      sdnproxy.HybridizableProxy
@@ -97,9 +97,9 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 		Namespace: "",
 	}
 
-	var healthzServer healthcheck.ProxierHealthUpdater
+	var healthzServer *healthcheck.ProxierHealthServer
 	if len(config.HealthzBindAddress) > 0 {
-		healthzServer = healthcheck.NewProxierHealthServer(config.HealthzBindAddress, 2*config.IPTables.SyncPeriod.Duration, recorder, nodeRef)
+		healthzServer = healthcheck.NewProxierHealthServer(config.HealthzBindAddress, 2*config.IPTables.SyncPeriod.Duration)
 	}
 
 	var proxier sdnproxy.HybridizableProxy
@@ -142,6 +142,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 			recorder,
 			healthzServer,
 			config.NodePortAddresses,
+			false,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create proxier: %v", err)
@@ -173,7 +174,7 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, client clien
 
 // serveHealthz runs the healthz server. This is an exact copy of serveHealthz() from
 // k8s.io/kubernetes/cmd/kube-proxy/app/server.go
-func serveHealthz(hz healthcheck.ProxierHealthUpdater, errCh chan error) {
+func serveHealthz(hz *healthcheck.ProxierHealthServer, errCh chan error) {
 	if hz == nil {
 		return
 	}
