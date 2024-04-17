@@ -2,13 +2,13 @@ package openshift_sdn_cni
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -21,8 +21,8 @@ import (
 	"github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/plugins/pkg/ns"
-
 	"github.com/vishvananda/netlink"
+	"sigs.k8s.io/knftables"
 )
 
 type cniPlugin struct {
@@ -116,24 +116,73 @@ func (p *cniPlugin) testCmdAdd(args *skel.CmdArgs) (types.Result, error) {
 	return convertToRequestedVersion(args.StdinData, result)
 }
 
-func generateIPTablesCommands(platformType string) [][]string {
+func doNFTablesRules(platformType string) error {
+	nft, err := knftables.New(knftables.IPv4Family, "openshift-block-output")
+	if err != nil {
+		return err
+	}
+
+	tx := nft.NewTransaction()
+	tx.Add(&knftables.Table{})
+
+	tx.Add(&knftables.Chain{
+		Name: "block",
+	})
+
+	// Block MCS
+	tx.Add(&knftables.Rule{
+		Chain: "block",
+		Rule: knftables.Concat(
+			"tcp dport { 22623, 22624 } tcp flags syn",
+			"reject",
+		),
+	})
+
+	// Block cloud provider metadata IP except DNS
 	metadataServiceIP := "169.254.169.254"
 	if platformType == string(configv1.AlibabaCloudPlatformType) {
 		metadataServiceIP = "100.100.100.200"
 	}
-	return [][]string{
-		// Block MCS
-		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
-		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
-		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22623", "--syn", "-j", "REJECT"},
-		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--dport", "22624", "--syn", "-j", "REJECT"},
+	tx.Add(&knftables.Rule{
+		Chain: "block",
+		Rule: knftables.Concat(
+			"ip daddr", metadataServiceIP,
+			"udp dport != 53",
+			"reject",
+		),
+	})
+	tx.Add(&knftables.Rule{
+		Chain: "block",
+		Rule: knftables.Concat(
+			"ip daddr", metadataServiceIP,
+			"tcp dport != 53",
+			"reject",
+		),
+	})
 
-		// Block cloud provider metadata IP except DNS
-		{"-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
-		{"-A", "OUTPUT", "-p", "udp", "-m", "udp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
-		{"-A", "FORWARD", "-p", "tcp", "-m", "tcp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
-		{"-A", "FORWARD", "-p", "udp", "-m", "udp", "-d", metadataServiceIP, "!", "--dport", "53", "-j", "REJECT"},
-	}
+	tx.Add(&knftables.Chain{
+		Name:     "output",
+		Type:     knftables.PtrTo(knftables.FilterType),
+		Hook:     knftables.PtrTo(knftables.OutputHook),
+		Priority: knftables.PtrTo(knftables.FilterPriority),
+	})
+	tx.Add(&knftables.Rule{
+		Chain: "output",
+		Rule:  "goto block",
+	})
+
+	tx.Add(&knftables.Chain{
+		Name:     "forward",
+		Type:     knftables.PtrTo(knftables.FilterType),
+		Hook:     knftables.PtrTo(knftables.ForwardHook),
+		Priority: knftables.PtrTo(knftables.FilterPriority),
+	})
+	tx.Add(&knftables.Rule{
+		Chain: "forward",
+		Rule:  "goto block",
+	})
+
+	return nft.Run(context.Background(), tx)
 }
 
 func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
@@ -253,11 +302,8 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		}
 
 		// Block access to certain things
-		for _, args := range generateIPTablesCommands(config.PlatformType) {
-			out, err := exec.Command("iptables", append([]string{"-w"}, args...)...).CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("could not set up pod iptables rules: %s", string(out))
-			}
+		if err = doNFTablesRules(config.PlatformType); err != nil {
+			return fmt.Errorf("could not set up pod nftables rules: %v", err)
 		}
 
 		return nil
