@@ -197,7 +197,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 
 	subscribeErr := addrSubscribe()
 	if subscribeErr != nil {
-		klog.Error("Error during netlink subscribe: %v", subscribeErr)
+		klog.Errorf("Error during netlink subscribe: %v", subscribeErr)
 	}
 
 	for {
@@ -208,7 +208,7 @@ func (eip *egressIPWatcher) runIPAssignmentResync(stopCh <-chan struct{}) {
 		case a, ok := <-addrChan:
 			if !ok {
 				if subscribeErr = addrSubscribe(); subscribeErr != nil {
-					klog.Error("Error during netlink re-subscribe due to address channel closing: %v", subscribeErr)
+					klog.Errorf("Error during netlink re-subscribe due to address channel closing: %v", subscribeErr)
 					// limit the retry attempts
 					time.Sleep(common.DefaultPollInterval)
 				}

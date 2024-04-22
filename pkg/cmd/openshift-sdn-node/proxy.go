@@ -1,9 +1,10 @@
 package openshift_sdn_node
 
 import (
-	"github.com/spf13/pflag"
 	"net"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	corev1 "k8s.io/api/core/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -133,6 +134,14 @@ func (d *sdnLocalDetector) IfLocal() []string {
 
 func (d *sdnLocalDetector) IfNotLocal() []string {
 	return []string{"!", "-i", sdnnode.Tun0}
+}
+
+func (d *sdnLocalDetector) IfLocalNFT() []string {
+	return nil
+}
+
+func (d *sdnLocalDetector) IfNotLocalNFT() []string {
+	return nil
 }
 
 func getLocalDetector() proxyutiliptables.LocalTrafficDetector {
