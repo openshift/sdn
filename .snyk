@@ -4,5 +4,6 @@
 exclude:
   global:
     - vendor/golang.org/x/net/http2
+    - vendor/github.com/containernetworking/plugins/pkg/ns/ns_linux.go
     - images/**
     - .ci-operator.yaml
