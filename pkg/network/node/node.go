@@ -381,7 +381,7 @@ func (node *OsdnNode) reattachPods(existingPodSandboxes map[string]*kruntimeapi.
 		return err
 	}
 	start := time.Now()
-	defer klog.V(2).Infof("reattachPods took %v", time.Since(start))
+	defer func() { klog.V(2).Infof("reattachPods took %v", time.Since(start)) }()
 	node.podManager.setReattachPodsCache(pods)
 	for sandboxID, podInfo := range existingOFPodNetworks {
 		sandbox, ok := existingPodSandboxes[sandboxID]
