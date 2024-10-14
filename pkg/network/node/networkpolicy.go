@@ -3,6 +3,8 @@ package node
 import (
 	"context"
 	"fmt"
+	"math"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -35,6 +37,8 @@ const HostNetworkNamespace = "openshift-host-network"
 // only used by network policy functions
 const NetPolIsolationCookie = 1147582955
 
+const migrationEnvVar = "NODE_CNI"
+
 type networkPolicyPlugin struct {
 	node   *OsdnNode
 	vnids  *nodeVNIDMap
@@ -63,6 +67,9 @@ type networkPolicyPlugin struct {
 	// into unProcessedVNIDs in EnsureVNIDRules() method and it can be looked up later in
 	// AddNetNamespace() method so that required nw policy flow rules programmed into OVS.
 	unProcessedVNIDs sets.Int32
+
+	// indicate if the node is running in SDN live migration mode
+	inMigrationMode bool
 }
 
 // npNamespace tracks NetworkPolicy-related data for a Namespace
@@ -116,16 +123,17 @@ const (
 )
 
 func NewNetworkPolicyPlugin() osdnPolicy {
+	_, inMigration := os.LookupEnv(migrationEnvVar)
 	return &networkPolicyPlugin{
 		namespaces:       make(map[uint32]*npNamespace),
 		namespacesByName: make(map[string]*npNamespace),
 
 		nsMatchCache: make(map[string]*npCacheEntry),
 
-		warnedPolicies:  make(map[ktypes.UID]string),
-		skippedPolicies: make(map[ktypes.UID]string),
-		localPodIPs:     make(map[ktypes.UID]string),
-
+		warnedPolicies:   make(map[ktypes.UID]string),
+		skippedPolicies:  make(map[ktypes.UID]string),
+		localPodIPs:      make(map[ktypes.UID]string),
+		inMigrationMode:  inMigration,
 		unProcessedVNIDs: sets.NewInt32(),
 	}
 }
@@ -775,6 +783,12 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 			if dir == ingressFlow && (len(peer.PodSelector.MatchLabels) == 0 && len(peer.PodSelector.MatchExpressions) == 0) {
 				// The PodSelector is empty, meaning it selects all pods in this namespace
 				peerFlows = append(peerFlows, fmt.Sprintf("reg0=%d, ", npns.vnid))
+				if np.inMigrationMode {
+					npp.watchesOwnPods = true
+					for _, ip := range np.selectPods(npns, peer.PodSelector) {
+						peerFlows = append(peerFlows, fmt.Sprintf("ip, nw_src=%s, ", ip))
+					}
+				}
 			} else {
 				npp.watchesOwnPods = true
 				for _, ip := range np.selectPods(npns, peer.PodSelector) {
@@ -794,6 +808,30 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 				// checking the source VNID...
 				npp.watchesNamespaces = true
 				peerFlows = append(peerFlows, np.selectNamespaces(peer.NamespaceSelector, dir)...)
+				if np.inMigrationMode {
+					// In SDN live migration mode, we can't use source VNID to
+					// distinguish namespaces for traffic from OVN nodes.
+					// So instead we pretend the rule was a combined
+					// namespaceSelector+podSelector rule with a match-all
+					// podSelector, and generate per-pod-IP match rules.
+					npp.watchesAllPods = true
+					peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, &metav1.LabelSelector{}, dir)...)
+
+					// If the host network namespace is selected, Add rules for
+					// the OVN mp0 IP of each node.
+					sel, _ := metav1.LabelSelectorAsSelector(peer.NamespaceSelector)
+					if _, ok := np.nsMatchCache[sel.String()].matches[HostNetworkNamespace]; ok {
+						for _, network := range np.node.networkInfo.ClusterNetworks {
+							cidrIP := network.ClusterCIDR.IP
+							cidrIP[3] = cidrIP[3] | 0x2
+							maskLen, _ := network.ClusterCIDR.Mask.Size()
+							// use a mask to match the OVN mp0 IP which is the second IP of each host subnet.
+							mask := uint32(math.MaxUint32<<(32-maskLen) | math.MaxUint32>>(32-network.HostSubnetLength))
+							flow := fmt.Sprintf("ip, nw_src=%s/%d.%d.%d.%d, ", cidrIP, (mask>>24)&0xff, (mask>>16)&0xff, (mask>>8)&0xff, mask&0xff)
+							peerFlows = append(peerFlows, flow)
+						}
+					}
+				}
 			} else {
 				// ... but for namespaceSelectors on egress, we can't just
 				// check the destination VNID because we don't know that
