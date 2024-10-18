@@ -114,7 +114,8 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 		return nil, fmt.Errorf("could not get ClusterNetwork resource: %v", err)
 	}
 
-	if err := c.validateNodeIP(networkInfo); err != nil {
+	localMAC, err := c.validateNodeIP(networkInfo)
+	if err != nil {
 		return nil, err
 	}
 
@@ -140,7 +141,7 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	oc := NewOVSController(ovsif, pluginId, c.NodeIP)
+	oc := NewOVSController(ovsif, pluginId, c.NodeIP, localMAC)
 
 	masqBit := uint32(0)
 	if c.MasqueradeBit != nil {
@@ -186,8 +187,9 @@ func New(c *OsdnNodeConfig) (*OsdnNode, error) {
 	return plugin, nil
 }
 
-func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork) error {
-	if _, _, err := GetLinkDetails(c.NodeIP); err != nil {
+func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork) (string, error) {
+	link, _, err := GetLinkDetails(c.NodeIP)
+	if err != nil {
 		if err == ErrorNetworkInterfaceNotFound {
 			err = fmt.Errorf("node IP %q is not a local/private address (hostname %q)", c.NodeIP, c.NodeName)
 		}
@@ -196,14 +198,14 @@ func (c *OsdnNodeConfig) validateNodeIP(networkInfo *common.ParsedClusterNetwork
 
 	hostIPNets, _, err := common.GetHostIPNetworks([]string{Tun0})
 	if err != nil {
-		return fmt.Errorf("failed to get host network information: %v", err)
+		return "", fmt.Errorf("failed to get host network information: %v", err)
 	}
 	if err := networkInfo.CheckHostNetworks(hostIPNets); err != nil {
 		// checkHostNetworks() errors *should* be fatal, but we didn't used to check this, and we can't break (mostly-)working nodes on upgrade.
 		klog.Errorf("Local networks conflict with SDN; this will eventually cause problems: %v", err)
 	}
 
-	return nil
+	return link.Attrs().HardwareAddr.String(), nil
 }
 
 var (

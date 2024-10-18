@@ -137,7 +137,8 @@ func (master *OsdnMaster) startSubSystems(pluginName string) {
 }
 
 func (master *OsdnMaster) checkClusterNetworkAgainstLocalNetworks() error {
-	hostIPNets, _, err := common.GetHostIPNetworks([]string{tun0})
+	// During live migration, ignore ovn-k8s-mp0 when it run on a node using ovnkube as CNI.
+	hostIPNets, _, err := common.GetHostIPNetworks([]string{tun0, "ovn-k8s-mp0"})
 	if err != nil {
 		return err
 	}

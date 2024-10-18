@@ -22,7 +22,7 @@ import (
 
 func setupOVSController(t *testing.T) (ovs.Interface, *ovsController, []string) {
 	ovsif := ovs.NewFake(Br0)
-	oc := NewOVSController(ovsif, 0, "172.17.0.4")
+	oc := NewOVSController(ovsif, 0, "172.17.0.4", "00:09:dc:a4:5e:a3")
 	oc.tunMAC = "c6:ac:2c:13:48:4b"
 	err := oc.SetupOVS([]string{"10.128.0.0/14"}, "172.30.0.0/16", "10.128.0.0/23", "10.128.0.1", 1450, 4789)
 	if err != nil {
@@ -786,7 +786,7 @@ func TestAlreadySetUp(t *testing.T) {
 		if err := ovsif.AddBridge("fail_mode=secure", "protocols=OpenFlow13"); err != nil {
 			t.Fatalf("(%d) unexpected error from AddBridge: %v", i, err)
 		}
-		oc := NewOVSController(ovsif, 0, "172.17.0.4")
+		oc := NewOVSController(ovsif, 0, "172.17.0.4", "00:09:dc:a4:5e:a3")
 		/* In order to test AlreadySetUp the vxlan port has to be added, we are not testing AddPort here */
 		_, err := ovsif.AddPort("vxlan0", 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`, fmt.Sprintf("options:dst_port=%d", 4789))
 		if err != nil {
@@ -1010,6 +1010,8 @@ var expectedFlows = []string{
 	" cookie=0, table=0, priority=100, arp, actions=goto_table:20",
 	" cookie=0, table=0, priority=100, ip, actions=goto_table:20",
 	" cookie=0, table=0, priority=0, actions=drop",
+	" cookie=0, table=10, priority=210, ip, nw_dst=10.128.0.1, eth_dst=00:09:dc:a4:5e:a3, actions=set_field:c6:ac:2c:13:48:4b->eth_dst,resubmit:10",
+	" cookie=0, table=10, priority=200, ip, nw_dst=10.128.0.0/23, eth_dst=00:09:dc:a4:5e:a3, actions=move:nw_dst->eth_dst[0..31],set_field:0a:58:00:00:00:00/ff:ff:00:00:00:00->eth_dst,resubmit:10",
 	" cookie=0x0f46ee1a, table=10, priority=100, tun_src=10.0.123.45, actions=goto_table:30",
 	" cookie=0, table=10, priority=0, actions=drop",
 	" cookie=0, table=20, priority=300, udp, udp_dst=4789, actions=drop",
