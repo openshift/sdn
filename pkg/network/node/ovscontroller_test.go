@@ -1060,7 +1060,7 @@ var expectedFlows = []string{
 	" cookie=0, table=111, priority=100, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:10.0.123.45->tun_dst,output:1,set_field:10.0.45.123->tun_dst,output:1,goto_table:120",
 	" cookie=0, table=120, priority=100, reg0=99, actions=output:4,output:5,output:6",
 	" cookie=0, table=120, priority=0, actions=drop",
-	" cookie=0, table=253, actions=note:00.0D",
+	" cookie=0, table=253, actions=note:00.0E",
 }
 
 // Ensure that we do not change the OVS flows without bumping ruleVersion
