@@ -616,16 +616,9 @@ func (np *networkPolicyPlugin) selectNamespacesInternal(selector labels.Selector
 	match := np.nsMatchCache[cacheKey]
 	if match == nil {
 		match = &npCacheEntry{selector: selector, matches: make(map[string]uint32)}
-		for vnid, npns := range np.namespaces {
+		for _, npns := range np.namespaces {
 			if npns.gotNamespace && selector.Matches(labels.Set(npns.labels)) {
-				// handle host network namespace as special and classify it as vnid 0 for
-				// network policy purposes, so it can ride upon the handling of default
-				// namespace for host network traffic.
-				if npns.name == HostNetworkNamespace {
-					match.matches[npns.name] = 0
-				} else {
-					match.matches[npns.name] = vnid
-				}
+				match.matches[npns.name] = npns.GetMatchVNID()
 			}
 		}
 		np.nsMatchCache[cacheKey] = match
@@ -636,7 +629,7 @@ func (np *networkPolicyPlugin) selectNamespacesInternal(selector labels.Selector
 func (np *networkPolicyPlugin) updateMatchCache(npns *npNamespace) {
 	for _, match := range np.nsMatchCache {
 		if npns.gotNamespace && npns.gotNetNamespace && match.selector.Matches(labels.Set(npns.labels)) {
-			match.matches[npns.name] = npns.vnid
+			match.matches[npns.name] = npns.GetMatchVNID()
 		} else {
 			delete(match.matches, npns.name)
 		}
@@ -1189,4 +1182,14 @@ func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) bool {
 
 func getPodFullName(pod *corev1.Pod) string {
 	return fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+}
+
+// handle host network namespace as special and classify it as vnid 0 for
+// network policy purposes, so it can ride upon the handling of default
+// namespace for host network traffic.
+func (npns *npNamespace) GetMatchVNID() uint32 {
+	if npns.name == HostNetworkNamespace {
+		return 0
+	}
+	return npns.vnid
 }
