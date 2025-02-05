@@ -189,10 +189,23 @@ func (np *networkPolicyPlugin) Start(node *OsdnNode) error {
 		return err
 	}
 
-	// Rate-limit calls to np.syncFlows to 1-per-second after the 2nd call within 1
-	// second. The maxInterval (time.Hour) is irrelevant here because we always call
-	// np.runner.Run() if there is syncing to be done.
-	np.runner = async.NewBoundedFrequencyRunner("NetworkPolicy", np.syncFlows, time.Second, time.Hour, 2)
+	// Rate-limit calls to np.syncFlows to once per minSyncPeriod. The maxInterval
+	// (time.Hour) is irrelevant here because we always call np.runner.Run() if there
+	// is syncing to be done.
+	minSyncPeriod := time.Second
+	if np.inMigrationMode {
+		// The existing code can't keep up with the churn rate in large clusters
+		// when in migration mode.
+		allSubnets, err := np.node.osdnClient.NetworkV1().HostSubnets().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			klog.Warningf("Unexpected error trying to list HostSubnets (%v); assuming large cluster", err)
+			minSyncPeriod = 10 * time.Second
+		} else if len(allSubnets.Items) > 100 {
+			klog.Infof("Cluster has %d nodes; using slow NetworkPolicy resync mode for migration", len(allSubnets.Items))
+			minSyncPeriod = 10 * time.Second
+		}
+	}
+	np.runner = async.NewBoundedFrequencyRunner("NetworkPolicy", np.syncFlows, minSyncPeriod, time.Hour, 1)
 	go np.runner.Loop(utilwait.NeverStop)
 
 	if err := np.initNamespaces(); err != nil {
