@@ -1076,6 +1076,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 				watchesAllPods:    true,
 				watchesOwnPods:    false,
 				ingressFlows: []string{
+					"ip, nw_src=10.128.0.2/255.252.1.255, ",
 					"reg0=0",
 				},
 			},
@@ -1321,6 +1322,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
+						"ip, nw_src=10.128.0.2/255.252.1.255, ",
 						"reg0=0",
 					},
 				},
@@ -1346,6 +1348,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
+						"ip, nw_src=10.128.0.2/255.252.1.255, ",
 						"reg0=0",
 					},
 				},
@@ -1409,6 +1412,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
+						"ip, nw_src=10.128.0.2/255.252.1.255, ",
 						"reg0=0",
 					},
 				},
@@ -1458,6 +1462,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
+						"ip, nw_src=10.128.0.2/255.252.1.255, ",
 						"reg0=0",
 					},
 				},
@@ -1594,6 +1599,7 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 			watchesAllPods:    true,
 			watchesOwnPods:    false,
 			ingressFlows: []string{
+				"ip, nw_src=10.128.0.2/255.252.1.255, ",
 				"reg0=0",
 			},
 		},

@@ -820,8 +820,14 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 
 					// If the host network namespace is selected, Add rules for
 					// the OVN mp0 IP of each node.
+					hostNetworkSelected := false
 					sel, _ := metav1.LabelSelectorAsSelector(peer.NamespaceSelector)
-					if _, ok := np.nsMatchCache[sel.String()].matches[HostNetworkNamespace]; ok {
+					for _, vnid := range np.selectNamespacesInternal(sel) {
+						if vnid == 0 {
+							hostNetworkSelected = true
+						}
+					}
+					if hostNetworkSelected {
 						for _, network := range np.node.networkInfo.ClusterNetworks {
 							cidrIP := make(net.IP, len(network.ClusterCIDR.IP))
 							copy(cidrIP, network.ClusterCIDR.IP)
