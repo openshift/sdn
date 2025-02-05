@@ -99,6 +99,7 @@ type npPolicy struct {
 	watchesNamespaces bool
 	watchesAllPods    bool
 	watchesOwnPods    bool
+	watchesSomePods   sets.Set[uint32]
 
 	selectedIPs   []string
 	selectsAllIPs bool
@@ -815,19 +816,19 @@ func (np *networkPolicyPlugin) parsePeerFlows(npns *npNamespace, npp *npPolicy, 
 					// So instead we pretend the rule was a combined
 					// namespaceSelector+podSelector rule with a match-all
 					// podSelector, and generate per-pod-IP match rules.
-					npp.watchesAllPods = true
 					peerFlows = append(peerFlows, np.selectPodsFromNamespaces(peer.NamespaceSelector, &metav1.LabelSelector{}, dir)...)
+
+					if npp.watchesSomePods == nil {
+						npp.watchesSomePods = sets.New[uint32]()
+					}
+					sel, _ := metav1.LabelSelectorAsSelector(peer.NamespaceSelector)
+					for _, vnid := range np.selectNamespacesInternal(sel) {
+						npp.watchesSomePods.Insert(vnid)
+					}
 
 					// If the host network namespace is selected, Add rules for
 					// the OVN mp0 IP of each node.
-					hostNetworkSelected := false
-					sel, _ := metav1.LabelSelectorAsSelector(peer.NamespaceSelector)
-					for _, vnid := range np.selectNamespacesInternal(sel) {
-						if vnid == 0 {
-							hostNetworkSelected = true
-						}
-					}
-					if hostNetworkSelected {
+					if npp.watchesSomePods.Has(0) {
 						for _, network := range np.node.networkInfo.ClusterNetworks {
 							cidrIP := make(net.IP, len(network.ClusterCIDR.IP))
 							copy(cidrIP, network.ClusterCIDR.IP)
@@ -1162,7 +1163,7 @@ func (np *networkPolicyPlugin) refreshPodNetworkPolicies(pod *corev1.Pod) bool {
 	podNs := np.namespacesByName[pod.Namespace]
 	for _, npns := range np.namespaces {
 		for _, npp := range npns.policies {
-			if (npp.watchesOwnPods && npns == podNs) || npp.watchesAllPods {
+			if (npp.watchesOwnPods && npns == podNs) || npp.watchesSomePods.Has(podNs.vnid) || npp.watchesAllPods {
 				npns.mustRecalculate = true
 			}
 		}
