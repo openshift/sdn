@@ -890,6 +890,65 @@ func TestNetworkPolicy(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	// Deleting pods should trigger recalculation of namespaces that watch those pods
+	synced.Store(false)
+	err = np.node.kClient.CoreV1().Pods(np.namespaces[3].name).Delete(context.TODO(), "client", metav1.DeleteOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error deleting client pod: %v", err))
+	}
+	err = np.node.kClient.CoreV1().Pods(np.namespaces[4].name).Delete(context.TODO(), "client", metav1.DeleteOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error deleting client pod: %v", err))
+	}
+	waitForSync(np, synced, "pod deletion")
+
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
+		"allow-from-even": {
+			watchesNamespaces: true,
+			watchesAllPods:    false,
+			watchesOwnPods:    false,
+			ingressFlows: []string{
+				"reg0=4",
+				"reg0=6",
+				"reg0=8",
+			},
+		},
+		"allow-from-odd-primes": {
+			watchesNamespaces: true,
+			watchesAllPods:    true,
+			watchesOwnPods:    true,
+			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[7])),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+	err = assertPolicies(np, np.namespaces[3], 3, map[string]*npPolicy{
+		"allow-client-to-server": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+	err = assertPolicies(np, np.namespaces[4], 2, map[string]*npPolicy{
+		"allow-client-to-server": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
 	// Create the special namespace that indicates host network traffic
 	addNamespace(np, "openshift-host-network", 200, map[string]string{"network.openshift.io/policy-group": "ingress"})
 	// Create the namespace to add network policy for
@@ -1537,6 +1596,71 @@ func TestNetworkPolicyInMigrationMode(t *testing.T) {
 			ingressFlows: []string{
 				"reg0=0",
 			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	// Deleting a pod should trigger recalculation of namespaces that watch that pod
+	synced.Store(false)
+	err = np.node.kClient.CoreV1().Pods(np.namespaces[3].name).Delete(context.TODO(), "client", metav1.DeleteOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error deleting client pod: %v", err))
+	}
+	err = np.node.kClient.CoreV1().Pods(np.namespaces[4].name).Delete(context.TODO(), "client", metav1.DeleteOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error deleting client pod: %v", err))
+	}
+	waitForSync(np, synced, "pod deletion")
+
+	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
+		"allow-from-even": {
+			watchesNamespaces: true,
+			watchesAllPods:    true,
+			watchesOwnPods:    false,
+			ingressFlows: []string{
+				// no client in namespace 4
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[8])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[8])),
+				"reg0=4",
+				"reg0=6",
+				"reg0=8",
+			},
+		},
+		"allow-from-odd-primes": {
+			watchesNamespaces: true,
+			watchesAllPods:    true,
+			watchesOwnPods:    true,
+			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[5])),
+				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(np.namespaces[7])),
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+	err = assertPolicies(np, np.namespaces[3], 3, map[string]*npPolicy{
+		"allow-client-to-server": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+	err = assertPolicies(np, np.namespaces[4], 2, map[string]*npPolicy{
+		"allow-client-to-server": {
+			watchesNamespaces: false,
+			watchesAllPods:    false,
+			watchesOwnPods:    true,
+			ingressFlows:      []string{},
 		},
 	})
 	if err != nil {
