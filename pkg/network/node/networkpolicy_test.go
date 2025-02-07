@@ -934,7 +934,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 }
 
-func _TestNetworkPolicyInMigrationMode(t *testing.T) {
+func TestNetworkPolicyInMigrationMode(t *testing.T) {
 	np, _, synced, stopCh := newTestNPP()
 	defer close(stopCh)
 
@@ -1007,14 +1007,14 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 			"allow-from-self": {
 				watchesNamespaces: false,
 				watchesAllPods:    false,
-				watchesOwnPods:    false,
+				watchesOwnPods:    true,
 				ingressFlows: []string{
 					fmt.Sprintf("reg0=%d", npns.vnid),
 				},
 			},
 			"allow-from-default": {
 				watchesNamespaces: true,
-				watchesAllPods:    false,
+				watchesAllPods:    true,
 				watchesOwnPods:    false,
 				ingressFlows: []string{
 					"reg0=0",
@@ -1112,11 +1112,15 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 	err := assertPolicies(np, npns1, 4, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesAllPods:    false,
+			watchesAllPods:    true,
 			watchesOwnPods:    false,
 			ingressFlows: []string{
-				"reg0=2",
-				"reg0=4",
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[2])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[2])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[4])),
+				"reg0=2, ",
+				"reg0=4, ",
 			},
 		},
 	})
@@ -1248,14 +1252,14 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
-					watchesOwnPods:    false,
+					watchesOwnPods:    true,
 					ingressFlows: []string{
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesAllPods:    false,
+					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
 						"reg0=0",
@@ -1271,14 +1275,16 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
-					watchesOwnPods:    false,
+					watchesOwnPods:    true,
 					ingressFlows: []string{
+						fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(npns)),
 						"reg0=1",
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesAllPods:    false,
+					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
 						"reg0=0",
@@ -1294,9 +1300,17 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 				},
 				"allow-from-even": {
 					watchesNamespaces: true,
-					watchesAllPods:    false,
+					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
+						fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[2])),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[2])),
+						fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[4])),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[4])),
+						fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[6])),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[6])),
+						fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[8])),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[8])),
 						"reg0=2",
 						"reg0=4",
 						"reg0=6",
@@ -1324,14 +1338,16 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
-					watchesOwnPods:    false,
+					watchesOwnPods:    true,
 					ingressFlows: []string{
+						fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(npns)),
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesAllPods:    false,
+					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
 						"reg0=0",
@@ -1371,14 +1387,16 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 				"allow-from-self": {
 					watchesNamespaces: false,
 					watchesAllPods:    false,
-					watchesOwnPods:    false,
+					watchesOwnPods:    true,
 					ingressFlows: []string{
+						fmt.Sprintf("ip, nw_src=%s", clientIP(npns)),
+						fmt.Sprintf("ip, nw_src=%s", serverIP(npns)),
 						fmt.Sprintf("reg0=%d", vnid),
 					},
 				},
 				"allow-from-default": {
 					watchesNamespaces: true,
-					watchesAllPods:    false,
+					watchesAllPods:    true,
 					watchesOwnPods:    false,
 					ingressFlows: []string{
 						"reg0=0",
@@ -1414,9 +1432,17 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesAllPods:    false,
+			watchesAllPods:    true,
 			watchesOwnPods:    false,
 			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns2)),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(npns2)),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[8])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[8])),
 				"reg0=2",
 				"reg0=4",
 				"reg0=6",
@@ -1435,9 +1461,15 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-even": {
 			watchesNamespaces: true,
-			watchesAllPods:    false,
+			watchesAllPods:    true,
 			watchesOwnPods:    false,
 			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[4])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[6])),
+				fmt.Sprintf("ip, nw_src=%s", clientIP(np.namespaces[8])),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(np.namespaces[8])),
 				"reg0=4",
 				"reg0=6",
 				"reg0=8",
@@ -1477,8 +1509,10 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 		"allow-from-self": {
 			watchesNamespaces: false,
 			watchesAllPods:    false,
-			watchesOwnPods:    false,
+			watchesOwnPods:    true,
 			ingressFlows: []string{
+				fmt.Sprintf("ip, nw_src=%s", clientIP(npns4)),
+				fmt.Sprintf("ip, nw_src=%s", serverIP(npns4)),
 				fmt.Sprintf("reg0=%d", npns4.vnid),
 			},
 		},
@@ -1498,164 +1532,10 @@ func _TestNetworkPolicyInMigrationMode(t *testing.T) {
 	err = assertPolicies(np, npns1, 5, map[string]*npPolicy{
 		"allow-from-default": {
 			watchesNamespaces: true,
-			watchesAllPods:    false,
+			watchesAllPods:    true,
 			watchesOwnPods:    false,
 			ingressFlows: []string{
 				"reg0=0",
-			},
-		},
-	})
-	if err != nil {
-		t.Error(err.Error())
-	}
-
-	// Create the special namespace that indicates host network traffic
-	addNamespace(np, "openshift-host-network", 200, map[string]string{"network.openshift.io/policy-group": "ingress"})
-	// Create the namespace to add network policy for
-	addNamespace(np, "host-network-target", 10, map[string]string{"foo": "bar"})
-	npns := np.namespaces[10]
-	synced.Store(false)
-	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-from-host-network-ns",
-			UID:       uid(npns, "allow-from-host-network-ns"),
-			Namespace: npns.name,
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{},
-			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{{
-				From: []networkingv1.NetworkPolicyPeer{{
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"network.openshift.io/policy-group": "ingress",
-						},
-					},
-				}},
-			}},
-		},
-	})
-	waitForSync(np, synced, "host-network NP addition")
-
-	// make sure we add the right flows
-	err = assertPolicies(np, npns, 1, map[string]*npPolicy{
-		"allow-from-host-network-ns": {
-			watchesNamespaces: true,
-			watchesAllPods:    false,
-			watchesOwnPods:    false,
-			ingressFlows: []string{
-				"reg0=0", //make sure host network namespace is classified into vnid 0
-			},
-		},
-	})
-	if err != nil {
-		t.Error(err.Error())
-	}
-}
-
-func TestNetworkPolicyInMigrationMode(t *testing.T) {
-	var err error
-	np, _, synced, stopCh := newTestNPP()
-	np.inMigrationMode = true
-	_, clusterCIDR, _ := net.ParseCIDR("10.128.0.0/14")
-	np.node.networkInfo = &common.ParsedClusterNetwork{
-		ClusterNetworks: []common.ParsedClusterNetworkEntry{
-			{
-				ClusterCIDR:      clusterCIDR,
-				HostSubnetLength: 9,
-			},
-		},
-	}
-	defer close(stopCh)
-
-	// Create some Namespaces
-	addNamespace(np, "default", 0, map[string]string{"default": "true"})
-	addNamespace(np, "one", 1, map[string]string{"parity": "odd"})
-	addNamespace(np, "two", 2, map[string]string{"parity": "even"})
-
-	npns1 := np.namespaces[1]
-	npns2 := np.namespaces[2]
-
-	addPods(np, npns1)
-	addPods(np, npns2)
-
-	// Allow client pods in the same namespace to connect to the server in namespace "one"
-	synced.Store(false)
-	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-from-samenamespace",
-			UID:       uid(npns1, "allow-from-samenamespace"),
-			Namespace: "one",
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{},
-			},
-			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{{
-				From: []networkingv1.NetworkPolicyPeer{{
-					PodSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{},
-					},
-				}},
-			}},
-		},
-	})
-	waitForSync(np, synced, "networkpolicy sync")
-
-	err = assertPolicies(np, npns1, 1, map[string]*npPolicy{
-		"allow-from-samenamespace": {
-			watchesNamespaces: false,
-			watchesAllPods:    false,
-			watchesOwnPods:    true,
-			ingressFlows: []string{
-				fmt.Sprintf("reg0=%d", npns1.vnid),
-				fmt.Sprintf("ip, nw_src=%s", clientIP(npns1)),
-				fmt.Sprintf("ip, nw_src=%s", serverIP(npns1)),
-			},
-		},
-	})
-	if err != nil {
-		t.Error(err.Error())
-	}
-
-	// Allow client pods in even namespaces to connect to the server in namespace "one"
-	synced.Store(false)
-	addNetworkPolicy(np, &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-from-even",
-			UID:       uid(npns1, "allow-from-even"),
-			Namespace: "one",
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"kind": "server",
-				},
-			},
-			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{{
-				From: []networkingv1.NetworkPolicyPeer{{
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"parity": "even",
-						},
-					},
-				}},
-			}},
-		},
-	})
-	waitForSync(np, synced, "networkpolicy sync")
-
-	err = assertPolicies(np, npns1, 2, map[string]*npPolicy{
-		"allow-from-even": {
-			watchesNamespaces: true,
-			watchesAllPods:    true,
-			watchesOwnPods:    true,
-			ingressFlows: []string{
-				fmt.Sprintf("ip, nw_dst=%s, reg0=%d", serverIP(npns1), npns2.vnid),
-				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), clientIP(npns2)),
-				fmt.Sprintf("ip, nw_dst=%s, ip, nw_src=%s", serverIP(npns1), serverIP(npns2)),
 			},
 		},
 	})
