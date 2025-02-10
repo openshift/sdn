@@ -15,6 +15,7 @@
 package disk
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -56,7 +57,7 @@ func New(network, dataDir string) (*Store, error) {
 
 func (s *Store) Reserve(id string, ip net.IP, rangeID string) (bool, error) {
 	fname := filepath.Join(s.dataDir, ip.String())
-	f, err := os.OpenFile(fname, os.O_RDWR|os.O_EXCL|os.O_CREATE, 0600)
+	f, err := os.OpenFile(fname, os.O_RDWR|os.O_EXCL|os.O_CREATE, 0644)
 	if os.IsExist(err) {
 		return false, nil
 	}
@@ -74,7 +75,7 @@ func (s *Store) Reserve(id string, ip net.IP, rangeID string) (bool, error) {
 	}
 	// store the reserved ip in lastIPFile
 	ipfile := filepath.Join(s.dataDir, lastIPFilePrefix+rangeID)
-	err = ioutil.WriteFile(ipfile, []byte(ip.String()), 0600)
+	err = ioutil.WriteFile(ipfile, []byte(ip.String()), 0644)
 	if err != nil {
 		return false, err
 	}
@@ -99,19 +100,25 @@ func (s *Store) Release(ip net.IP) error {
 // release as much as possible
 func (s *Store) ReleaseByID(id string) error {
 	err := filepath.Walk(s.dataDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return fmt.Errorf("unexpected path %s is a directory and not a file", path)
 		}
 		data, err := ioutil.ReadFile(path)
 		if err != nil {
-			return nil
+			return fmt.Errorf("failed to read file at path %s: %v", path, err)
 		}
 		if strings.TrimSpace(string(data)) == strings.TrimSpace(id) {
 			if err := os.Remove(path); err != nil {
-				return nil
+				return fmt.Errorf("failed to remove file %s: %v", path, err)
 			}
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to release ID %s: %v", id, err)
+	}
+	return nil
 }
