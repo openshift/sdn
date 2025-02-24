@@ -2,11 +2,12 @@ package openshift_sdn_node
 
 import (
 	"fmt"
-	"github.com/spf13/pflag"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
@@ -120,6 +121,10 @@ func (sdn *openShiftSDN) run(c *cobra.Command, errout io.Writer, stopCh chan str
 	}
 
 	<-stopCh
+	err = sdn.deleteConfigFile()
+	if err != nil {
+		klog.Errorf("unable to delete sdn cni configuration file: %v", err)
+	}
 	time.Sleep(500 * time.Millisecond) // gracefully shut down
 }
 

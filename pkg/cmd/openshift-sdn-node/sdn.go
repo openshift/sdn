@@ -2,6 +2,7 @@ package openshift_sdn_node
 
 import (
 	"io/ioutil"
+	"os"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -55,4 +56,9 @@ func (sdn *openShiftSDN) writeConfigFile() error {
   "type": "openshift-sdn"
 }
 `), 0600)
+}
+
+func (sdn *openShiftSDN) deleteConfigFile() error {
+	// Delete CNI config file from disk if it's no longer able to serve CNI requests.
+	return os.Remove(openshiftCNIFile)
 }
